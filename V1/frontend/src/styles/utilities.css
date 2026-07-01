@@ -1,0 +1,97 @@
+:root {
+  --ds-app-bg: #050814;
+  --ds-app-bg-soft: #080d1e;
+  --ds-surface: rgba(15, 23, 42, 0.78);
+  --ds-surface-elevated: rgba(15, 23, 42, 0.94);
+  --ds-surface-glass: rgba(15, 23, 42, 0.72);
+  --ds-surface-field: rgba(2, 6, 23, 0.32);
+  --ds-border: rgba(148, 163, 184, 0.18);
+  --ds-border-muted: rgba(148, 163, 184, 0.1);
+  --ds-primary: #6366f1;
+  --ds-primary-hover: #818cf8;
+  --ds-primary-strong: #4f46e5;
+  --ds-success: #22c55e;
+  --ds-warning: #f59e0b;
+  --ds-danger: #f43f5e;
+  --ds-info: #38bdf8;
+  --ds-text: #f8fafc;
+  --ds-text-secondary: #cbd5e1;
+  --ds-text-muted: #94a3b8;
+  --ds-page-padding: clamp(10px, 1.2vw, 18px);
+  --ds-section-gap: 12px;
+  --ds-card-padding: clamp(12px, 1.1vw, 18px);
+  --ds-cell-padding: 10px 12px;
+  --ds-modal-padding: 16px;
+  --ds-toolbar-gap: 8px;
+  --ds-radius-card: 14px;
+  --ds-radius-button: 10px;
+  --ds-radius-input: 10px;
+  --ds-radius-modal: 16px;
+  --ds-shadow-subtle: 0 8px 22px rgba(2, 6, 23, 0.22);
+  --ds-shadow-card: 0 14px 36px rgba(2, 6, 23, 0.32);
+  --ds-shadow-modal: 0 28px 80px rgba(0, 0, 0, 0.55);
+  --ds-shadow-glow: 0 0 0 1px rgba(99, 102, 241, 0.14), 0 12px 32px rgba(79, 70, 229, 0.12);
+  --ds-type-page-title: clamp(1.15rem, 1.5vw, 1.55rem);
+  --ds-type-section-title: 0.95rem;
+  --ds-type-card-title: 0.875rem;
+  --ds-type-table-header: 0.68rem;
+  --ds-type-body: 0.875rem;
+  --ds-type-muted: 0.78rem;
+  --ds-type-metadata: 0.68rem;
+  --ds-focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  --ds-panel-bg: linear-gradient(165deg, rgba(22, 29, 56, 0.82), rgba(16, 21, 39, 0.78));
+  --ds-shell-bg: linear-gradient(180deg, rgba(12,18,33,.92), rgba(7,10,20,.98));
+}
+
+html:not(.dark) {
+  --ds-app-bg: #eef3ff;
+  --ds-app-bg-soft: #f8fbff;
+  --ds-surface: rgba(255, 255, 255, 0.86);
+  --ds-surface-elevated: rgba(255, 255, 255, 0.96);
+  --ds-surface-glass: rgba(255, 255, 255, 0.82);
+  --ds-surface-field: #ffffff;
+  --ds-border: rgba(71, 85, 105, 0.14);
+  --ds-border-muted: rgba(100, 116, 139, 0.12);
+  --ds-text: #0f172a;
+  --ds-text-secondary: #334155;
+  --ds-text-muted: #64748b;
+  --ds-shadow-subtle: 0 8px 22px rgba(15, 23, 42, 0.06);
+  --ds-shadow-card: 0 10px 24px rgba(15, 23, 42, 0.06);
+  --ds-shadow-modal: 0 26px 72px rgba(15, 23, 42, 0.22);
+  --ds-panel-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.86), rgba(244, 248, 255, 0.82));
+  --ds-shell-bg: linear-gradient(180deg, rgba(246,250,255,.95), rgba(237,243,255,.92));
+}
+
+.ui-surface {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-card);
+  background: linear-gradient(165deg, var(--ds-surface), var(--ds-app-bg-soft));
+  box-shadow: var(--ds-shadow-card);
+}
+
+.ui-focus-ring:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.9);
+  outline-offset: 2px;
+}
+
+.ui-compact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--ds-section-gap);
+}
+
+.ui-no-page-overflow {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ui-muted-help {
+  color: var(--ds-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}

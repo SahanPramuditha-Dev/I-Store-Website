@@ -1,0 +1,46 @@
+.app-page {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--ds-section-gap);
+  padding-bottom: 0.5rem;
+}
+
+.app-page-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: clip;
+}
+
+.app-split-workstation {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--ds-section-gap);
+}
+
+.app-table-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--ds-border-muted);
+  border-radius: var(--ds-radius-card);
+  background: rgba(2, 6, 23, 0.32);
+}
+
+.app-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  border-top: 1px solid var(--ds-border-muted);
+  background: rgba(8, 13, 30, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 760px) {
+  .app-page {
+    gap: 10px;
+  }
+}
