@@ -102,27 +102,30 @@ def _run_startup_tasks() -> None:
                 except Exception as migration_error:
                     logger.error(f"Alembic migration failed: {migration_error}")
 
-        if settings.allow_runtime_schema_sync:
-            ensure_tables_exist()
-            ensure_security_schema_columns()
-            ensure_inventory_schema_columns()
-        else:
-            logger.info("Runtime schema sync disabled; relying on Alembic-managed schema.")
-        if settings.env.lower() != "production" and settings.seed_demo_data:
-            # Optional development/test baseline data (idempotent inserts).
-            # Disabled by default to prevent implicit weak/demo credentials.
-            seed_data()
-        if settings.allow_runtime_schema_sync:
-            from app.services.warranty_service import ensure_warranty_defaults
-            from app.services.labels_service import ensure_label_defaults
-            from app.services.security_service import ensure_security_defaults
-            with SessionLocal() as _db:
-                ensure_warranty_defaults(_db)
-                ensure_label_defaults(_db)
+        try:
+            if settings.allow_runtime_schema_sync:
+                ensure_tables_exist()
+                ensure_security_schema_columns()
+                ensure_inventory_schema_columns()
+            else:
+                logger.info("Runtime schema sync disabled; relying on Alembic-managed schema.")
+            if settings.env.lower() != "production" and settings.seed_demo_data:
+                # Optional development/test baseline data (idempotent inserts).
+                # Disabled by default to prevent implicit weak/demo credentials.
+                seed_data()
+            if settings.allow_runtime_schema_sync:
+                from app.services.warranty_service import ensure_warranty_defaults
+                from app.services.labels_service import ensure_label_defaults
+                from app.services.security_service import ensure_security_defaults
+                with SessionLocal() as _db:
+                    ensure_warranty_defaults(_db)
+                    ensure_label_defaults(_db)
 
-            with SessionLocal() as _db:
-                ensure_security_defaults(_db)
-                ensure_development_test_admin(_db)
+                with SessionLocal() as _db:
+                    ensure_security_defaults(_db)
+                    ensure_development_test_admin(_db)
+        except Exception as db_init_error:
+            logger.error(f"Database sync/initialization failed during startup: {db_init_error}")
 
         # Initialize backup scheduler
         init_backup_scheduler()
