@@ -278,8 +278,14 @@ def ensure_inventory_schema_columns() -> None:
             for column, col_type in column_map.items():
                 if column not in existing:
                     type_str = col_type
-                    if "DATETIME" in col_type.upper():
-                        type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                    is_postgres = db.bind.dialect.name == "postgresql"
+                    if is_postgres:
+                        if "DATETIME" in col_type.upper():
+                            type_str = type_str.upper().replace("DATETIME", "TIMESTAMP")
+                        if "BOOLEAN DEFAULT 1" in col_type.upper():
+                            type_str = type_str.upper().replace("BOOLEAN DEFAULT 1", "BOOLEAN DEFAULT TRUE")
+                        if "BOOLEAN DEFAULT 0" in col_type.upper():
+                            type_str = type_str.upper().replace("BOOLEAN DEFAULT 0", "BOOLEAN DEFAULT FALSE")
                     db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {type_str}"))
 
         supplier_required_columns = {
@@ -534,8 +540,14 @@ def ensure_security_schema_columns() -> None:
         for column, col_type in required_user_columns.items():
             if column not in existing:
                 type_str = col_type
-                if "DATETIME" in col_type.upper():
-                    type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                is_postgres = db.bind.dialect.name == "postgresql"
+                if is_postgres:
+                    if "DATETIME" in col_type.upper():
+                        type_str = type_str.upper().replace("DATETIME", "TIMESTAMP")
+                    if "BOOLEAN DEFAULT 1" in col_type.upper():
+                        type_str = type_str.upper().replace("BOOLEAN DEFAULT 1", "BOOLEAN DEFAULT TRUE")
+                    if "BOOLEAN DEFAULT 0" in col_type.upper():
+                        type_str = type_str.upper().replace("BOOLEAN DEFAULT 0", "BOOLEAN DEFAULT FALSE")
                 db.execute(text(f"ALTER TABLE users ADD COLUMN {column} {type_str}"))
         db.commit()
 

@@ -627,12 +627,22 @@ def ensure_security_defaults(db: Session) -> None:
     except Exception:
         existing = set()
         
+    def _map_column_type(col_type: str) -> str:
+        is_postgres = db.bind.dialect.name == "postgresql"
+        type_str = col_type
+        if is_postgres:
+            if "DATETIME" in col_type.upper():
+                type_str = type_str.upper().replace("DATETIME", "TIMESTAMP")
+            if "BOOLEAN DEFAULT 1" in col_type.upper():
+                type_str = type_str.upper().replace("BOOLEAN DEFAULT 1", "BOOLEAN DEFAULT TRUE")
+            if "BOOLEAN DEFAULT 0" in col_type.upper():
+                type_str = type_str.upper().replace("BOOLEAN DEFAULT 0", "BOOLEAN DEFAULT FALSE")
+        return type_str
+
     if existing:
         for column, col_type in required_user_columns.items():
             if column not in existing:
-                type_str = col_type
-                if "DATETIME" in col_type.upper():
-                    type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                type_str = _map_column_type(col_type)
                 db.execute(text(f"ALTER TABLE users ADD COLUMN {column} {type_str}"))
         db.commit()
 
@@ -646,9 +656,7 @@ def ensure_security_defaults(db: Session) -> None:
             return
         for column, col_type in required_columns.items():
             if column not in have:
-                type_str = col_type
-                if "DATETIME" in col_type.upper():
-                    type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                type_str = _map_column_type(col_type)
                 db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {type_str}"))
 
     # Backward-safe patching for deployments where RBAC/audit tables were created
