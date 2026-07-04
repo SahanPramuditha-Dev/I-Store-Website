@@ -222,16 +222,20 @@ def _safe_request_log(message: str) -> None:
 
 
 def _sqlite_table_exists(db, table_name: str) -> bool:
-    row = db.execute(
-        text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
-        {"name": table_name},
-    ).first()
-    return bool(row)
+    try:
+        inspector = sa_inspect(db.bind)
+        return inspector.has_table(table_name)
+    except Exception:
+        try:
+            db.execute(text(f"SELECT 1 FROM {table_name} LIMIT 1"))
+            return True
+        except Exception:
+            return False
 
 
 def ensure_inventory_schema_columns() -> None:
     """
-    Lightweight runtime migration for SQLite installs where Alembic is disabled.
+    Lightweight runtime migration for SQLite/Postgres installs.
     Adds newly introduced inventory columns if missing.
     """
     required_columns = {
@@ -266,11 +270,17 @@ def ensure_inventory_schema_columns() -> None:
         def add_missing_columns(table_name: str, column_map: dict[str, str]) -> None:
             if not _sqlite_table_exists(db, table_name):
                 return
-            rows = db.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
-            existing = {r[1] for r in rows}
+            try:
+                inspector = sa_inspect(db.bind)
+                existing = {col["name"] for col in inspector.get_columns(table_name)}
+            except Exception:
+                existing = set()
             for column, col_type in column_map.items():
                 if column not in existing:
-                    db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {col_type}"))
+                    type_str = col_type
+                    if "DATETIME" in col_type.upper():
+                        type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                    db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {type_str}"))
 
         supplier_required_columns = {
             "email": "TEXT",
@@ -495,7 +505,7 @@ def ensure_tables_exist() -> None:
 
 def ensure_security_schema_columns() -> None:
     """
-    Runtime migration for auth/rbac columns on existing SQLite deployments.
+    Runtime migration for auth/rbac columns on existing deployments.
     """
     required_user_columns = {
         "role_id": "INTEGER",
@@ -516,11 +526,17 @@ def ensure_security_schema_columns() -> None:
     with SessionLocal() as db:
         if not _sqlite_table_exists(db, "users"):
             return
-        rows = db.execute(text("PRAGMA table_info(users)")).fetchall()
-        existing = {r[1] for r in rows}
+        try:
+            inspector = sa_inspect(db.bind)
+            existing = {col["name"] for col in inspector.get_columns("users")}
+        except Exception:
+            existing = set()
         for column, col_type in required_user_columns.items():
             if column not in existing:
-                db.execute(text(f"ALTER TABLE users ADD COLUMN {column} {col_type}"))
+                type_str = col_type
+                if "DATETIME" in col_type.upper():
+                    type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                db.execute(text(f"ALTER TABLE users ADD COLUMN {column} {type_str}"))
         db.commit()
 
 app.add_middleware(
