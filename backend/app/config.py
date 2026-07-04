@@ -8,15 +8,22 @@ def _env_bool(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 def get_user_data_dir():
-    if sys.platform == "win32":
+    if os.getenv("VERCEL"):
+        path = Path("/tmp/iStore")
+    elif sys.platform == "win32":
         root = Path(os.environ.get("APPDATA", "~")).expanduser()
+        path = root / "iStore"
     elif sys.platform == "darwin":
         root = Path("~/Library/Application Support").expanduser()
+        path = root / "iStore"
     else:
         root = Path("~/.config").expanduser()
+        path = root / "iStore"
     
-    path = root / "iStore"
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     return path
 
 DATA_DIR = get_user_data_dir()
@@ -25,8 +32,11 @@ BACKUP_DIR = DATA_DIR / "backups"
 LOG_DIR = DATA_DIR / "logs"
 
 # Ensure folders exist
-BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "i Store API")
