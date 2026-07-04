@@ -76,6 +76,7 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [activeStaff, setActiveStaff] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -117,11 +118,23 @@ export default function Login() {
     setServiceStatus("checking");
     try {
       const res = await api.get("/auth/bootstrap/status");
-      setSetupRequired(Boolean(res?.data?.setup_required));
+      const required = Boolean(res?.data?.setup_required);
+      setSetupRequired(required);
       setServiceStatus("online");
-    } catch {
+      if (!required) {
+        try {
+          const staffRes = await api.get("/auth/active-staff");
+          if (Array.isArray(staffRes?.data)) {
+            setActiveStaff(staffRes.data);
+          }
+        } catch (staffErr) {
+          console.error("Failed to load active staff in checkBootstrapStatus:", staffErr);
+        }
+      }
+    } catch (err) {
       setSetupRequired(false);
       setServiceStatus("offline");
+      console.error("Failed bootstrap status check:", err);
     } finally {
       setSetupLoading(false);
     }
@@ -134,13 +147,26 @@ export default function Login() {
     api.get("/auth/bootstrap/status")
       .then((res) => {
         if (!active) return;
-        setSetupRequired(Boolean(res?.data?.setup_required));
+        const required = Boolean(res?.data?.setup_required);
+        setSetupRequired(required);
         setServiceStatus("online");
+        if (!required) {
+          api.get("/auth/active-staff")
+            .then((staffRes) => {
+              if (active && Array.isArray(staffRes?.data)) {
+                setActiveStaff(staffRes.data);
+              }
+            })
+            .catch((staffErr) => {
+              console.error("Failed to load active staff on mount:", staffErr);
+            });
+        }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!active) return;
         setSetupRequired(false);
         setServiceStatus("offline");
+        console.error("Failed bootstrap status check on mount:", err);
       })
       .finally(() => {
         if (active) setSetupLoading(false);
@@ -462,7 +488,12 @@ export default function Login() {
                   onChange={(event) => setRememberMe(event.target.checked)}
                   disabled={submitting}
                 />
-                <span>Remember my login details</span>
+                <span className="remember-text-with-hint">
+                  Remember my login details
+                  <span className="remember-hint">
+                    {rememberMe ? "keeps you signed in for 30 days" : "keeps you signed in for 30 minutes"}
+                  </span>
+                </span>
               </label>
 
               {error ? <div className="exact-login-error">{error}</div> : null}
@@ -493,7 +524,48 @@ export default function Login() {
                 tabIndex={-1}
                 onKeyDown={handlePinKeyDown}
               >
-                <label className="exact-login-field animate-slide-up stagger-2">
+                {activeStaff.length > 0 && (
+                  <div className="login-user-switcher animate-slide-up stagger-2">
+                    <span className="switcher-title">Quick Switch User</span>
+                    <div className="switcher-grid">
+                      {activeStaff.map((staff) => {
+                        const isSelected = String(username || "").trim().toLowerCase() === staff.username.toLowerCase();
+                        const initials = staff.full_name
+                          ? staff.full_name
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()
+                          : staff.username.slice(0, 2).toUpperCase();
+
+                        return (
+                          <button
+                            key={staff.id}
+                            type="button"
+                            className={`switcher-card ${isSelected ? "selected" : ""}`}
+                            onClick={() => {
+                              setUsername(staff.username);
+                              setPin("");
+                            }}
+                            title={`${staff.full_name} (${roleToLabel(staff.role)})`}
+                          >
+                            <div className="switcher-avatar-wrapper">
+                              {staff.profile_photo ? (
+                                <img src={staff.profile_photo} alt={staff.full_name} className="switcher-avatar-img" />
+                              ) : (
+                                <span className="switcher-avatar-initials">{initials}</span>
+                              )}
+                            </div>
+                            <span className="switcher-name">{staff.full_name || staff.username}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <label className="exact-login-field animate-slide-up stagger-3">
                   <span className="sr-only">Username</span>
                   <input
                     type="text"
@@ -505,12 +577,12 @@ export default function Login() {
                     disabled={submitting}
                   />
                 </label>
-                <div className="pin-display animate-slide-up stagger-2">
+                <div className="pin-display animate-slide-up stagger-3">
                   {[0,1,2,3].map(i => (
                     <div key={i} className={`pin-dot ${pin.length > i ? "filled" : ""}`} />
                   ))}
                 </div>
-                <div className="pin-pad animate-slide-up stagger-3">
+                <div className="pin-pad animate-slide-up stagger-4">
                   {[1,2,3,4,5,6,7,8,9].map(num => (
                     <button key={num} type="button" onClick={() => handlePinClick(String(num))} disabled={submitting}>{num}</button>
                   ))}
@@ -523,7 +595,7 @@ export default function Login() {
                 
                 {error ? <div className="exact-login-error text-center">{error}</div> : null}
 
-                <button type="button" className="exact-login-toggle-mode animate-slide-up stagger-4" onClick={() => { setLoginMode("password"); setError(""); setPin(""); }}>
+                <button type="button" className="exact-login-toggle-mode animate-slide-up stagger-5" onClick={() => { setLoginMode("password"); setError(""); setPin(""); }}>
                   Use Password
                 </button>
               </div>

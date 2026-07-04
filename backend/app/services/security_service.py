@@ -1075,7 +1075,6 @@ def revoke_session(
     row.is_active = False
     row.is_current = False
     row.revoked_at = utcnow()
-    row.revoked_by = revoked_by_user_id
     row.revoked_by_user_id = revoked_by_user_id
     row.revoke_reason = reason
     db.commit()
@@ -1097,7 +1096,6 @@ def revoke_all_user_sessions(
         row.is_active = False
         row.is_current = False
         row.revoked_at = utcnow()
-        row.revoked_by = revoked_by_user_id
         row.revoked_by_user_id = revoked_by_user_id
         row.revoke_reason = reason
         count += 1

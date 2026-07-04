@@ -405,6 +405,21 @@ def terminate_all_sessions(
     return {"ok": True, "terminated": terminated}
 
 
+@router.get("/active-staff")
+def list_active_staff(db: Session = Depends(get_db)):
+    users = db.query(User).filter(User.is_active == True, User.is_deleted == False).all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "full_name": u.full_name,
+            "role": u.role,
+            "profile_photo": u.profile_photo,
+        }
+        for u in users
+    ]
+
+
 @router.get("/staff")
 def list_staff(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(User).filter(User.is_active == True, User.is_deleted == False).all()

@@ -4202,3 +4202,83 @@ html:not(.dark) .repairs-table-shell {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(100, 116, 139, 0.2);
 }
+
+/* Dashboard Enhancements Styles */
+
+/* Pulsing Status Beacon */
+.status-beacon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-beacon::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  opacity: 0.8;
+  animation: pulse-beacon 1.8s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+
+@keyframes pulse-beacon {
+  0% { transform: scale(0.9); opacity: 0.9; }
+  80% { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+/* Skeleton Loading Shimmer */
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.03) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer-anim 1.4s ease infinite;
+}
+
+@keyframes skeleton-shimmer-anim {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Dashboard Floating Low Stock Modal */
+.dashboard-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 20, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  animation: modal-fade-in 0.22s ease-out forwards;
+}
+
+.dashboard-modal {
+  width: min(520px, 100%);
+  background: linear-gradient(160deg, #0e172a, #0b1120);
+  border: 1px solid rgba(129, 140, 248, 0.34);
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(2, 6, 18, 0.76), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 24px;
+  transform: scale(0.96);
+  opacity: 0;
+  animation: modal-scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.05s forwards;
+}
+
+@keyframes modal-fade-in {
+  to { opacity: 1; }
+}
+
+@keyframes modal-scale-in {
+  to { transform: scale(1); opacity: 1; }
+}

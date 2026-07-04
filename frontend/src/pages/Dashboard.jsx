@@ -22,9 +22,10 @@ import {
   CalendarDays,
   Sparkles,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
+import { X } from "lucide-react";
 
 function pctChange(curr, prev) {
   if (!prev) return 0;
@@ -36,8 +37,54 @@ function fmtPct(v) {
   return `${sign}${v.toFixed(1)}%`;
 }
 
+function DashboardSkeleton() {
+  return (
+    <PageContainer className="dashboard-page pb-4 pr-1">
+      <div className="space-y-2.5">
+        <div className="dashboard-hero flex flex-col gap-3 rounded-xl border p-3 xl:flex-row xl:items-end xl:justify-between">
+          <div className="space-y-2">
+            <div className="skeleton-shimmer h-4 w-28 rounded-full" />
+            <div className="skeleton-shimmer h-6 w-48 rounded" />
+            <div className="skeleton-shimmer h-4 w-64 rounded" />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="skeleton-shimmer h-8 w-24 rounded-xl" />
+            <div className="skeleton-shimmer h-8 w-24 rounded-lg" />
+          </div>
+        </div>
+
+        <div className="dashboard-health-card grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-slate-900/45 p-2 sm:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="dashboard-health-item flex items-center justify-between rounded-lg border px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="skeleton-shimmer h-2 w-2 rounded-full" />
+                <div className="skeleton-shimmer h-3 w-24 rounded" />
+              </div>
+              <div className="skeleton-shimmer h-4 w-12 rounded" />
+            </div>
+          ))}
+        </div>
+
+        <div className="dashboard-kpi-grid grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="skeleton-shimmer h-[98px] rounded-2xl" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+          <div className="skeleton-shimmer xl:col-span-7 h-[230px] rounded-xl" />
+          <div className="skeleton-shimmer xl:col-span-5 h-[230px] rounded-xl" />
+          <div className="skeleton-shimmer xl:col-span-6 h-[280px] rounded-xl" />
+          <div className="skeleton-shimmer xl:col-span-6 h-[280px] rounded-xl" />
+        </div>
+      </div>
+    </PageContainer>
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [showLowStockModal, setShowLowStockModal] = useState(false);
   const { data, loading, error } = useFetch("/dashboard");
   const role = localStorage.getItem("login_role") || "admin";
   const username = localStorage.getItem("username") || "Admin";
@@ -128,7 +175,7 @@ export default function Dashboard() {
       hint: "Reorder required",
       tone: "red",
       icon: <Boxes size={18} />,
-      to: "/inventory",
+      onClick: () => setShowLowStockModal(true),
     },
     {
       title: "Total Customers",
@@ -148,7 +195,7 @@ export default function Dashboard() {
     },
   ];
 
-  if (loading) return <Loading />;
+  if (loading) return <DashboardSkeleton />;
   if (error) return <ErrorState text={error} />;
 
   const piePalette = ["#22d3ee", "#3b82f6", "#8b5cf6", "#f97316", "#10b981", "#eab308"];
@@ -181,6 +228,7 @@ export default function Dashboard() {
           {health.map((h) => (
             <div key={h.label} className="dashboard-health-item flex items-center justify-between rounded-lg border px-3 py-1.5">
               <div className={`flex items-center gap-2 text-xs font-semibold ${h.accent}`}>
+                <span className="status-beacon" style={{ color: h.tone === "green" ? "#10b981" : h.tone === "sky" ? "#0ea5e9" : h.tone === "indigo" ? "#6366f1" : "#f59e0b" }} />
                 {h.icon}
                 <span className="text-slate-200">{h.label}</span>
               </div>
@@ -196,9 +244,9 @@ export default function Dashboard() {
             <button
               key={k.title}
               type="button"
-              onClick={() => navigate(k.to)}
+              onClick={k.onClick ? k.onClick : () => navigate(k.to)}
               className="dashboard-kpi-button rounded-2xl text-left focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
-              title={`Open ${k.title}`}
+              title={k.onClick ? `Peek ${k.title}` : `Open ${k.title}`}
             >
               <KpiCard {...k} className="h-full" />
             </button>
@@ -206,7 +254,7 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-          <SectionCard title="Sales Overview" subtitle="Last 7 periods" className="dashboard-chart-card xl:col-span-7 h-[210px] md:h-[230px] 2xl:h-[260px] flex flex-col">
+          <SectionCard title="Sales Overview" subtitle="Last 7 periods (Click bar to view reports)" className="dashboard-chart-card xl:col-span-7 h-[210px] md:h-[230px] 2xl:h-[260px] flex flex-col">
             <div className="mt-4 min-h-0 flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revData}>
@@ -230,7 +278,14 @@ export default function Dashboard() {
                     }}
                     formatter={(val) => [`LKR ${Number(val).toLocaleString()}`, "Revenue"]}
                   />
-                  <Bar dataKey="value" fill="#8b5cf6" radius={[8, 8, 0, 0]} barSize={28}>
+                  <Bar
+                    dataKey="value"
+                    fill="#8b5cf6"
+                    radius={[8, 8, 0, 0]}
+                    barSize={28}
+                    onClick={() => navigate("/reports")}
+                    style={{ cursor: "pointer" }}
+                  >
                     {revData.map((entry, index) => (
                       <Cell key={`rev-${index}`} fill={index === revData.length - 1 ? "#22d3ee" : "#7c3aed"} opacity={index === revData.length - 1 ? 1 : 0.78} />
                     ))}
@@ -240,11 +295,20 @@ export default function Dashboard() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Sales Breakdown" subtitle="Category mix" className="dashboard-chart-card xl:col-span-5 h-[210px] md:h-[230px] 2xl:h-[260px] flex flex-col">
+          <SectionCard title="Sales Breakdown" subtitle="Category mix (Click slice to view inventory)" className="dashboard-chart-card xl:col-span-5 h-[210px] md:h-[230px] 2xl:h-[260px] flex flex-col">
             <div className="relative mt-2 min-h-[160px] flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={salesData} innerRadius="62%" outerRadius="94%" paddingAngle={4} dataKey="value" stroke="none">
+                  <Pie
+                    data={salesData}
+                    innerRadius="62%"
+                    outerRadius="94%"
+                    paddingAngle={4}
+                    dataKey="value"
+                    stroke="none"
+                    onClick={(entry) => navigate(`/inventory?q=${entry.name}`)}
+                    style={{ cursor: "pointer" }}
+                  >
                     {salesData.map((entry, index) => (
                       <Cell key={`mix-${index}`} fill={piePalette[index % piePalette.length]} />
                     ))}
@@ -424,6 +488,78 @@ export default function Dashboard() {
           </SectionCard>
           </div>
         </div>
+
+        {/* Floating Low Stock Peek Modal */}
+        {showLowStockModal && (
+          <div className="dashboard-modal-overlay" onClick={() => setShowLowStockModal(false)}>
+            <div className="dashboard-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                <div className="flex items-center gap-2 text-rose-400">
+                  <Boxes size={18} />
+                  <h3 className="text-base font-extrabold text-white">Low Stock Inventory Alert</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLowStockModal(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:text-white hover:bg-white/5 transition"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="max-h-[300px] overflow-y-auto pr-1">
+                {data?.low_stock_items?.length > 0 ? (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        <th className="pb-2">Item Name</th>
+                        <th className="pb-2 text-right">Quantity</th>
+                        <th className="pb-2 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {data.low_stock_items.map((item) => (
+                        <tr key={item.id} className="text-xs">
+                          <td className="py-2.5 font-semibold text-slate-200">{item.name}</td>
+                          <td className="py-2.5 text-right font-mono font-bold text-rose-400">{item.quantity} left</td>
+                          <td className="py-2.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowLowStockModal(false);
+                                navigate(`/inventory?q=${item.name}`);
+                              }}
+                              className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition"
+                            >
+                              Manage
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-center py-6 text-sm text-slate-400">
+                    No low stock items found. All inventory is healthy!
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-white/10 flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setShowLowStockModal(false);
+                    navigate("/inventory");
+                  }}
+                >
+                  Go to Inventory
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </PageContainer>
   );
 }

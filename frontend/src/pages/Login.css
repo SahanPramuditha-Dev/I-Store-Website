@@ -757,3 +757,121 @@
   90% { opacity: 1; }
   100% { transform: translateY(-100vh) translateX(20vw); opacity: 0; }
 }
+
+/* User Switcher Styling */
+.login-user-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+
+.switcher-title {
+  color: rgba(228, 230, 239, 0.7);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.switcher-grid {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(143, 109, 253, 0.3) transparent;
+}
+
+.switcher-grid::-webkit-scrollbar {
+  height: 4px;
+}
+
+.switcher-grid::-webkit-scrollbar-thumb {
+  background: rgba(143, 109, 253, 0.3);
+  border-radius: 99px;
+}
+
+.switcher-card {
+  flex: 0 0 74px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(63, 65, 87, 0.2);
+  border: 1px solid rgba(120, 126, 155, 0.2);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+
+.switcher-card:hover {
+  background: rgba(143, 109, 253, 0.1);
+  border-color: rgba(143, 109, 253, 0.4);
+  transform: translateY(-2px);
+}
+
+.switcher-card.selected {
+  background: rgba(143, 109, 253, 0.18);
+  border-color: #8f6dfd;
+  box-shadow: 0 0 12px rgba(143, 109, 253, 0.25), inset 0 0 0 1px #8f6dfd;
+}
+
+.switcher-avatar-wrapper {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(143, 109, 253, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 0.25s;
+}
+
+.switcher-card.selected .switcher-avatar-wrapper {
+  border-color: #8f6dfd;
+}
+
+.switcher-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.switcher-avatar-initials {
+  color: #eff2ff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.switcher-name {
+  color: #eff2ff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Remember Me lifetime context hint styling */
+.remember-text-with-hint {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.remember-hint {
+  font-size: 10px;
+  color: rgba(194, 200, 222, 0.6);
+  font-weight: 600;
+  margin-top: 1px;
+}
