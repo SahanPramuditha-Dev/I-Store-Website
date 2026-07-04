@@ -72,7 +72,7 @@ class Settings(BaseModel):
     device_name: str = os.getenv("DEVICE_NAME", os.getenv("COMPUTERNAME", os.getenv("HOSTNAME", "local-device")))
     auto_migrate_enabled: bool = os.getenv("AUTO_MIGRATE_ENABLED", "false").lower() == "true"
     backup_before_migrate: bool = os.getenv("BACKUP_BEFORE_MIGRATE", "true").lower() == "true"
-    allow_runtime_schema_sync: bool = _env_bool("ALLOW_RUNTIME_SCHEMA_SYNC", "false" if os.getenv("APP_ENV", "development").lower() == "production" else "true")
+    allow_runtime_schema_sync: bool = _env_bool("ALLOW_RUNTIME_SCHEMA_SYNC", "true" if os.getenv("VERCEL") else ("false" if os.getenv("APP_ENV", "development").lower() == "production" else "true"))
     backup_schedule_enabled: bool = os.getenv("BACKUP_SCHEDULE_ENABLED", "true").lower() == "true"
     backup_schedule_hour: int = int(os.getenv("BACKUP_SCHEDULE_HOUR", "23"))
     backup_schedule_minute: int = int(os.getenv("BACKUP_SCHEDULE_MINUTE", "59"))
