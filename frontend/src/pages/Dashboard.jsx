@@ -486,7 +486,6 @@ export default function Dashboard() {
               ))}
             </div>
           </SectionCard>
-          </div>
         </div>
 
         {/* Floating Low Stock Peek Modal */}
