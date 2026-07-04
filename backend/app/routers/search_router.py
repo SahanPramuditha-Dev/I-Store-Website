@@ -144,7 +144,12 @@ def global_search(
             "expenses": [],
         }
 
-    customer_cols = {r[1] for r in db.execute(text("PRAGMA table_info(customers)")).fetchall()}
+    from sqlalchemy import inspect as sa_inspect
+    try:
+        inspector = sa_inspect(db.bind)
+        customer_cols = {col["name"] for col in inspector.get_columns("customers")}
+    except Exception:
+        customer_cols = set()
     has_customer_email = "email" in customer_cols
 
     # Search Customers

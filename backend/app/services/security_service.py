@@ -589,10 +589,14 @@ def _ensure_default_role_permissions(db: Session, role_map: dict[str, Role], per
 
 
 def ensure_security_defaults(db: Session) -> None:
+    from sqlalchemy import inspect as sa_inspect
     Base.metadata.create_all(bind=engine)
-    users_table_exists = db.execute(
-        text("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-    ).first()
+    try:
+        inspector = sa_inspect(db.bind)
+        users_table_exists = inspector.has_table("users")
+    except Exception:
+        users_table_exists = False
+        
     if not users_table_exists:
         # In some reload scenarios (notably tests), model metadata can be stale.
         # Reload models so tables bind to the current Base, then create again.
@@ -616,23 +620,36 @@ def ensure_security_defaults(db: Session) -> None:
         "created_at": "DATETIME",
         "updated_at": "DATETIME",
     }
-    columns = db.execute(text("PRAGMA table_info(users)")).fetchall()
-    if not columns:
-        return
-    existing = {row[1] for row in columns}
-    for column, col_type in required_user_columns.items():
-        if column not in existing:
-            db.execute(text(f"ALTER TABLE users ADD COLUMN {column} {col_type}"))
-    db.commit()
+    
+    try:
+        inspector = sa_inspect(db.bind)
+        existing = {col["name"] for col in inspector.get_columns("users")}
+    except Exception:
+        existing = set()
+        
+    if existing:
+        for column, col_type in required_user_columns.items():
+            if column not in existing:
+                type_str = col_type
+                if "DATETIME" in col_type.upper():
+                    type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                db.execute(text(f"ALTER TABLE users ADD COLUMN {column} {type_str}"))
+        db.commit()
 
     def _ensure_columns(table_name: str, required_columns: dict[str, str]) -> None:
-        rows = db.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
-        if not rows:
+        try:
+            inspector = sa_inspect(db.bind)
+            if not inspector.has_table(table_name):
+                return
+            have = {col["name"] for col in inspector.get_columns(table_name)}
+        except Exception:
             return
-        have = {row[1] for row in rows}
         for column, col_type in required_columns.items():
             if column not in have:
-                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {col_type}"))
+                type_str = col_type
+                if "DATETIME" in col_type.upper():
+                    type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {type_str}"))
 
     # Backward-safe patching for deployments where RBAC/audit tables were created
     # with older schema shape before security hardening.
