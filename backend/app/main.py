@@ -161,6 +161,12 @@ async def app_lifespan(_app: FastAPI):
 
 app = FastAPI(title="i Store API", lifespan=app_lifespan)
 UPLOADS_DIR = Path(__file__).resolve().parents[1] / "uploads"
+if os.getenv("VERCEL"):
+    UPLOADS_DIR = Path("/tmp/uploads")
+try:
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 FAVICON_PATH = Path(__file__).resolve().parents[2] / "frontend" / "public" / "favicon.ico"
 DEV_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1):\d+$" if settings.env.lower() != "production" else None
 
