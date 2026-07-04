@@ -59,7 +59,13 @@ from app.utils.time import utcnow
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads" / "inventory"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+if os.getenv("VERCEL"):
+    UPLOAD_DIR = Path("/tmp/uploads/inventory")
+
+try:
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 
 def _normalize_barcode(value: str | None) -> str:
