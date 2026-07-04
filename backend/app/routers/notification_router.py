@@ -36,11 +36,16 @@ def _normalize_naive_utc(value: datetime | None) -> datetime | None:
 
 
 def _sqlite_table_exists(db: Session, table_name: str) -> bool:
-    row = db.execute(
-        text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
-        {"name": table_name},
-    ).first()
-    return bool(row)
+    from sqlalchemy import inspect as sa_inspect
+    try:
+        inspector = sa_inspect(db.bind)
+        return inspector.has_table(table_name)
+    except Exception:
+        try:
+            db.execute(text(f"SELECT 1 FROM {table_name} LIMIT 1"))
+            return True
+        except Exception:
+            return False
 
 
 def _ensure_runtime_schema(db: Session) -> None:
@@ -48,6 +53,7 @@ def _ensure_runtime_schema(db: Session) -> None:
     if _RUNTIME_SCHEMA_READY:
         return
 
+    from sqlalchemy import inspect as sa_inspect
     required_columns = {
         "notifications": {
             "read_at": "DATETIME",
@@ -70,14 +76,21 @@ def _ensure_runtime_schema(db: Session) -> None:
         },
     }
 
-    for table_name, cols in required_columns.items():
-        if not _sqlite_table_exists(db, table_name):
-            continue
-        existing = {r[1] for r in db.execute(text(f"PRAGMA table_info({table_name})")).fetchall()}
-        for column, col_type in cols.items():
-            if column not in existing:
-                db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {col_type}"))
-    db.commit()
+    try:
+        inspector = sa_inspect(db.bind)
+        for table_name, cols in required_columns.items():
+            if not _sqlite_table_exists(db, table_name):
+                continue
+            existing = {col["name"] for col in inspector.get_columns(table_name)}
+            for column, col_type in cols.items():
+                if column not in existing:
+                    type_str = col_type
+                    if "DATETIME" in col_type.upper():
+                        type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
+                    db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {type_str}"))
+        db.commit()
+    except Exception:
+        pass
     _RUNTIME_SCHEMA_READY = True
 
 
