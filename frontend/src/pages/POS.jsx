@@ -8,6 +8,7 @@ import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wr
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
+import QuickAddItemModal from "../components/pos/QuickAddItemModal";
 
 const CATEGORIES = ["All", "Smartphones", "Used Phones", "Chargers", "Earphones", "Power Banks", "Cases & Covers", "Tempered Glass", "Spare Parts", "Repair Services"];
 
@@ -60,6 +61,7 @@ export default function POS() {
   });
   const [showSuspendPicker, setShowSuspendPicker] = useState(false);
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "", address: "" });
   const [productDetail, setProductDetail] = useState(null);
   const [catalogRows, setCatalogRows] = useState([]);
@@ -510,6 +512,30 @@ export default function POS() {
 
   const addLaborCharge = () => {
     addItem({ id: `labor-${Date.now()}`, name: "Repair Labor Charge", sale_price: 1500, quantity: 999, is_labor: true, line_type: "labor" });
+  };
+
+  const handleQuickAddTemporary = (payload) => {
+    const item = {
+      item_id: `manual-${Date.now()}`,
+      name: payload.name,
+      quantity: payload.quantity,
+      price: payload.sale_price,
+      warranty_days: 0,
+      is_labor: false,
+      line_type: "manual_product",
+      description: payload.description || payload.name,
+      is_manual: true,
+    };
+    setCart(prev => [...prev, item]);
+    toast(`Added temporary item ${payload.name}`, "success");
+  };
+
+  const handleQuickAddSaved = (inventoryItem) => {
+    inventoryFetch.refresh();
+    addItem({
+      ...inventoryItem,
+      quantity: 9999, // Allow selling newly created items freely
+    });
   };
 
   const removeItem = (id) => {
@@ -1065,6 +1091,13 @@ export default function POS() {
                 </button>
               ))}
             </div>
+            
+            <button 
+              onClick={() => setShowQuickAddModal(true)}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl py-2 text-xs font-bold transition-all"
+            >
+              <Plus size={14} /> Quick Add / Manual Sale
+            </button>
           </div>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar p-2 grid grid-cols-1 2xl:grid-cols-2 gap-2 content-start">
@@ -1242,8 +1275,8 @@ export default function POS() {
                         </div>
                       </td>
                       <td className="p-3 text-center">
-                        <span className={`inline-flex px-2 py-1 rounded text-[10px] font-bold uppercase ${c.line_type === "product" || c.line_type === "spare_part" ? "bg-indigo-500/15 text-indigo-300" : "bg-amber-500/15 text-amber-300"}`}>
-                          {String(c.line_type || "product").replace("_", " ")}
+                        <span className={`inline-flex px-2 py-1 rounded text-[10px] font-bold uppercase ${c.line_type === "manual_product" ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30" : c.line_type === "product" || c.line_type === "spare_part" ? "bg-indigo-500/15 text-indigo-300" : "bg-amber-500/15 text-amber-300"}`}>
+                          {c.line_type === "manual_product" ? "Quick Sale" : String(c.line_type || "product").replace("_", " ")}
                         </span>
                       </td>
                       <td className="p-3">
@@ -2019,6 +2052,13 @@ export default function POS() {
               <button onClick={createCustomerQuick} className="w-full py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-all">Create & Attach</button>
             </div>
       </AppModal>
+
+      <QuickAddItemModal 
+        isOpen={showQuickAddModal} 
+        onClose={() => setShowQuickAddModal(false)}
+        onAddTemporary={handleQuickAddTemporary}
+        onAddSaved={handleQuickAddSaved}
+      />
 
     </div>
   );

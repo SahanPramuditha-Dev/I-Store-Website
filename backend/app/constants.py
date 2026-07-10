@@ -53,7 +53,7 @@ REPAIR_STATUS_LABELS = {
     REPAIR_STATUS_CANCELLED: "Cancelled",
 }
 
-SALE_LINE_TYPES = {"product", "spare_part", "labor", "service", "discount", "adjustment"}
+SALE_LINE_TYPES = {"product", "spare_part", "labor", "service", "discount", "adjustment", "manual_product"}
 SALE_INVENTORY_LINE_TYPES = {"product", "spare_part"}
 
 REPAIR_CLOSED_STATUSES = {
