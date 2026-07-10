@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api";
 import { normalizeStoreProfile } from "../lib/storeProfile";
+import { getAuthValue } from "../lib/rbac";
 
 export function useStoreProfile() {
   const [identity, setIdentity] = useState(() => normalizeStoreProfile());
@@ -8,6 +9,12 @@ export function useStoreProfile() {
 
   useEffect(() => {
     let active = true;
+    const token = getAuthValue("token");
+    if (!token) {
+      if (active) setLoading(false);
+      return;
+    }
+
     Promise.all([
       api.get("/settings/section/store_profile").catch(() => ({ data: {} })),
       api.get("/settings/print-profile").catch(() => ({ data: {} })),

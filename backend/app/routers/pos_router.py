@@ -28,7 +28,7 @@ from app.models import (
     StoreCredit,
     WarrantyRecord,
 )
-from app.schemas import SaleIn, SaleReturnIn, SaleVoidIn
+from app.schemas import SaleIn, SaleReturnIn, SaleVoidIn, QuickAddItemIn
 from app.services.advance_service import (
     ADVANCE_NON_APPLICABLE_STATUSES,
     apply_advance_to_invoice,
@@ -77,6 +77,7 @@ def _normalize_line_type(raw_type: str | None, item_id: int | None) -> str:
         "labor": "labor",
         "service": "service",
         "discount": "discount",
+        "manual_product": "manual_product",
     }
     if candidate in aliases:
         normalized = aliases[candidate]
@@ -1578,3 +1579,31 @@ def void_sale(
     
     db.commit()
     return {"ok": True}
+
+@router.post('/quick-add-item', dependencies=[Depends(require_permission('inventory.manage'))])
+def quick_add_item(payload: QuickAddItemIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if payload.action_type not in ('inventory', 'draft'):
+        raise HTTPException(status_code=400, detail='Invalid action_type for saving.')
+    
+    is_draft = payload.action_type == 'draft'
+    
+    sku = payload.sku
+    if not sku:
+        sku = f'MANUAL-{int(datetime.utcnow().timestamp())}'
+    
+    item = InventoryItem(
+        name=payload.name,
+        sale_price=payload.sale_price,
+        cost_price=payload.cost_price,
+        quantity=payload.quantity,
+        category=payload.category,
+        sku=sku,
+        description=payload.description,
+        is_manual_creation=True,
+        is_draft=is_draft,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _inventory_card_payload(db, item)
+

@@ -292,6 +292,8 @@ class InventoryItem(Base):
     sale_price = Column(Float, default=0)
     low_stock_threshold = Column(Integer, default=5)
     has_serials = Column(Boolean, default=False)
+    is_draft = Column(Boolean, default=False, index=True)
+    is_manual_creation = Column(Boolean, default=False, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     is_deleted = Column(Boolean, default=False, index=True)
     deleted_at = Column(DateTime, nullable=True, index=True)

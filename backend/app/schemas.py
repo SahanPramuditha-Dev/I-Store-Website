@@ -167,6 +167,18 @@ class StockAdjustIn(BaseModel):
     note: str = ""
     approval_request_code: str | None = None
 
+class QuickAddItemIn(BaseModel):
+    name: str
+    sale_price: float
+    quantity: int = 1
+    action_type: str  # temporary | inventory | draft
+    sku: str | None = None
+    category: str = "Uncategorized"
+    description: str | None = None
+    cost_price: float = 0
+    tax_rate: float = 0
+    discount: float = 0
+
 class CategoryIn(BaseModel):
     name: str
     icon_url: str | None = None
