@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import api from "../lib/api";
 import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
+import { printHtmlDocument } from "../lib/printBridge";
 import { useFetch } from "../hooks/useFetch";
 import { Badge, Input, Select, SensitiveActionIndicators } from "../components/UI";
 import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Info, ImageOff, AlertCircle, Check, Zap, ChevronDown, ChevronUp } from "lucide-react";
@@ -972,14 +973,42 @@ export default function POS() {
     [lastSale, navigate, toast],
   );
 
+  // Direct print function - prints receipt without navigation
+  const directPrintReceipt = useCallback(async (sale = lastSale) => {
+    const saleId = sale?.id || sale?.sale_id;
+    if (!saleId) {
+      toast("No recent sale to print", "warning");
+      return;
+    }
+
+    try {
+      // Fetch receipt HTML from backend
+      const { data: html } = await api.get("/print-center/render", {
+        params: {
+          document_type: "sales_receipt",
+          reference: saleId,
+          paper: "thermal_80",
+        },
+        responseType: "text",
+        transformResponse: [(data) => data],
+      });
+
+      // Open print dialog
+      await printHtmlDocument(html);
+      toast("Receipt sent to printer", "success");
+    } catch (err) {
+      toast(err?.message || "Failed to print receipt", "error");
+    }
+  }, [lastSale, toast]);
+
   const printReceipt = useCallback(() => {
-    openSalePrint(lastSale);
-  }, [lastSale, openSalePrint]);
+    directPrintReceipt(lastSale);
+  }, [lastSale, directPrintReceipt]);
 
   const quickReprint = async (saleId) => {
     try {
       const { data } = await api.get(`/pos/sales/${saleId}`);
-      openSalePrint(data);
+      directPrintReceipt(data);
     } catch {
       toast("Unable to reprint invoice", "error");
     }
