@@ -43,7 +43,6 @@ from app.routers.access_router import router as access_router
 from app.routers.print_center_router import router as print_center_router
 from app.config import settings
 from app.auth import require_admin, require_module_access, require_permission
-from app.migrations import migrate
 from app.seed import seed_data
 from app.utils.api_errors import (
     ApiError,
@@ -84,6 +83,13 @@ def _run_startup_tasks() -> None:
     try:
         # Optional Alembic migrations with safety backup.
         if settings.auto_migrate_enabled:
+            # Import migrate lazily to avoid import-time errors when running
+            # in development environments where a local `alembic` folder may
+            # shadow the installed alembic package.
+            try:
+                from app.migrations import migrate
+            except Exception:
+                migrate = None
             migrate_allowed = True
             if settings.backup_before_migrate:
                 from app.services.backup_service import create_backup
@@ -95,7 +101,7 @@ def _run_startup_tasks() -> None:
                 except Exception as backup_error:
                     migrate_allowed = False
                     logger.error(f"Pre-migration backup failed; migration skipped for safety: {backup_error}")
-            if migrate_allowed:
+            if migrate_allowed and migrate:
                 try:
                     migrate()
                     logger.info("Alembic migration completed.")
