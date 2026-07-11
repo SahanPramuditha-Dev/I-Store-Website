@@ -915,7 +915,11 @@ export default function POS() {
       salesFetch.setData(refreshed.data);
       inventoryFetch.refresh();
     } catch (err) {
-      toast(err.response?.data?.detail || "Checkout failed", "error");
+      // Log full server response to aid debugging (422 validation details)
+      console.error("POS checkout error:", err.response?.data || err);
+      const serverDetail = err?.response?.data;
+      const message = serverDetail?.detail || serverDetail?.message || (typeof serverDetail === "string" ? serverDetail : null) || err.message || "Checkout failed";
+      toast(message, "error");
     }
   };
 
