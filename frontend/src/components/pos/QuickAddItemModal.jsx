@@ -93,7 +93,7 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
   };
 
   return (
-    <AppModal isOpen={isOpen} onClose={() => { onClose(); resetForm(); }} title="Quick Add Manual Item" maxWidth="lg">
+    <AppModal open={isOpen} onClose={() => { onClose(); resetForm(); }} title="Quick Add Manual Item" maxWidth="lg">
       <div className="p-4 space-y-4 text-slate-200">
         <p className="text-sm text-slate-400">
           Create an item to sell that doesn't exist in your inventory. You can add it temporarily for this transaction only, or save it permanently.
