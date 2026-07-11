@@ -23,8 +23,11 @@ export default function AppModal({
     if (!open) return undefined;
     const previous = document.activeElement;
     const node = panelRef.current;
-    const focusable = node?.querySelector(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    const content = node?.querySelector("[data-modal-content]");
+    const focusable = content?.querySelector(
+      '[data-modal-initial-focus], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    ) || node?.querySelector(
+      '[data-modal-initial-focus], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
     focusable?.focus?.();
 
@@ -95,7 +98,7 @@ export default function AppModal({
             </div>
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">{children}</div>
+        <div data-modal-content className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">{children}</div>
         {footer ? <div className="app-sticky-actions shrink-0 p-4">{footer}</div> : null}
       </div>
     </div>

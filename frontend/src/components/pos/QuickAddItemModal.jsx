@@ -106,6 +106,7 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
             value={formData.name} 
             onChange={handleChange} 
             placeholder="e.g. Generic Phone Case" 
+            data-modal-initial-focus
             autoFocus 
           />
           <Input 
