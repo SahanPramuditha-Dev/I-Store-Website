@@ -73,6 +73,9 @@ def _ensure_runtime_schema(db: Session) -> None:
             "amount_paid": "REAL DEFAULT 0",
             "balance_due": "REAL DEFAULT 0",
             "payment_status": "TEXT DEFAULT 'paid'",
+            "is_return": "BOOLEAN DEFAULT 0",
+            "paid": "BOOLEAN DEFAULT 1",
+            "is_voided": "BOOLEAN DEFAULT 0",
         },
     }
 
