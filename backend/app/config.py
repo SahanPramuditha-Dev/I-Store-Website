@@ -1,14 +1,19 @@
+import logging
 import os
 import sys
 from pydantic import BaseModel
 from pathlib import Path
+
+logger = logging.getLogger("istore.config")
+
+_ON_VERCEL: bool = bool(os.getenv("VERCEL"))
 
 
 def _env_bool(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 def get_user_data_dir():
-    if os.getenv("VERCEL"):
+    if _ON_VERCEL:
         path = Path("/tmp/iStore")
     elif sys.platform == "win32":
         root = Path(os.environ.get("APPDATA", "~")).expanduser()
@@ -70,10 +75,15 @@ class Settings(BaseModel):
     app_version: str = os.getenv("APP_VERSION", "v2.4.1")
     db_schema_version: str = os.getenv("DB_SCHEMA_VERSION", "local")
     device_name: str = os.getenv("DEVICE_NAME", os.getenv("COMPUTERNAME", os.getenv("HOSTNAME", "local-device")))
-    auto_migrate_enabled: bool = os.getenv("AUTO_MIGRATE_ENABLED", "false").lower() == "true"
-    backup_before_migrate: bool = os.getenv("BACKUP_BEFORE_MIGRATE", "true").lower() == "true"
-    allow_runtime_schema_sync: bool = _env_bool("ALLOW_RUNTIME_SCHEMA_SYNC", "true" if os.getenv("VERCEL") else ("false" if os.getenv("APP_ENV", "development").lower() == "production" else "true"))
-    backup_schedule_enabled: bool = os.getenv("BACKUP_SCHEDULE_ENABLED", "true").lower() == "true"
+    # On Vercel, always auto-create tables at startup because the /tmp SQLite
+    # database is ephemeral and starts empty on every new container.
+    auto_migrate_enabled: bool = os.getenv("AUTO_MIGRATE_ENABLED", "true" if _ON_VERCEL else "false").lower() == "true"
+    # Never run a pre-migration backup on Vercel — the /tmp database is
+    # ephemeral so a backup would always fail or be meaningless.
+    backup_before_migrate: bool = os.getenv("BACKUP_BEFORE_MIGRATE", "false" if _ON_VERCEL else "true").lower() == "true"
+    allow_runtime_schema_sync: bool = _env_bool("ALLOW_RUNTIME_SCHEMA_SYNC", "true" if _ON_VERCEL else ("false" if os.getenv("APP_ENV", "development").lower() == "production" else "true"))
+    # Disable the cron-style scheduler on Vercel (stateless, no persistent process).
+    backup_schedule_enabled: bool = os.getenv("BACKUP_SCHEDULE_ENABLED", "false" if _ON_VERCEL else "true").lower() == "true"
     backup_schedule_hour: int = int(os.getenv("BACKUP_SCHEDULE_HOUR", "23"))
     backup_schedule_minute: int = int(os.getenv("BACKUP_SCHEDULE_MINUTE", "59"))
     backup_schedule_timezone: str = os.getenv("BACKUP_SCHEDULE_TIMEZONE", "UTC")
@@ -89,14 +99,34 @@ class Settings(BaseModel):
     def model_post_init(self, __context):
         if not self.is_production:
             return
+
+        # On Vercel the env-vars are set in the dashboard. A missing/weak var
+        # should log a warning rather than crashing the process so the app
+        # still starts up and returns useful API errors instead of a cold 500.
+        _raise = not _ON_VERCEL
+
         if self.secret_key.strip() in {"", "change-this-secret"} or len(self.secret_key.strip()) < 32:
-            raise RuntimeError("Production SECRET_KEY must be set to a strong non-default value.")
+            msg = "Production SECRET_KEY must be set to a strong non-default value."
+            if _raise:
+                raise RuntimeError(msg)
+            logger.warning(f"[config] {msg}")
+
         if any(origin.lower() == "null" for origin in self.cors_origins):
+            # Always hard-fail for null CORS — this is a CORS bypass risk.
             raise RuntimeError("Production CORS_ORIGINS must not include null.")
+
         if not self.backup_encrypt:
-            raise RuntimeError("Production backups must be encrypted. Set BACKUP_ENCRYPT=true.")
+            msg = "Production backups must be encrypted. Set BACKUP_ENCRYPT=true."
+            if _raise:
+                raise RuntimeError(msg)
+            logger.warning(f"[config] {msg}")
+
         if not self.backup_encryption_passphrase.strip():
-            raise RuntimeError("Production BACKUP_ENCRYPTION_PASSPHRASE is required.")
+            msg = "Production BACKUP_ENCRYPTION_PASSPHRASE is required."
+            if _raise:
+                raise RuntimeError(msg)
+            logger.warning(f"[config] {msg}")
+
         if self.allow_direct_restore:
             raise RuntimeError("Production ALLOW_DIRECT_RESTORE must remain disabled. Use approved restore requests.")
 
