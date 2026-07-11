@@ -1680,9 +1680,9 @@ export default function POS() {
                 </div>
                 {paymentMethod === "Cash" && (
                   <div className="flex gap-2">
-                    {[dueAfterCredits, dueAfterCredits + 500, dueAfterCredits + 1000].map((amt, i) => (
-                      <button key={i} onClick={() => setCashReceived(Math.round(amt))} className="flex-1 rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10">
-                        {i === 0 ? "Exact" : `+${i * 500}`}
+                    {[dueAfterCredits, 1000, 1500].map((amt, i) => (
+                      <button key={i} onClick={() => setCashReceived(Math.round(Math.max(amt, dueAfterCredits)))} className="flex-1 rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10">
+                        {i === 0 ? "Exact" : `${amt}`}
                       </button>
                     ))}
                   </div>
@@ -1965,9 +1965,9 @@ export default function POS() {
                     />
                   </div>
                   <div className="grid grid-cols-3 gap-1">
-                    {[dueAfterCredits, dueAfterCredits + 500, dueAfterCredits + 1000].map((amt, i) => (
-                      <button key={`rail-cash-${i}`} onClick={() => setCashReceived(Math.round(amt))} className="rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10">
-                        {i === 0 ? "Exact" : `+${i * 500}`}
+                    {[dueAfterCredits, 1000, 1500].map((amt, i) => (
+                      <button key={`rail-cash-${i}`} onClick={() => setCashReceived(Math.round(Math.max(amt, dueAfterCredits)))} className="rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10">
+                        {i === 0 ? "Exact" : `${amt}`}
                       </button>
                     ))}
                   </div>
