@@ -916,8 +916,18 @@ export default function POS() {
       inventoryFetch.refresh();
     } catch (err) {
       // Log full server response to aid debugging (422 validation details)
-      console.error("POS checkout error:", err.response?.data || err);
       const serverDetail = err?.response?.data;
+      console.error("POS checkout error response:", serverDetail || err);
+      
+      // Explicitly log validation errors if present
+      if (serverDetail?.meta?.errors) {
+        console.error("Validation errors:", JSON.stringify(serverDetail.meta.errors, null, 2));
+        console.error("Failed fields:", serverDetail.meta.errors.map(e => e.loc?.join(".")).join(", "));
+      }
+      
+      // Log the payload that was sent for debugging
+      console.debug("Checkout payload sent:", payload);
+      
       const message = serverDetail?.detail || serverDetail?.message || (typeof serverDetail === "string" ? serverDetail : null) || err.message || "Checkout failed";
       toast(message, "error");
     }
