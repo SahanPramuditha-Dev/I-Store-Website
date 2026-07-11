@@ -606,7 +606,7 @@ export default function POS() {
     addItem({ id: `labor-${Date.now()}`, name: "Repair Labor Charge", sale_price: 1500, quantity: 999, is_labor: true, line_type: "labor" });
   };
 
-  const handleQuickAddTemporary = (payload) => {
+  function handleQuickAddTemporary(payload) {
     const item = {
       item_id: `manual-${Date.now()}`,
       name: payload.name,
@@ -620,15 +620,15 @@ export default function POS() {
     };
     setCart(prev => [...prev, item]);
     toast(`Added temporary item ${payload.name}`, "success");
-  };
+  }
 
-  const handleQuickAddSaved = (inventoryItem) => {
+  function handleQuickAddSaved(inventoryItem) {
     inventoryFetch.refresh();
     addItem({
       ...inventoryItem,
       quantity: 9999, // Allow selling newly created items freely
     });
-  };
+  }
 
   const removeItem = (id) => {
     setCart(prev => prev.filter(i => i.item_id !== id));
