@@ -111,7 +111,9 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
           />
           <Input 
             label="Selling Price (LKR) *" 
-            type="number" 
+            type="text" 
+            inputMode="decimal" 
+            autoComplete="off" 
             name="sale_price" 
             value={formData.sale_price} 
             onChange={handleChange} 
@@ -119,11 +121,12 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
           />
           <Input 
             label="Quantity *" 
-            type="number" 
+            type="text" 
+            inputMode="numeric" 
+            autoComplete="off" 
             name="quantity" 
             value={formData.quantity} 
             onChange={handleChange} 
-            min="1" 
           />
           <Select 
             label="Category" 
@@ -161,7 +164,9 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
             />
             <Input 
               label="Cost Price (LKR)" 
-              type="number" 
+              type="text" 
+              inputMode="decimal" 
+              autoComplete="off" 
               name="cost_price" 
               value={formData.cost_price} 
               onChange={handleChange} 
