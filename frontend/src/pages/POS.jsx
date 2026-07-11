@@ -4,7 +4,7 @@ import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { useFetch } from "../hooks/useFetch";
 import { Badge, Input, Select, SensitiveActionIndicators } from "../components/UI";
-import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Info, ImageOff, AlertCircle, Check, Zap } from "lucide-react";
+import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Info, ImageOff, AlertCircle, Check, Zap, ChevronDown, ChevronUp } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
