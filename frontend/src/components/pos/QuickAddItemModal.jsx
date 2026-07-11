@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppModal from "../layout/AppModal";
 import { Input, Select } from "../UI";
 import { Package, Store, Clock, X, ChevronDown, ChevronUp, Save, ShoppingCart } from "lucide-react";
@@ -9,6 +9,15 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
   const { toast } = useFeedback();
   const [loading, setLoading] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
+  const nameInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const frame = requestAnimationFrame(() => {
+      nameInputRef.current?.focus?.();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -101,13 +110,12 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input 
+            ref={nameInputRef}
             label="Product Name *" 
             name="name" 
             value={formData.name} 
             onChange={handleChange} 
             placeholder="e.g. Generic Phone Case" 
-            data-modal-initial-focus
-            autoFocus 
           />
           <Input 
             label="Selling Price (LKR) *" 
