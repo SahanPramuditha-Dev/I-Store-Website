@@ -905,7 +905,21 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
                     )
                     .first()
                 )
-            item.quantity -= quantity
+            # Atomic stock deduction to prevent race conditions in concurrent checkouts
+            rows_updated = (
+                db.query(InventoryItem)
+                .filter(
+                    InventoryItem.id == item.id,
+                    InventoryItem.quantity >= quantity,
+                )
+                .update(
+                    {InventoryItem.quantity: InventoryItem.quantity - quantity},
+                    synchronize_session="fetch",
+                )
+            )
+            if rows_updated == 0:
+                raise HTTPException(status_code=400, detail=f"Insufficient stock for item {line.item_id} (concurrent update)")
+            db.refresh(item)
             resolved_warranty_days = resolve_sale_item_warranty_days(db, item, line.warranty_days)
             sale_item_row = SaleItem(
                 sale_id=sale.id,

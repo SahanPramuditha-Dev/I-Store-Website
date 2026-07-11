@@ -309,15 +309,18 @@ def summary(
 
     # Basic Stats
     sales_count = sales_q.count()
-    total_sales = sales_q.filter(Sale.is_voided == False).with_entities(func.coalesce(func.sum(Sale.total), 0)).scalar() or 0
+    # Product-only sales: exclude repair-linked invoices to avoid double-counting
+    product_sales_q = sales_q.filter(Sale.is_voided == False, Sale.repair_ticket_id.is_(None))  # noqa: E712
+    product_sales_revenue = product_sales_q.with_entities(func.coalesce(func.sum(Sale.total), 0)).scalar() or 0
+    # Cash/card totals across ALL non-voided sales (products + repairs) for cash-drawer audit
     cash_sales = sales_q.filter(Sale.is_voided == False).with_entities(func.coalesce(func.sum(Sale.cash_amount), 0)).scalar() or 0
     card_sales = sales_q.filter(Sale.is_voided == False).with_entities(func.coalesce(func.sum(Sale.card_amount), 0)).scalar() or 0
     voided_total = db.query(func.coalesce(func.sum(Sale.total), 0)).filter(Sale.is_voided == True).scalar() or 0
     
-    # COGS
-    active_sale_ids = sales_q.filter(Sale.is_voided == False).with_entities(Sale.id)
-    cogs = db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.cost_price), 0))\
-             .filter(SaleItem.sale_id.in_(active_sale_ids)).scalar() or 0
+    # Product-only COGS (exclude repair invoices to avoid double-counting)
+    product_sale_ids = product_sales_q.with_entities(Sale.id)
+    product_cogs = db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.cost_price), 0))\
+             .filter(SaleItem.sale_id.in_(product_sale_ids)).scalar() or 0
     
     # Repair Stats (accounting-exact from repair-linked invoices)
     repair_revenue = repair_sales_q.with_entities(func.coalesce(func.sum(Sale.total), 0)).scalar() or 0
@@ -339,8 +342,9 @@ def summary(
     inventory_value = db.query(func.coalesce(func.sum(InventoryItem.quantity * InventoryItem.cost_price), 0)).scalar() or 0
     total_repairs_all_time = db.query(func.count(RepairTicket.id)).scalar() or 0
     
-    total_revenue = total_sales + repair_revenue
-    total_cost = cogs + repair_parts_cost
+    # Combined totals: product sales + repair sales (no overlap)
+    total_revenue = product_sales_revenue + repair_revenue
+    total_cost = product_cogs + repair_parts_cost
     gross_profit = total_revenue - total_cost
     net_profit = gross_profit - total_expenses
     recent_sales = sales_q.order_by(Sale.created_at.desc()).limit(10).all()
@@ -349,7 +353,7 @@ def summary(
         "summary": {
             "total_revenue": total_revenue,
             "gross_profit": gross_profit,
-            "sales_revenue": total_sales,
+            "sales_revenue": product_sales_revenue,
             "repair_revenue": repair_revenue,
             "repair_paid": repair_paid,
             "repair_outstanding": repair_outstanding,

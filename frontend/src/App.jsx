@@ -107,25 +107,8 @@ function Guard({ children }) {
 }
 
 export default function App() {
-  useEffect(() => {
-    const run = async () => {
-      const token = getAuthValue("token");
-      if (!token) return;
-      try {
-        const permissions = await bootstrapPermissions(api);
-        if (!hasPermission("backup.view", permissions)) return;
-        const res = await api.get("/backup/last");
-        const last = res?.data?.last_backup_at;
-        const now = new Date();
-        if (!last || now - new Date(last) > 24 * 60 * 60 * 1000) {
-          api.post("/backup/create?is_auto=true").catch(() => {});
-        }
-      } catch {
-        // silent fallback
-      }
-    };
-    run();
-  }, []);
+  // NOTE: Auto-backups are handled by the backend scheduler (backup_scheduler.py).
+  // Removed client-side backup trigger to prevent concurrent backup races under multi-user load.
 
   return <BrowserRouter future={{ v7_relativeSplatPath: true }}>
     <Suspense fallback={<RouteFallback />}>
