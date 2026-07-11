@@ -8,7 +8,6 @@ import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wr
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
-import QuickAddItemModal from "../components/pos/QuickAddItemModal";
 
 const CATEGORIES = ["All", "Smartphones", "Used Phones", "Chargers", "Earphones", "Power Banks", "Cases & Covers", "Tempered Glass", "Spare Parts", "Repair Services"];
 
@@ -61,7 +60,6 @@ export default function POS() {
   });
   const [showSuspendPicker, setShowSuspendPicker] = useState(false);
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
-  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "", address: "" });
   const [productDetail, setProductDetail] = useState(null);
   const [catalogRows, setCatalogRows] = useState([]);
@@ -71,6 +69,20 @@ export default function POS() {
   const [availableCredits, setAvailableCredits] = useState([]);
   const [selectedCreditMap, setSelectedCreditMap] = useState({});
   const [showRecentSales, setShowRecentSales] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddLoading, setQuickAddLoading] = useState(false);
+  const [quickAddOptional, setQuickAddOptional] = useState(false);
+  const [quickAddForm, setQuickAddForm] = useState({
+    name: "",
+    sale_price: "",
+    quantity: "1",
+    sku: "",
+    category: "Uncategorized",
+    description: "",
+    cost_price: "",
+    tax_rate: "",
+    discount: "",
+  });
 
   const subtotal = useMemo(() => cart.reduce((s, c) => s + c.quantity * c.price, 0), [cart]);
   
@@ -199,6 +211,86 @@ export default function POS() {
     const low = rows.filter((row) => Number(row.quantity || 0) > 0 && Number(row.quantity || 0) <= 5).slice(0, 8);
     return { out, low };
   }, [inventoryFetch.data]);
+
+  const quickAddStats = useMemo(() => {
+    const search = String(quickAddForm.name || "").trim().toLowerCase();
+    const rows = inventoryFetch.data || [];
+    if (!search) return { matches: 0, stockHint: null, priceHint: null };
+    const match = rows.find((row) => String(row.name || "").toLowerCase().includes(search) || String(row.sku || "").toLowerCase() === search || String(row.barcode || "").toLowerCase() === search);
+    return {
+      matches: rows.filter((row) => String(row.name || "").toLowerCase().includes(search)).length,
+      stockHint: match ? Number(match.quantity || 0) : null,
+      priceHint: match ? Number(match.sale_price || 0) : null,
+    };
+  }, [inventoryFetch.data, quickAddForm.name]);
+
+  const resetQuickAdd = useCallback(() => {
+    setQuickAddForm({
+      name: "",
+      sale_price: "",
+      quantity: "1",
+      sku: "",
+      category: "Uncategorized",
+      description: "",
+      cost_price: "",
+      tax_rate: "",
+      discount: "",
+    });
+    setQuickAddOptional(false);
+    setQuickAddLoading(false);
+  }, []);
+
+  const handleQuickAddChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setQuickAddForm((prev) => ({ ...prev, [name]: value }));
+  }, []);
+
+  const submitQuickAdd = useCallback(async (actionType) => {
+    const name = String(quickAddForm.name || "").trim();
+    if (!name) {
+      toast("Product Name is required", "warning");
+      return;
+    }
+    if (!quickAddForm.sale_price || Number(quickAddForm.sale_price) < 0) {
+      toast("Valid Selling Price is required", "warning");
+      return;
+    }
+    if (!quickAddForm.quantity || Number(quickAddForm.quantity) <= 0) {
+      toast("Valid Quantity is required", "warning");
+      return;
+    }
+
+    const payload = {
+      ...quickAddForm,
+      name,
+      sale_price: Number(quickAddForm.sale_price || 0),
+      quantity: Number(quickAddForm.quantity || 1),
+      cost_price: Number(quickAddForm.cost_price || 0),
+      tax_rate: Number(quickAddForm.tax_rate || 0),
+      discount: Number(quickAddForm.discount || 0),
+      action_type: actionType,
+    };
+
+    if (actionType === "temporary") {
+      handleQuickAddTemporary(payload);
+      setQuickAddOpen(false);
+      resetQuickAdd();
+      return;
+    }
+
+    try {
+      setQuickAddLoading(true);
+      const { data } = await api.post("/pos/quick-add-item", payload);
+      handleQuickAddSaved(data);
+      toast(`Item saved to ${actionType === "draft" ? "drafts" : "inventory"}`, "success");
+      setQuickAddOpen(false);
+      resetQuickAdd();
+    } catch (err) {
+      toast(err.response?.data?.detail || "Failed to save item", "error");
+    } finally {
+      setQuickAddLoading(false);
+    }
+  }, [handleQuickAddSaved, handleQuickAddTemporary, quickAddForm, resetQuickAdd, toast]);
 
 
 
@@ -1093,12 +1185,86 @@ export default function POS() {
             </div>
             
             <button 
-              onClick={() => setShowQuickAddModal(true)}
+              onClick={() => setQuickAddOpen((open) => !open)}
               className="w-full flex items-center justify-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl py-2 text-xs font-bold transition-all"
             >
-              <Plus size={14} /> Quick Add / Manual Sale
+              <Plus size={14} /> {quickAddOpen ? "Hide Quick Add" : "Quick Add / Manual Sale"}
             </button>
           </div>
+
+          {quickAddOpen ? (
+            <div className="border-b border-white/5 bg-slate-950/70 p-3 shrink-0 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-bold text-white">Quick Add Manual Item</div>
+                  <div className="text-[11px] text-slate-400">Inline entry keeps focus stable and works for POS cashiers.</div>
+                </div>
+                <button type="button" onClick={() => { setQuickAddOpen(false); resetQuickAdd(); }} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-slate-300 hover:text-white">
+                  Close
+                </button>
+              </div>
+
+              <div className="grid gap-2 xl:grid-cols-[1.3fr,0.9fr]">
+                <Input label="Product Name *" name="name" value={quickAddForm.name} onChange={handleQuickAddChange} placeholder="e.g. Generic Phone Case" />
+                <Input label="Selling Price (LKR) *" type="text" inputMode="decimal" autoComplete="off" name="sale_price" value={quickAddForm.sale_price} onChange={handleQuickAddChange} placeholder="0.00" />
+                <Input label="Quantity *" type="text" inputMode="numeric" autoComplete="off" name="quantity" value={quickAddForm.quantity} onChange={handleQuickAddChange} />
+                <Select
+                  label="Category"
+                  name="category"
+                  value={quickAddForm.category}
+                  onChange={handleQuickAddChange}
+                  options={[
+                    { value: "Uncategorized", label: "Uncategorized" },
+                    { value: "Smartphones", label: "Smartphones" },
+                    { value: "Accessories", label: "Accessories" },
+                    { value: "Services", label: "Services" },
+                  ]}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Matches: {quickAddStats.matches}</span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Stock hint: {quickAddStats.stockHint ?? "-"}</span>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Price hint: {quickAddStats.priceHint ? `LKR ${Math.round(quickAddStats.priceHint).toLocaleString()}` : "-"}</span>
+              </div>
+
+              <button type="button" onClick={() => setQuickAddOptional((v) => !v)} className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 font-bold transition-colors">
+                <ChevronDown size={16} className={quickAddOptional ? "rotate-180 transition-transform" : "transition-transform"} />
+                {quickAddOptional ? "Hide Optional Fields" : "Show Optional Fields"}
+              </button>
+
+              {quickAddOptional ? (
+                <div className="grid gap-2 xl:grid-cols-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <Input label="SKU / Product Code" name="sku" value={quickAddForm.sku} onChange={handleQuickAddChange} placeholder="Leave blank to auto-generate" />
+                  <Input label="Cost Price (LKR)" type="text" inputMode="decimal" autoComplete="off" name="cost_price" value={quickAddForm.cost_price} onChange={handleQuickAddChange} placeholder="0.00" />
+                  <Input label="Tax Rate (%)" type="text" inputMode="decimal" autoComplete="off" name="tax_rate" value={quickAddForm.tax_rate} onChange={handleQuickAddChange} placeholder="0" />
+                  <Input label="Discount (%)" type="text" inputMode="decimal" autoComplete="off" name="discount" value={quickAddForm.discount} onChange={handleQuickAddChange} placeholder="0" />
+                  <textarea
+                    name="description"
+                    value={quickAddForm.description}
+                    onChange={handleQuickAddChange}
+                    placeholder="Brief details about the item..."
+                    className="min-h-[88px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none xl:col-span-2"
+                  />
+                </div>
+              ) : null}
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <button type="button" disabled={quickAddLoading} onClick={() => submitQuickAdd("temporary")} className="rounded-xl border border-slate-600/50 bg-slate-700/50 px-3 py-3 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60">
+                  Temporary Item
+                  <span className="block text-[10px] font-normal text-slate-400">This transaction only</span>
+                </button>
+                <button type="button" disabled={quickAddLoading} onClick={() => submitQuickAdd("draft")} className="rounded-xl border border-amber-500/30 bg-amber-600/20 px-3 py-3 text-sm font-bold text-amber-400 hover:bg-amber-600/30 disabled:opacity-60">
+                  Save as Draft
+                  <span className="block text-[10px] font-normal text-amber-500/70">Finish details later</span>
+                </button>
+                <button type="button" disabled={quickAddLoading} onClick={() => submitQuickAdd("inventory")} className="rounded-xl border border-indigo-500/30 bg-indigo-600 px-3 py-3 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-60">
+                  Save to Inventory
+                  <span className="block text-[10px] font-normal text-indigo-200">Permanent product</span>
+                </button>
+              </div>
+            </div>
+          ) : null}
           
           <div className="flex-1 overflow-y-auto custom-scrollbar p-2 grid grid-cols-1 2xl:grid-cols-2 gap-2 content-start">
             {catalogLoading && (
@@ -2052,13 +2218,6 @@ export default function POS() {
               <button onClick={createCustomerQuick} className="w-full py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-all">Create & Attach</button>
             </div>
       </AppModal>
-
-      <QuickAddItemModal 
-        isOpen={showQuickAddModal} 
-        onClose={() => setShowQuickAddModal(false)}
-        onAddTemporary={handleQuickAddTemporary}
-        onAddSaved={handleQuickAddSaved}
-      />
 
     </div>
   );
