@@ -859,10 +859,20 @@ export default function POS() {
       return toast("Select a valid reservation before settlement", "warning");
     }
 
+    let payload;
     try {
-      const payload = {
+      payload = {
         lines: cart.map((c) => ({
-          item_id: String(c.item_id).startsWith("labor") ? null : c.item_id,
+          item_id: (() => {
+            // Handle non-inventory items (labor, manual, etc.)
+            const itemIdStr = String(c.item_id);
+            if (itemIdStr.startsWith("labor") || itemIdStr.startsWith("manual")) {
+              return null;
+            }
+            // Convert to number if it's a valid integer
+            const num = Number(c.item_id);
+            return !isNaN(num) && Number.isInteger(num) ? num : null;
+          })(),
           line_type: c.line_type || (c.is_labor ? "labor" : "product"),
           description: c.description || c.name,
           quantity: c.quantity,
