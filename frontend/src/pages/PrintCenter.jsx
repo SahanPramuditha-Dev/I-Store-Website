@@ -156,6 +156,7 @@ const PAPER_OPTIONS = [
 
 const TEMPLATE_OPTIONS = [
   { value: "standard", label: "Standard" },
+  { value: "modern", label: "Modern (attractive)" },
   { value: "compact", label: "Compact workstation" },
   { value: "service", label: "Service/job card" },
   { value: "certificate", label: "Certificate" },
@@ -396,7 +397,7 @@ export default function PrintCenter() {
   const [documentType, setDocumentType] = useState(searchParams.get("type") || "sales_receipt");
   const [reference, setReference] = useState(searchParams.get("ref") || "");
   const [paper, setPaper] = useState(searchParams.get("paper") || "thermal_80");
-  const [template, setTemplate] = useState(searchParams.get("template") || "standard");
+  const [template, setTemplate] = useState(searchParams.get("template") || "modern");
   const [printerName, setPrinterName] = useState("");
   const [silent, setSilent] = useState(false);
   const [printers, setPrinters] = useState([]);
@@ -498,6 +499,7 @@ export default function PrintCenter() {
         document_type: activeDoc.value,
         ...(activeReference ? { reference: activeReference } : {}),
         paper: activePaper,
+        ...(activeTemplate ? { template: activeTemplate } : {}),
       },
       responseType: "text",
       transformResponse: [(data) => data],
