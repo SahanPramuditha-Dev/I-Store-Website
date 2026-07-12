@@ -383,7 +383,7 @@ export default function Layout() {
           </div>
         </aside>
 
-        <main className="dashboard-main relative flex h-full min-w-0 min-h-0 flex-1 flex-col overflow-hidden p-2 transition-all duration-300 sm:p-3 xl:p-4 2xl:p-5">
+        <main className="dashboard-main relative flex h-full min-w-0 min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-2 transition-all duration-300 sm:p-3 xl:p-4 2xl:p-5">
           <div className="dashboard-topbar mb-2 flex shrink-0 items-center justify-between gap-2 2xl:mb-4">
             <div className="flex min-w-0 items-center gap-3">
               <button
