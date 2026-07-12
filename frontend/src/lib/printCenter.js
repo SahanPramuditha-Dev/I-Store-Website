@@ -1,3 +1,6 @@
+import api from "./api";
+import { printHtmlDocument } from "./printBridge";
+
 const TYPE_ALIASES = {
   receipt: "sales_receipt",
   sale: "sales_receipt",
@@ -21,7 +24,27 @@ export function buildPrintCenterPath({ type = "sales_receipt", ref = "", paper =
   return `/print-center?${params.toString()}`;
 }
 
-export function openPrintCenter(navigate, intent = {}) {
+export async function openPrintCenter(navigate, intent = {}) {
   if (typeof navigate !== "function") return;
-  navigate(buildPrintCenterPath(intent));
+
+  const { type = "sales_receipt", ref = "", paper = "thermal_80", template = "standard" } = intent;
+  const mappedType = TYPE_ALIASES[type] || type;
+
+  try {
+    const { data } = await api.get("/print-center/render", {
+      params: {
+        document_type: mappedType,
+        ...(ref ? { reference: ref } : {}),
+        paper: paper,
+        template: template,
+      },
+      responseType: "text",
+      transformResponse: [(data) => data],
+    });
+
+    await printHtmlDocument(data);
+  } catch (error) {
+    console.error("Direct print failed, falling back to Print Center", error);
+    navigate(buildPrintCenterPath(intent));
+  }
 }
