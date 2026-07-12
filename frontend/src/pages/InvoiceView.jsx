@@ -50,6 +50,25 @@ export default function InvoiceView() {
 
   const items = invoice.lines || invoice.items || [];
 
+  const createdDate = (() => {
+    const raw = invoice.created_at || invoice.date || invoice.createdAt || invoice.date_time;
+    const d = raw ? new Date(raw) : new Date();
+    return Number.isNaN(d.getTime()) ? null : d;
+  })();
+
+  const statusLabel = (() => {
+    if (invoice.status) return invoice.status;
+    const isVoided = Boolean(invoice.is_voided || invoice.is_void || (String(invoice.status || "").toLowerCase().includes("cancel")));
+    const paidFlag = invoice.paid === true || invoice.is_paid === true;
+    const statusTextHasPaid = String(invoice.status || "").toLowerCase().includes("paid");
+    const paidByAmounts = Number(invoice.total_paid || 0) > 0 && Number(invoice.total || 0) > 0 && Number(invoice.total_paid || 0) >= Number(invoice.total || 0);
+    if (isVoided) return "Voided";
+    if (paidFlag || statusTextHasPaid || paidByAmounts) return "Paid";
+    return "Unpaid";
+  })();
+
+  const badgeTone = invoice.is_voided || invoice.is_void || String(statusLabel || "").toLowerCase().includes("cancel") ? "rose" : String(statusLabel || "").toLowerCase().includes("paid") ? "green" : "amber";
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
