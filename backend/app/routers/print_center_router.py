@@ -217,6 +217,7 @@ def render_print_center_document(
     document_type: str = Query(...),
     reference: str | None = Query(default=None),
     paper: str = Query(default="thermal_80"),
+    template: str | None = Query(default=None),
     limit: int = Query(default=32, ge=1, le=100),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
@@ -239,6 +240,9 @@ def render_print_center_document(
             raise HTTPException(status_code=400, detail=f"Demo mode not supported for document type: {document_type}")
 
         if doc_key in {"invoice", "sales_receipt"}:
+            chosen = str(template or store.get("default_invoice_template") or "standard").lower()
+            if chosen in {"modern", "attractive", "aesthetic"}:
+                return HTMLResponse(render_invoice_html_modern(sample_data, store, thermal=(doc_key == "sales_receipt" or thermal)))
             return HTMLResponse(render_invoice_html(sample_data, store, thermal=(doc_key == "sales_receipt" or thermal)))
         if doc_key in {"return_receipt", "refund_receipt", "exchange_receipt"}:
             return HTMLResponse(render_return_receipt_html(sample_data, store, thermal=thermal))
@@ -261,7 +265,11 @@ def render_print_center_document(
         sale = db.query(Sale).filter(Sale.id == _numeric_reference(token, "Invoice ID")).first()
         if not sale:
             raise HTTPException(status_code=404, detail="Invoice not found")
-        return HTMLResponse(render_invoice_html(_invoice_detail(db, sale), store, thermal=(doc_key == "sales_receipt" or thermal)))
+        chosen = str(template or store.get("default_invoice_template") or "standard").lower()
+        sale_payload = _invoice_detail(db, sale)
+        if chosen in {"modern", "attractive", "aesthetic"}:
+            return HTMLResponse(render_invoice_html_modern(sale_payload, store, thermal=(doc_key == "sales_receipt" or thermal)))
+        return HTMLResponse(render_invoice_html(sale_payload, store, thermal=(doc_key == "sales_receipt" or thermal)))
 
     if doc_key in {"return_receipt", "refund_receipt", "exchange_receipt"}:
         row = get_return_case_or_404(db, _numeric_reference(token, "Return ID"))

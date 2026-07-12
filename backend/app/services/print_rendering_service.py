@@ -54,6 +54,7 @@ def get_store_profile_print_data(db: Session) -> dict:
         "invoice_footer": business.get("invoice_footer_text") or legacy_print.get("footer_note") or footer.get("thank_you_text") or "",
         "return_policy": footer.get("return_policy_text") or legacy_print.get("return_policy") or "",
         "warranty_terms": business.get("warranty_terms") or operations.get("warranty_terms") or "",
+        "default_invoice_template": receipt_design.get("default_template") or receipt_design.get("template") or "modern",
     }
 
 
@@ -155,6 +156,100 @@ def render_invoice_html(invoice: dict, store: dict, *, thermal: bool = False) ->
     <ul class="muted">{warranty_rows}</ul>
     <div class="muted" style="margin-top:8px;">{escape(str(store.get("invoice_footer") or ""))}</div>
     """
+    return _document_shell(str(invoice.get("invoice_number") or "Invoice"), body, thermal=thermal)
+
+
+def render_invoice_html_modern(invoice: dict, store: dict, *, thermal: bool = False) -> str:
+    # A more modern, attractive A4 invoice layout (lightweight inline styles)
+    created = escape(str(invoice.get("created_at") or invoice.get("date") or ""))
+    invoice_no = escape(str(invoice.get("invoice_number") or invoice.get("invoice_no") or invoice.get("id") or ""))
+    customer = escape(str(invoice.get("customer_name") or invoice.get("customer") or "Walk-in"))
+    payment_method = escape(str(invoice.get("payment_method") or invoice.get("payment_type") or "—"))
+    cashier = escape(str(invoice.get("cashier") or invoice.get("served_by") or "—"))
+
+    lines = invoice.get("lines") or invoice.get("items") or []
+    line_rows = "".join(
+        "<tr>"
+        f"<td style='padding:12px 10px;border-bottom:1px solid rgba(255,255,255,0.04);'>{escape(str(row.get('description') or row.get('item_name') or 'Item'))}</td>"
+        f"<td style='padding:12px 10px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:center;'>{int(row.get('quantity') or 0)}</td>"
+        f"<td style='padding:12px 10px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;'>{_safe_float(row.get('unit_price')):,.2f}</td>"
+        f"<td style='padding:12px 10px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;'>{_safe_float(row.get('line_total')):,.2f}</td>"
+        "</tr>"
+        for row in lines
+    )
+
+    subtotal = _safe_float(invoice.get("subtotal") or invoice.get("sub_total") or invoice.get("total_before_tax") or invoice.get("grand_total"))
+    discount = _safe_float(invoice.get("discount_amount") or invoice.get("discount_total"))
+    tax = _safe_float(invoice.get("tax_amount") or invoice.get("tax_total"))
+    grand = _safe_float(invoice.get("grand_total") or invoice.get("total") or subtotal - discount + tax)
+    paid = _safe_float(invoice.get("paid_total") or invoice.get("amount_paid") or invoice.get("paid"))
+    balance = _safe_float(invoice.get("balance_due") or invoice.get("balance") or (grand - paid))
+
+    # Inline styles for modern dark header and light content
+    body = f"""
+    <div style='font-family: Inter, Arial, sans-serif; color:#e6eef8;'>
+      <div style='background:linear-gradient(90deg,#0b1220,#0f1724);padding:28px;border-radius:8px;color:#fff;margin-bottom:18px;'>
+        <div style='display:flex;justify-content:space-between;align-items:center;'>
+          <div style='min-width:40%;'>
+            {f"<img src='{escape(str(store.get('shop_logo') or ''))}' style='max-height:56px;object-fit:contain;margin-bottom:8px;'/>" if store.get('shop_logo') else ''}
+            <div style='font-size:20px;font-weight:800'>{escape(str(store.get('shop_name') or DEFAULT_SHOP_NAME))}</div>
+            <div style='color:rgba(255,255,255,0.7);margin-top:6px;font-size:12px'>{escape(str(store.get('address') or ''))}</div>
+            <div style='color:rgba(255,255,255,0.7);font-size:12px'>{escape(str(store.get('phone') or ''))} {escape(str(store.get('email') or ''))}</div>
+          </div>
+          <div style='text-align:right;min-width:280px;'>
+            <div style='font-size:13px;color:#94a3b8'>Invoice</div>
+            <div style='font-weight:800;font-size:20px;margin-top:6px'>{invoice_no}</div>
+            <div style='color:#94a3b8;margin-top:6px;font-size:12px'>{created}</div>
+            <div style='display:inline-block;padding:6px 10px;border-radius:999px;background:#0b815a;color:#dcfce7;margin-top:10px;font-weight:700;font-size:12px'>PAID</div>
+          </div>
+        </div>
+      </div>
+
+      <div style='display:grid;grid-template-columns:1fr 340px;gap:18px;margin-bottom:12px;'>
+        <div style='background:#0b1220;border-radius:8px;padding:16px;color:#dbeafe;'>
+          <div style='font-weight:700;margin-bottom:6px'>Customer</div>
+          <div style='color:#cbd5e1'>{customer}</div>
+        </div>
+        <div style='background:#0b1220;border-radius:8px;padding:16px;color:#dbeafe;'>
+          <div style='font-weight:700;margin-bottom:6px'>Payment</div>
+          <div style='color:#cbd5e1'>Method: {payment_method}</div>
+          <div style='color:#cbd5e1'>Cashier: {cashier}</div>
+          <div style='margin-top:8px;font-weight:800;font-size:18px;text-align:right'>{grand:,.2f}</div>
+        </div>
+      </div>
+
+      <div style='background:#071025;border-radius:10px;padding:8px;'>
+        <table style='width:100%;border-collapse:collapse;'>
+          <thead>
+            <tr style='color:#94a3b8;text-transform:uppercase;font-size:12px;'>
+              <th style='text-align:left;padding:10px 8px'>Item</th>
+              <th style='text-align:center;padding:10px 8px'>Qty</th>
+              <th style='text-align:right;padding:10px 8px'>Price</th>
+              <th style='text-align:right;padding:10px 8px'>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {line_rows or "<tr><td colspan='4' style='padding:12px;color:#94a3b8'>No items found</td></tr>"}
+          </tbody>
+        </table>
+      </div>
+
+      <div style='display:flex;justify-content:flex-end;margin-top:16px;'>
+        <div style='min-width:300px;background:#071025;border-radius:8px;padding:14px;color:#dbeafe'>
+          <div style='display:flex;justify-content:space-between;margin-bottom:8px'><div>Subtotal</div><div>{subtotal:,.2f}</div></div>
+          <div style='display:flex;justify-content:space-between;margin-bottom:8px'><div>Discount</div><div>{discount:,.2f}</div></div>
+          <div style='display:flex;justify-content:space-between;margin-bottom:8px'><div>Tax</div><div>{tax:,.2f}</div></div>
+          <div style='display:flex;justify-content:space-between;margin-top:10px;font-weight:800;font-size:16px'><div>Total</div><div>{grand:,.2f}</div></div>
+        </div>
+      </div>
+
+      <div style='margin-top:20px;font-size:12px;color:#94a3b8'>
+        {escape(str(store.get('invoice_footer') or 'Thank you for shopping with us.'))}
+      </div>
+
+    </div>
+    """
+
     return _document_shell(str(invoice.get("invoice_number") or "Invoice"), body, thermal=thermal)
 
 
