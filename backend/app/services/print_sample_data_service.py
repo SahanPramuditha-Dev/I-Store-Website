@@ -11,170 +11,144 @@ def generate_sample_invoice():
     """Generate sample invoice data for preview."""
     return {
         "id": 12345,
-        "invoice_no": "INV-12345",
-        "invoice_date": datetime.now().isoformat(),
-        "customer": {
-            "id": 999,
-            "name": "Sarah Johnson",
-            "phone": "+94 77 123 4567",
-            "email": "sarah@example.com",
-            "address": "123 Main Street, Colombo, Sri Lanka",
-        },
-        "items": [
+        "invoice_number": "INV-12345",
+        "invoice_type": "product_sale",
+        "invoice_status": "finalized",
+        "payment_status": "paid",
+        "customer_id": 999,
+        "customer_name": "Sarah Johnson",
+        "customer_phone": "+94 77 123 4567",
+        "created_at": datetime.now().isoformat(),
+        "created_by": 1,
+        "created_by_name": "Admin User",
+        "lines": [
             {
+                "id": 1,
+                "line_type": "product",
                 "product_id": 101,
-                "product_name": "Smartphone Stand (Aluminum)",
+                "description": "Smartphone Stand (Aluminum)",
+                "item_name": "Smartphone Stand (Aluminum)",
                 "sku": "STD-ALU-001",
                 "quantity": 2,
                 "unit_price": to_float(2500),
+                "discount_amount": to_float(0),
                 "line_total": to_float(5000),
+                "warranty_days": 365,
             },
             {
+                "id": 2,
+                "line_type": "product",
                 "product_id": 102,
-                "product_name": "USB-C Cable (2m)",
+                "description": "USB-C Cable (2m)",
+                "item_name": "USB-C Cable (2m)",
                 "sku": "CBL-USB-002",
                 "quantity": 3,
                 "unit_price": to_float(800),
+                "discount_amount": to_float(0),
                 "line_total": to_float(2400),
+                "warranty_days": 180,
             },
             {
+                "id": 3,
+                "line_type": "product",
                 "product_id": 103,
-                "product_name": "Screen Protector (Pack of 5)",
+                "description": "Screen Protector (Pack of 5)",
+                "item_name": "Screen Protector (Pack of 5)",
                 "sku": "PROT-SCRE-001",
                 "quantity": 1,
                 "unit_price": to_float(1200),
+                "discount_amount": to_float(0),
                 "line_total": to_float(1200),
+                "warranty_days": 90,
             },
         ],
         "subtotal": to_float(8600),
-        "discount": to_float(500),
-        "tax_rate": 0.15,
-        "tax_amount": to_float(1215),
-        "total": to_float(9315),
-        "amount_paid": to_float(9315),
+        "discount_total": to_float(500),
+        "tax_total": to_float(1215),
+        "grand_total": to_float(9315),
+        "advance_applied_total": to_float(0),
+        "paid_total": to_float(9315),
         "balance_due": to_float(0),
-        "payment_method": "Card",
-        "created_by": "Admin User",
-        "notes": "[SAMPLE DATA - Preview Mode]",
+        "payments": [
+            {
+                "id": 1,
+                "payment_number": "PAY-12345",
+                "payment_method": "Card",
+                "payment_type": "Full Payment",
+                "amount": to_float(9315),
+                "reference_number": "CARD-REF-001",
+                "received_by": "Admin User",
+                "created_at": datetime.now().isoformat(),
+            }
+        ],
+        "warranty_records": [],
+        "audit_events": [],
     }
 
 
 def generate_sample_sales_receipt():
     """Generate sample sales receipt (thermal) data."""
-    return generate_sample_invoice()
+    invoice = generate_sample_invoice()
+    return invoice
 
 
 def generate_sample_return_case():
     """Generate sample return/exchange case data."""
     return {
         "id": 54321,
-        "case_no": "RET-54321",
-        "case_type": "return",
-        "case_type_label": "Return",
-        "customer": {
-            "id": 999,
-            "name": "Sarah Johnson",
-            "phone": "+94 77 123 4567",
-            "email": "sarah@example.com",
-        },
-        "original_invoice_id": 12345,
-        "original_invoice_no": "INV-12345",
-        "reason": "Product defect",
+        "return_number": "RET-54321",
+        "return_id": 54321,
+        "original_invoice_number": "INV-12345",
+        "invoice_id": 12345,
+        "customer_name": "Sarah Johnson",
+        "decision_status": "approved",
+        "status": "approved",
         "items": [
             {
                 "product_id": 101,
                 "product_name": "Smartphone Stand (Aluminum)",
-                "sku": "STD-ALU-001",
+                "item_name": "Smartphone Stand (Aluminum)",
                 "quantity": 1,
+                "item_condition": "defective",
+                "restock_action": "replace",
+                "return_amount": to_float(2500),
                 "unit_price": to_float(2500),
-                "line_total": to_float(2500),
-                "refund_amount": to_float(2500),
             }
         ],
-        "refund_total": to_float(2500),
-        "exchange_total": to_float(0),
-        "store_credit_issued": to_float(0),
-        "status": "approved",
-        "status_label": "Approved",
-        "created_at": datetime.now().isoformat(),
-        "notes": "[SAMPLE DATA - Preview Mode]",
+        "total_return_amount": to_float(2500),
+        "refund_amount": to_float(2500),
+        "store_credit_amount": to_float(0),
     }
 
 
 def generate_sample_refund_receipt():
     """Generate sample refund receipt."""
-    return {
-        "id": 54321,
-        "case_no": "RET-54321",
-        "case_type": "return",
-        "customer": {
-            "id": 999,
-            "name": "Sarah Johnson",
-            "phone": "+94 77 123 4567",
-        },
-        "original_invoice_no": "INV-12345",
-        "items": [
-            {
-                "product_name": "Smartphone Stand (Aluminum)",
-                "quantity": 1,
-                "refund_amount": to_float(2500),
-            }
-        ],
-        "refund_total": to_float(2500),
-        "refund_method": "Original Payment Method",
-        "created_at": datetime.now().isoformat(),
-        "notes": "[SAMPLE DATA - Preview Mode]",
-    }
+    return generate_sample_return_case()
 
 
 def generate_sample_exchange_receipt():
     """Generate sample exchange receipt."""
-    return {
-        "id": 54322,
-        "case_no": "RET-54322",
-        "case_type": "exchange",
-        "customer": {
-            "id": 999,
-            "name": "Sarah Johnson",
-            "phone": "+94 77 123 4567",
-        },
-        "original_invoice_no": "INV-12345",
-        "items_returned": [
-            {
-                "product_name": "Smartphone Stand (Aluminum)",
-                "quantity": 1,
-                "refund_amount": to_float(2500),
-            }
-        ],
-        "items_issued": [
-            {
-                "product_name": "Phone Case (Premium Leather)",
-                "quantity": 1,
-                "price": to_float(2200),
-            }
-        ],
-        "refund_due": to_float(300),
-        "created_at": datetime.now().isoformat(),
-        "notes": "[SAMPLE DATA - Preview Mode]",
-    }
+    return generate_sample_return_case()
 
 
 def generate_sample_advance_receipt():
     """Generate sample advance payment receipt."""
     return {
         "id": 789,
+        "receipt_number": "ADV-789",
         "advance_number": "ADV-789",
-        "customer": {
-            "id": 999,
-            "name": "Sarah Johnson",
-            "phone": "+94 77 123 4567",
-        },
-        "advance_amount": to_float(5000),
-        "purpose": "Mobile Device Purchase",
+        "customer_name": "Sarah Johnson",
+        "customer_id": 999,
         "payment_method": "Cash",
         "payment_date": datetime.now().isoformat(),
-        "reference_number": "REF-2026-001",
-        "notes": "[SAMPLE DATA - Preview Mode]",
+        "created_at": datetime.now().isoformat(),
+        "amount_paid": to_float(5000),
+        "amount": to_float(5000),
+        "estimated_total": to_float(12000),
+        "remaining_balance": to_float(7000),
+        "status": "active",
+        "reservation_number": "RES-001",
+        "repair_ticket_number": None,
     }
 
 
@@ -195,18 +169,26 @@ def generate_sample_repair_job_card():
         "estimated_cost": to_float(8500),
         "advance_payment": to_float(3000),
         "outstanding_balance": to_float(5500),
-        "created_at": datetime.now().isoformat(),
-        "notes": "[SAMPLE DATA - Preview Mode]",
     }
 
 
 def generate_sample_repair_delivery_receipt():
     """Generate sample repair delivery receipt."""
-    sample_job = generate_sample_repair_job_card()
     return {
-        **sample_job,
+        "id": 5001,
+        "ticket_no": "RPR-5001",
+        "customer_name": "John Smith",
+        "customer_phone": "+94 77 987 6543",
+        "device_model": "iPhone 14 Pro",
+        "imei": "123456789012345",
+        "issue": "Cracked screen, battery not charging",
         "status": "completed",
         "status_label": "Completed",
+        "priority": "high",
+        "technician": "Mike Johnson",
+        "estimated_cost": to_float(8500),
+        "advance_payment": to_float(3000),
+        "outstanding_balance": to_float(5500),
         "parts_used": [
             {
                 "item_name": "iPhone Screen Assembly",
@@ -221,11 +203,6 @@ def generate_sample_repair_delivery_receipt():
                 "line_total": to_float(2500),
             },
         ],
-        "labor_cost": to_float(1000),
-        "total_cost": to_float(8500),
-        "paid_amount": to_float(3000),
-        "balance_due": to_float(5500),
-        "completion_date": datetime.now().isoformat(),
     }
 
 
@@ -233,25 +210,18 @@ def generate_sample_warranty_certificate():
     """Generate sample warranty certificate."""
     return {
         "id": 4001,
-        "certificate_number": "WAR-4001",
-        "product": {
-            "id": 101,
-            "name": "Smartphone Stand (Aluminum)",
-            "sku": "STD-ALU-001",
-        },
-        "customer": {
-            "id": 999,
-            "name": "Sarah Johnson",
-            "phone": "+94 77 123 4567",
-        },
-        "purchase_date": (datetime.now() - timedelta(days=1)).isoformat(),
-        "warranty_period_months": 12,
-        "warranty_start": (datetime.now() - timedelta(days=1)).isoformat(),
-        "warranty_end": (datetime.now() + timedelta(days=365)).isoformat(),
-        "warranty_terms": "Covers manufacturing defects and hardware failures",
-        "coverage": "Full replacement or repair",
-        "exclusions": "Accidental damage, misuse, modifications",
-        "notes": "[SAMPLE DATA - Preview Mode]",
+        "warranty_number": "WAR-4001",
+        "warranty_id": 4001,
+        "product_or_service_name": "Smartphone Stand (Aluminum)",
+        "customer_name": "Sarah Johnson",
+        "customer_phone": "+94 77 123 4567",
+        "serial_number": "SN-12345-ALUM",
+        "imei_or_serial": "SN-12345-ALUM",
+        "start_date": (datetime.now() - timedelta(days=1)).isoformat(),
+        "end_date": (datetime.now() + timedelta(days=365)).isoformat(),
+        "warranty_days": 365,
+        "coverage_type": "Full Replacement",
+        "status": "active",
     }
 
 
@@ -268,7 +238,6 @@ def generate_sample_payment_receipt():
         "amount": to_float(9315),
         "reference_number": "CARD-REF-2026",
         "created_at": datetime.now().isoformat(),
-        "notes": "[SAMPLE DATA - Preview Mode]",
         "paid_total": to_float(9315),
         "balance_due": to_float(0),
     }
