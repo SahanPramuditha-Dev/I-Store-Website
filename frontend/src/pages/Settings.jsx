@@ -987,7 +987,7 @@ export default function Settings() {
   if (loading) return <Loading text="Loading settings module..." />;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pb-4 xl:h-full xl:overflow-hidden">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="flex flex-wrap items-end justify-between gap-3 shrink-0">
         <div>
           <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-3">
@@ -1035,7 +1035,8 @@ export default function Settings() {
         <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Unsaved changes use section or Save All actions</span>
       </div>
 
-      <div className="min-h-0 pr-1">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
+        <div className="min-h-0 pr-1">
         {activeTab === "access_control"
           ? renderAccessControlPanel()
           : activeTab === "store_profile"
@@ -1055,6 +1056,7 @@ export default function Settings() {
           : activeTab === "system_apis"
           ? renderSystemApisSettings()
           : renderGenericSection(activeTab)}
+        </div>
       </div>
 
       <AppModal

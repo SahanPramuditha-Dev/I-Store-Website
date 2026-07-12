@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import { bootstrapPermissions, canAccessPath, clearAuthState, getAuthValue, hasPermission } from "./lib/rbac";
+import InvoiceView from "./pages/InvoiceView";
 
 import { lazy, Suspense, useEffect, useState } from "react";
 import api from "./lib/api";
@@ -141,6 +142,7 @@ export default function App() {
           <Route path="/purchase" element={<PurchaseOrders/>} />
           <Route path="/expenses" element={<Expenses/>} />
           <Route path="/pos" element={<POS/>} />
+            <Route path="/invoice/:id" element={<InvoiceView/>} />
           <Route path="/customers" element={<Customers/>} />
           <Route path="/warranty" element={<Warranty/>} />
           <Route path="/returns" element={<ReturnsRefunds/>} />

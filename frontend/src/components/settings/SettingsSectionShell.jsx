@@ -74,7 +74,7 @@ export default function SettingsSectionShell({
   const activeConfig = sections.find((row) => row.id === activeSection) || sections[0];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden min-h-0 flex-1 flex flex-col">
       {kpis.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           {kpis.map((kpi) => (
@@ -121,9 +121,11 @@ export default function SettingsSectionShell({
           {sidePreview ? sidePreview({ data, updatePath, updateMany }) : null}
         </div>
 
-        <div className="xl:col-span-3">
+        <div className="xl:col-span-3 min-h-0 flex flex-col">
           <SectionCard title={activeConfig?.label || "Editor"}>
-            {activeConfig?.render ? activeConfig.render({ data, updatePath, updateMany }) : null}
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
+              {activeConfig?.render ? activeConfig.render({ data, updatePath, updateMany }) : null}
+            </div>
           </SectionCard>
         </div>
       </div>
