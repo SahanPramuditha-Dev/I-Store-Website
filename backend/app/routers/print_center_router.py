@@ -19,6 +19,7 @@ from app.services.print_rendering_service import (
     render_return_receipt_html,
     render_warranty_certificate_html,
 )
+from app.services.print_sample_data_service import get_sample_data
 from app.services.security_service import has_permission
 from app.utils.money import mul as money_mul
 from app.utils.money import to_float
@@ -123,9 +124,8 @@ def _require_document_permission(db: Session, user, doc: dict) -> None:
 
 
 def _require_reference(doc: dict, reference: str | None) -> str:
+    """Extract reference token. Does not throw error if missing - demo mode is allowed."""
     token = str(reference or "").strip()
-    if doc.get("requires_reference") and not token:
-        raise HTTPException(status_code=400, detail=f"{doc['reference_label']} is required")
     return token
 
 
@@ -229,7 +229,34 @@ def render_print_center_document(
     token = _require_reference(doc, reference)
     store = get_store_profile_print_data(db)
     thermal = str(paper).lower() != "a4"
+    is_demo_mode = not token  # If no reference provided, use demo mode
 
+    # Demo mode: generate sample data
+    if is_demo_mode:
+        try:
+            sample_data = get_sample_data(doc_key)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Demo mode not supported for document type: {document_type}")
+
+        if doc_key in {"invoice", "sales_receipt"}:
+            return HTMLResponse(render_invoice_html(sample_data, store, thermal=(doc_key == "sales_receipt" or thermal)))
+        if doc_key in {"return_receipt", "refund_receipt", "exchange_receipt"}:
+            return HTMLResponse(render_return_receipt_html(sample_data, store, thermal=thermal))
+        if doc_key == "advance_receipt":
+            return HTMLResponse(render_advance_receipt_html(sample_data, store, thermal=thermal))
+        if doc_key in {"repair_job_card", "repair_delivery_receipt"}:
+            repair_parts = sample_data.pop("parts_used", [])
+            title = "Repair Delivery Receipt" if doc_key == "repair_delivery_receipt" else "Repair Job Card"
+            return HTMLResponse(render_repair_document_html(sample_data, repair_parts, store, thermal=thermal, title=title))
+        if doc_key == "warranty_certificate":
+            return HTMLResponse(render_warranty_certificate_html(sample_data, store))
+        if doc_key == "payment_receipt":
+            return HTMLResponse(render_payment_receipt_html(sample_data, store, thermal=thermal))
+        if doc_key in {"barcode_sheet", "product_label"}:
+            return print_label_document(document_type=doc_key, reference=None, paper=paper, limit=limit, db=db, _=user)
+        raise HTTPException(status_code=400, detail=f"Unsupported document type: {document_type}")
+
+    # Real mode: load actual data from database
     if doc_key in {"invoice", "sales_receipt"}:
         sale = db.query(Sale).filter(Sale.id == _numeric_reference(token, "Invoice ID")).first()
         if not sale:

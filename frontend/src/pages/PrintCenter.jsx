@@ -469,9 +469,6 @@ export default function PrintCenter() {
     if (forceSample) {
       return buildSampleDocumentHtml({ identity, doc: activeDoc, reference: activeReference, paper: activePaper, template: activeTemplate });
     }
-    if (activeDoc.requiresReference && !String(activeReference || "").trim()) {
-      throw new Error(`${activeDoc.referenceLabel} is required for ${activeDoc.label}.`);
-    }
 
     const { data } = await api.get("/print-center/render", {
       params: {
@@ -491,7 +488,9 @@ export default function PrintCenter() {
     try {
       const html = await renderDocumentHtml(false);
       setPreviewHtml(html);
-      setStatus({ tone: "green", text: `${doc.label} preview rendered from ${doc.requiresReference ? "backend document data" : "central template"}.` });
+      const isDemo = !String(reference || "").trim();
+      const modeText = isDemo ? "sample data (preview mode)" : "backend document data";
+      setStatus({ tone: "green", text: `${doc.label} preview rendered from ${modeText}.` });
     } catch (err) {
       setError(err?.userMessage || err?.message || "Unable to render print preview.");
       setStatus({ tone: "red", text: "Preview failed. Check reference, permissions, and backend availability." });
