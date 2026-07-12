@@ -455,6 +455,29 @@ export default function PrintCenter() {
     setStatus({ tone: "sky", text: "Ready to render a backend production preview." });
   }, [doc, reference, paper, template]);
 
+  useEffect(() => {
+    if (!identity.shopName) return; // Don't render until store profile loaded
+    
+    const autoRender = async () => {
+      setWorking(true);
+      setError("");
+      try {
+        const html = await renderDocumentHtml(false);
+        setPreviewHtml(html);
+        const isDemo = !String(reference || "").trim();
+        const modeText = isDemo ? "sample data (preview mode)" : "backend document data";
+        setStatus({ tone: "green", text: `${doc.label} preview rendered from ${modeText}.` });
+      } catch (err) {
+        setError(err?.userMessage || err?.message || "Unable to render print preview.");
+        setStatus({ tone: "red", text: "Preview failed. Check reference, permissions, and backend availability." });
+      } finally {
+        setWorking(false);
+      }
+    };
+
+    autoRender();
+  }, [doc, reference, paper, identity.shopName]);
+
   function addHistory(row) {
     const next = [{ id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, createdAt: new Date().toISOString(), ...row }, ...history].slice(0, 30);
     setHistory(next);
