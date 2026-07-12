@@ -1441,8 +1441,8 @@ export default function InvoiceJobLabelCustomizer({
             })}
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <div className="xl:col-span-1 space-y-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 h-[calc(100vh-200px)]">
+            <div className="xl:col-span-1 space-y-4 overflow-y-auto custom-scrollbar pr-2">
               <SectionCard title="Template Manager">
                 <div className="space-y-3">
                   <LabeledField label="Format">
@@ -1501,7 +1501,7 @@ export default function InvoiceJobLabelCustomizer({
               </SectionCard>
             </div>
 
-            <div className="xl:col-span-2 space-y-4">
+            <div className="xl:col-span-2 space-y-4 overflow-y-auto custom-scrollbar pr-2">
               <SectionCard
                 title="Live Preview"
                 subtitle="WYSIWYG preview updates instantly with your settings."
