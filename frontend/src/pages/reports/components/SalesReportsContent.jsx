@@ -27,6 +27,7 @@ import {
   YAxis,
 } from "recharts";
 import { Badge, Button, KpiCard, SectionCard, Table, Select } from "../../../components/UI";
+import { openPrintCenter } from "../../../lib/printCenter";
 
 const MONEY_LOCALE = "en-LK";
 const DAY_LABEL = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
@@ -1060,7 +1061,7 @@ export default function SalesReportsContent({
                   <td>
                     <div className="flex gap-1">
                       <Button size="sm" variant="ghost" onClick={() => navigate(`/pos?sale=${row.id}`)}>View</Button>
-                      <Button size="sm" variant="secondary" onClick={() => window.open(`/pos?sale=${row.id}`, "_blank")}>Print</Button>
+                      <Button size="sm" variant="secondary" onClick={() => openPrintCenter(navigate, { type: "sales_receipt", ref: row.id, paper: "thermal_80" })}>Print</Button>
                     </div>
                   </td>
                 </tr>
