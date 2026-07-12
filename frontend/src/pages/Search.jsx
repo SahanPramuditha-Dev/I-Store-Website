@@ -336,7 +336,7 @@ export default function Search() {
       if (sel.type === "customers") navigate(`/customers/${sel.item.id}`);
       if (sel.type === "repairs") navigate(`/repairs?id=${sel.item.id}`);
       if (sel.type === "inventory") navigate("/inventory/products", { state: { search: sel.item.sku || sel.item.barcode || sel.item.name || "" } });
-      if (sel.type === "sales") navigate(`/pos?sale_id=${sel.item.id}`);
+      if (sel.type === "sales") navigate(`/invoice/${sel.item.id}`);
       if (sel.type === "payments") navigate("/pos");
       if (sel.type === "purchase_orders") navigate("/purchase");
       if (sel.type === "warranty") navigate("/warranty");
@@ -856,13 +856,13 @@ export default function Search() {
                         const idx = flatResults.findIndex((f) => f.type === "sales" && f.item.id === s.id);
                         return (
                           <div key={s.id} className={`search-hub-result-row flex items-center justify-between rounded-xl border px-3 py-2 ${idx === activeIndex ? "border-indigo-400 bg-indigo-500/10" : "border-white/10 bg-white/[0.02]"}`}>
-                            <button onClick={() => navigate(`/pos?sale_id=${s.id}`)} className="text-left">
+                            <button onClick={() => navigate(`/invoice/${s.id}`)} className="text-left">
                               <p className="text-sm font-black text-indigo-500"><Highlight text={s.invoice_no} query={query} /></p>
                               <p className="text-xs text-slate-400">{new Date(s.created_at).toLocaleDateString()}</p>
                             </button>
                             <div className="flex items-center gap-2">
                               <p className="text-sm font-black text-slate-100">LKR {Number(s.total || 0).toLocaleString()}</p>
-                              <Button size="sm" variant="ghost" onClick={() => navigate(`/pos?sale_id=${s.id}`)}>Open</Button>
+                              <Button size="sm" variant="ghost" onClick={() => navigate(`/invoice/${s.id}`)}>Open</Button>
                             </div>
                           </div>
                         );
@@ -1033,7 +1033,7 @@ export default function Search() {
                           <p className="text-slate-500">Date: {new Date(selected.item.created_at).toLocaleString()}</p>
                           <p className="font-black text-emerald-300">LKR {Number(selected.item.total || 0).toLocaleString()}</p>
                           <div className="pt-2">
-                            <Button size="sm" onClick={() => navigate(`/pos?sale_id=${selected.item.id}`)}>Open Invoice</Button>
+                            <Button size="sm" onClick={() => navigate(`/invoice/${selected.item.id}`)}>Open Invoice</Button>
                           </div>
                         </>
                       )}

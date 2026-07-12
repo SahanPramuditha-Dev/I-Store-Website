@@ -1060,7 +1060,7 @@ export default function SalesReportsContent({
                   </td>
                   <td>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => navigate(`/pos?sale=${row.id}`)}>View</Button>
+                      <Button size="sm" variant="ghost" onClick={() => navigate(`/invoice/${row.id}`)}>View</Button>
                       <Button size="sm" variant="secondary" onClick={() => openPrintCenter(navigate, { type: "sales_receipt", ref: row.id, paper: "thermal_80" })}>Print</Button>
                     </div>
                   </td>
