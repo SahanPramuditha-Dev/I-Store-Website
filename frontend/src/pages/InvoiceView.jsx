@@ -1,15 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { Badge, Button } from "../components/UI";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Printer } from "lucide-react";
 
 export default function InvoiceView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [invoice, setInvoice] = useState(null);
+  const iframeRef = useRef(null);
+  const [previewHtml, setPreviewHtml] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [invoiceTemplate, setInvoiceTemplate] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get("/settings/section/invoice_receipt_design")
+      .then((res) => {
+        if (!active) return;
+        setInvoiceTemplate(String(res.data?.default_template || "").trim());
+      })
+      .catch(() => {
+        if (!active) return;
+        setInvoiceTemplate("");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) {
@@ -17,116 +36,77 @@ export default function InvoiceView() {
       setLoading(false);
       return;
     }
+
     let mounted = true;
     setLoading(true);
     api
-      .get(`/pos/sales/${encodeURIComponent(String(id))}`)
+      .get("/print-center/render", {
+        params: {
+          document_type: "invoice",
+          reference: id,
+          paper: "a4",
+          ...(invoiceTemplate ? { template: invoiceTemplate } : {}),
+        },
+        responseType: "text",
+        transformResponse: [(data) => data],
+      })
       .then(({ data }) => {
         if (!mounted) return;
-        setInvoice(data);
+        setPreviewHtml(String(data || ""));
       })
       .catch((err) => {
         if (!mounted) return;
-        setError(err.response?.data?.detail || "Failed to load invoice");
+        setError(err.response?.data?.detail || err.message || "Failed to load invoice preview");
       })
       .finally(() => {
         if (!mounted) return;
         setLoading(false);
       });
-    return () => (mounted = false);
-  }, [id]);
 
-  if (loading) return <div className="p-4">Loading invoice...</div>;
+    return () => {
+      mounted = false;
+    };
+  }, [id, invoiceTemplate]);
+
+  const handlePrint = () => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.focus();
+    iframeRef.current.contentWindow.print();
+  };
+
+  if (loading) return <div className="p-4">Loading invoice preview...</div>;
   if (error) return (
     <div className="p-4">
       <div className="text-rose-300">{error}</div>
-      <div className="mt-3">
-        <Button variant="secondary" onClick={() => navigate(-1)}><ArrowLeft size={14}/> Back</Button>
+      <div className="mt-3 flex gap-2">
+        <Button variant="secondary" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</Button>
+        <Button variant="secondary" onClick={() => window.location.reload()}><Printer size={14} /> Retry</Button>
       </div>
     </div>
   );
 
-  if (!invoice) return <div className="p-4">Invoice not found.</div>;
-
-  const items = invoice.lines || invoice.items || [];
-
-  const createdDate = (() => {
-    const raw = invoice.created_at || invoice.date || invoice.createdAt || invoice.date_time;
-    const d = raw ? new Date(raw) : new Date();
-    return Number.isNaN(d.getTime()) ? null : d;
-  })();
-
-  const statusLabel = (() => {
-    if (invoice.status) return invoice.status;
-    const isVoided = Boolean(invoice.is_voided || invoice.is_void || (String(invoice.status || "").toLowerCase().includes("cancel")));
-    const paidFlag = invoice.paid === true || invoice.is_paid === true;
-    const statusTextHasPaid = String(invoice.status || "").toLowerCase().includes("paid");
-    const paidByAmounts = Number(invoice.total_paid || 0) > 0 && Number(invoice.total || 0) > 0 && Number(invoice.total_paid || 0) >= Number(invoice.total || 0);
-    if (isVoided) return "Voided";
-    if (paidFlag || statusTextHasPaid || paidByAmounts) return "Paid";
-    return "Unpaid";
-  })();
-
-  const badgeTone = invoice.is_voided || invoice.is_void || String(statusLabel || "").toLowerCase().includes("cancel") ? "rose" : String(statusLabel || "").toLowerCase().includes("paid") ? "green" : "amber";
-
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4">
         <div>
-          <h2 className="text-lg font-black">Invoice {invoice.invoice_no || `#${invoice.id || id}`}</h2>
-          <p className="text-sm text-slate-400">{new Date(invoice.created_at || invoice.date || Date.now()).toLocaleString()}</p>
+          <h2 className="text-lg font-black">Invoice Preview</h2>
+          <p className="text-sm text-slate-400">Invoice ID: {id}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge tone={invoice.is_voided ? "rose" : invoice.is_paid ? "green" : "amber"}>{invoice.is_voided ? "Voided" : invoice.is_paid ? "Paid" : "Unpaid"}</Badge>
-          <Button variant="secondary" onClick={() => navigate(-1)}><ArrowLeft size={14}/> Back</Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div className="panel p-4">
-          <h3 className="font-semibold">Customer</h3>
-          <p className="text-sm">{invoice.customer_name || "Walk-in"}</p>
-          {invoice.customer_phone && <p className="text-sm">{invoice.customer_phone}</p>}
-          {invoice.customer_address && <p className="text-sm">{invoice.customer_address}</p>}
-        </div>
-        <div className="panel p-4">
-          <h3 className="font-semibold">Payment</h3>
-          <p className="text-sm">Method: {invoice.payment_method || invoice.payment_type || "—"}</p>
-          <p className="text-sm">Cashier: {invoice.cashier || invoice.served_by || "—"}</p>
-          <p className="text-sm">Total: {invoice.total ? String(invoice.total) : "—"}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="green">Store Default Template</Badge>
+          <Button variant="secondary" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</Button>
+          <Button onClick={handlePrint}><Printer size={14} /> Print</Button>
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 overflow-hidden">
-        <table className="w-full table-auto text-sm">
-          <thead className="text-slate-400 text-left text-xs">
-            <tr>
-              <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2">Qty</th>
-              <th className="px-3 py-2">Price</th>
-              <th className="px-3 py-2">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => (
-              <tr key={idx} className="border-t border-white/5">
-                <td className="px-3 py-2">{it.name || it.item_name || it.description || "Item"}</td>
-                <td className="px-3 py-2">{it.quantity || it.qty || 1}</td>
-                <td className="px-3 py-2">{it.price || it.unit_price || "-"}</td>
-                <td className="px-3 py-2">{it.total || it.amount || (Number(it.quantity || 1) * Number(it.price || it.unit_price || 0)).toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <div className="w-full max-w-sm panel p-4">
-          <div className="flex justify-between"><span>Subtotal</span><span>{invoice.subtotal ?? invoice.total_before_tax ?? "-"}</span></div>
-          <div className="flex justify-between"><span>Discount</span><span>{invoice.discount_amount ?? 0}</span></div>
-          <div className="flex justify-between"><span>Tax</span><span>{invoice.tax_amount ?? 0}</span></div>
-          <div className="flex justify-between font-black text-lg mt-2"><span>Total</span><span>{invoice.total ?? invoice.grand_total ?? "-"}</span></div>
-        </div>
+      <div className="rounded-2xl border border-white/10 overflow-hidden bg-slate-950" style={{ minHeight: "640px" }}>
+        <iframe
+          ref={iframeRef}
+          title="Invoice Preview"
+          srcDoc={previewHtml}
+          className="w-full h-[800px] border-0 bg-white"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+        />
       </div>
     </div>
   );

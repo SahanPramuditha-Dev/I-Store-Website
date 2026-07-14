@@ -525,6 +525,9 @@ function normalizeCustomizer(customizer) {
   const merged = mergeDefaults(defaults, customizer || {});
   const fallbackTemplates = buildDefaultTemplates();
   if (!Array.isArray(merged.templates) || merged.templates.length === 0) merged.templates = fallbackTemplates;
+  if (merged.templates && merged.templates.length && !Array.isArray(merged.ui?.selected_template_by_context)) {
+    merged.ui.selected_template_by_context = merged.ui.selected_template_by_context || {};
+  }
   return merged;
 }
 
@@ -1002,6 +1005,14 @@ export default function InvoiceJobLabelCustomizer({
   };
 
   const settings = selectedTemplate?.settings || {};
+
+  const defaultTemplateValue = (sectionValue && sectionValue.default_template) || "modern";
+  const updateDefaultTemplate = (value) => {
+    onSectionChange({
+      ...(sectionValue || {}),
+      default_template: value,
+    });
+  };
 
   const renderSalesEditor = () => {
     if (selectedSection === "branding") {
@@ -1532,6 +1543,15 @@ export default function InvoiceJobLabelCustomizer({
                       {PREVIEW_ZOOM_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt === "fit" ? "Fit to panel" : `${opt}%`}</option>)}
                     </Select>
                   </LabeledField>
+
+                  <LabeledField label="Default Invoice Template">
+                    <Select value={defaultTemplateValue} onChange={(e) => updateDefaultTemplate(e.target.value)}>
+                      <option value="modern">Modern</option>
+                      <option value="standard">Standard</option>
+                      <option value="compact">Compact</option>
+                    </Select>
+                  </LabeledField>
+
                   <Button size="sm" variant="secondary" onClick={printTest}><Eye size={13} /> Test View</Button>
                 </div>
 

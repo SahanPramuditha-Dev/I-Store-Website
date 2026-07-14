@@ -8,6 +8,7 @@ import {
   Printer,
   RefreshCw,
   RotateCcw,
+  Save,
   Settings2,
   ShieldCheck,
   Store,
@@ -155,6 +156,7 @@ const PAPER_OPTIONS = [
 ];
 
 const TEMPLATE_OPTIONS = [
+  { value: "", label: "Store Default" },
   { value: "standard", label: "Standard" },
   { value: "modern", label: "Modern (attractive)" },
   { value: "compact", label: "Compact workstation" },
@@ -397,7 +399,8 @@ export default function PrintCenter() {
   const [documentType, setDocumentType] = useState(searchParams.get("type") || "sales_receipt");
   const [reference, setReference] = useState(searchParams.get("ref") || "");
   const [paper, setPaper] = useState(searchParams.get("paper") || "thermal_80");
-  const [template, setTemplate] = useState(searchParams.get("template") || "modern");
+  const [template, setTemplate] = useState(searchParams.get("template") || "");
+  const [savedInvoiceTemplate, setSavedInvoiceTemplate] = useState("modern");
   const [printerName, setPrinterName] = useState("");
   const [silent, setSilent] = useState(false);
   const [printers, setPrinters] = useState([]);
@@ -427,12 +430,14 @@ export default function PrintCenter() {
     Promise.all([
       listDesktopPrinters().catch(() => []),
       api.get("/labels/printers").then((res) => res.data || []).catch(() => []),
-    ]).then(([desktopRows, savedRows]) => {
+      api.get("/settings/section/invoice_receipt_design").then((res) => res.data || {}).catch(() => ({})),
+    ]).then(([desktopRows, savedRows, invoiceSection]) => {
       if (!active) return;
       const merged = mergePrinterLists(desktopRows, savedRows);
       setPrinters(merged);
       const defaultPrinter = merged.find((row) => row.isDefault) || merged[0];
       if (defaultPrinter) setPrinterName((prev) => prev || defaultPrinter.name);
+      setSavedInvoiceTemplate(invoiceSection.default_template || "modern");
     });
     return () => {
       active = false;
@@ -477,7 +482,7 @@ export default function PrintCenter() {
     };
 
     autoRender();
-  }, [doc, reference, paper, identity.shopName]);
+  }, [doc, reference, paper, template, identity.shopName]);
 
   function addHistory(row) {
     const next = [{ id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, createdAt: new Date().toISOString(), ...row }, ...history].slice(0, 30);
@@ -519,6 +524,34 @@ export default function PrintCenter() {
     } catch (err) {
       setError(err?.userMessage || err?.message || "Unable to render print preview.");
       setStatus({ tone: "red", text: "Preview failed. Check reference, permissions, and backend availability." });
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function saveDefaultTemplate() {
+    if (!doc || !["invoice", "sales_receipt"].includes(doc.value)) {
+      setError("Default invoice template can only be saved for invoice or sales receipt documents.");
+      setStatus({ tone: "red", text: "Choose an invoice document first." });
+      return;
+    }
+
+    if (!template) {
+      setError("Select a concrete template before saving it as the default.");
+      setStatus({ tone: "amber", text: "Choose a template other than Store Default." });
+      return;
+    }
+
+    setWorking(true);
+    setError("");
+    try {
+      await api.put("/settings/section/invoice_receipt_design", { default_template: template });
+      setSavedInvoiceTemplate(template);
+      setStatus({ tone: "green", text: `Saved ${TEMPLATE_OPTIONS.find((row) => row.value === template)?.label || template} as the store default.` });
+    } catch (err) {
+      const message = err?.response?.data?.detail || err?.message || "Unable to save default template.";
+      setError(message);
+      setStatus({ tone: "red", text: "Could not save default invoice template." });
     } finally {
       setWorking(false);
     }
@@ -604,6 +637,9 @@ export default function PrintCenter() {
             <Button size="sm" onClick={() => handlePrint()} disabled={working || !productionReady || printPermission.disabled} title={printPermission.reason || (!productionReady ? "Complete Store Profile before production printing." : undefined)}>
               <Printer size={14} /> Print Document
             </Button>
+            <Button size="sm" variant="secondary" onClick={saveDefaultTemplate} disabled={working || !["invoice", "sales_receipt"].includes(doc.value) || !template}>
+              <Save size={14} /> Save Default
+            </Button>
           </>
         }
       />
@@ -645,14 +681,17 @@ export default function PrintCenter() {
           minWidth={150}
           fullWidth={false}
         />
-        <Select
-          size="sm"
-          value={template}
-          onChange={(event) => setTemplate(event.target.value)}
-          options={TEMPLATE_OPTIONS}
-          minWidth={170}
-          fullWidth={false}
-        />
+        <div className="flex flex-col gap-1">
+          <Select
+            size="sm"
+            value={template}
+            onChange={(event) => setTemplate(event.target.value)}
+            options={TEMPLATE_OPTIONS}
+            minWidth={170}
+            fullWidth={false}
+          />
+          <span className="text-[10px] text-slate-500">Store default: {TEMPLATE_OPTIONS.find((row) => row.value === savedInvoiceTemplate)?.label || savedInvoiceTemplate}</span>
+        </div>
         <Select
           size="sm"
           value={printerName}

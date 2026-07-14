@@ -454,6 +454,7 @@ DEFAULT_SETTINGS_STATE = {
             "orientation": "Portrait",
             "font_size": "Medium",
         },
+        "default_template": "modern",
         "header_configuration": {
             "show_shop_logo": True,
             "show_shop_name": True,

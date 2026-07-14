@@ -136,6 +136,86 @@ def test_print_center_backend_render_and_money_integrity(client, auth_headers):
     assert "mismatch_totals" in audit_payload
 
 
+def test_print_center_renders_deployed_invoice_customizer_template(client, auth_headers):
+    custom_template = {
+        "id": "sales_a4_custom_test",
+        "name": "Custom A4",
+        "document": "sales_bill",
+        "format": "a4",
+        "deployed": True,
+        "settings": {
+            "branding": {
+                "show_shop_logo": False,
+                "show_shop_name": True,
+                "shop_name_text": "Customizer Shop",
+                "show_address": False,
+                "show_phone_number": False,
+                "show_email": False,
+                "show_website": False,
+                "custom_header_text": "Custom Invoice",
+            },
+            "header": {
+                "show_invoice_number": True,
+                "show_date_time": True,
+                "show_cashier_name": True,
+            },
+            "bill_to": {
+                "show_section": True,
+                "section_label": "CUSTOMER",
+                "show_customer_name": True,
+                "show_customer_phone": True,
+                "show_outstanding": True,
+            },
+            "items": {
+                "show_imei": False,
+                "show_unit_cost": True,
+                "show_discount": True,
+                "show_discount_line": True,
+                "show_tax_line": True,
+                "show_subtotal": True,
+            },
+            "footer": {
+                "show_thank_you_message": True,
+                "thank_you_text": "CUSTOM FOOTER MESSAGE",
+                "show_return_policy": False,
+                "custom_footer_line_1": "Footer 1",
+                "custom_footer_line_2": "Footer 2",
+            },
+            "print": {
+                "accent_color": "#ff0000",
+                "text_color": "#000000",
+                "background_color": "#ffffff",
+                "font_family": "Arial, sans-serif",
+                "base_font_size": 12,
+            },
+        },
+    }
+
+    settings_state = {
+        "invoice_receipt_design": {
+            "customizer": {
+                "templates": [custom_template],
+                "ui": {"selected_template_by_context": {"sales_bill:a4": "sales_a4_custom_test"}},
+            }
+        }
+    }
+    resp = client.put("/settings/state", json=settings_state, headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+
+    sale = _create_sale(client, auth_headers)
+    invoice_id = int(sale["sale_id"])
+
+    render = client.get(
+        "/print-center/render",
+        params={"document_type": "invoice", "reference": invoice_id, "paper": "a4"},
+        headers=auth_headers,
+    )
+    assert render.status_code == 200, render.text
+    assert "text/html" in render.headers["content-type"]
+    assert "Customizer Shop" in render.text
+    assert "CUSTOM FOOTER MESSAGE" in render.text
+
+
 def test_print_center_render_rejects_unauthorized_staff(client, auth_headers):
     sale = _create_sale(client, auth_headers)
     invoice_id = int(sale["sale_id"])
