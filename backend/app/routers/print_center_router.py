@@ -13,7 +13,7 @@ from app.routers.warranty_router import _serialize_record
 from app.services.print_rendering_service import (
     get_store_profile_print_data,
     render_advance_receipt_html,
-    render_invoice_html,
+    render_invoice_html_from_store,
     render_payment_receipt_html,
     render_repair_document_html,
     render_return_receipt_html,
@@ -240,10 +240,7 @@ def render_print_center_document(
             raise HTTPException(status_code=400, detail=f"Demo mode not supported for document type: {document_type}")
 
         if doc_key in {"invoice", "sales_receipt"}:
-            chosen = str(template or store.get("default_invoice_template") or "standard").lower()
-            if chosen in {"modern", "attractive", "aesthetic"}:
-                return HTMLResponse(render_invoice_html_modern(sample_data, store, thermal=(doc_key == "sales_receipt" or thermal)))
-            return HTMLResponse(render_invoice_html(sample_data, store, thermal=(doc_key == "sales_receipt" or thermal)))
+            return HTMLResponse(render_invoice_html_from_store(sample_data, store, thermal=(doc_key == "sales_receipt" or thermal), template=template))
         if doc_key in {"return_receipt", "refund_receipt", "exchange_receipt"}:
             return HTMLResponse(render_return_receipt_html(sample_data, store, thermal=thermal))
         if doc_key == "advance_receipt":
@@ -265,11 +262,8 @@ def render_print_center_document(
         sale = db.query(Sale).filter(Sale.id == _numeric_reference(token, "Invoice ID")).first()
         if not sale:
             raise HTTPException(status_code=404, detail="Invoice not found")
-        chosen = str(template or store.get("default_invoice_template") or "standard").lower()
-        sale_payload = _invoice_detail(db, sale)
-        if chosen in {"modern", "attractive", "aesthetic"}:
-            return HTMLResponse(render_invoice_html_modern(sale_payload, store, thermal=(doc_key == "sales_receipt" or thermal)))
-        return HTMLResponse(render_invoice_html(sale_payload, store, thermal=(doc_key == "sales_receipt" or thermal)))
+        invoice = _invoice_detail(db, sale)
+        return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=(doc_key == "sales_receipt" or thermal), template=template))
 
     if doc_key in {"return_receipt", "refund_receipt", "exchange_receipt"}:
         row = get_return_case_or_404(db, _numeric_reference(token, "Return ID"))

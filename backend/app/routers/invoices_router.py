@@ -24,7 +24,7 @@ from app.models import (
 from app.services.activity_service import log_activity
 from app.services.approval_service import consume_approval_request
 from app.services.domain_audit_service import assert_accounting_period_open, record_domain_audit
-from app.services.print_rendering_service import get_store_profile_print_data, render_invoice_html
+from app.services.print_rendering_service import get_store_profile_print_data, render_invoice_html_from_store
 from app.services.settings_policy_service import enforce_void_refund_policy, void_refund_approval_required
 from app.utils.time import utcnow
 
@@ -510,20 +510,30 @@ def reprint_invoice(id: int, db: Session = Depends(get_db), current_user=Depends
 
 
 @router.get("/invoices/{id}/print/a4", dependencies=[Depends(require_permission(["pos.print", "pos.reprint"]))], response_class=HTMLResponse)
-def print_invoice_a4(id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def print_invoice_a4(
+    id: int,
+    template: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
     row = db.query(Sale).filter(Sale.id == int(id)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Invoice not found")
     invoice = _invoice_detail(db, row)
     store = get_store_profile_print_data(db)
-    return HTMLResponse(render_invoice_html(invoice, store, thermal=False))
+    return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=False, template=template))
 
 
 @router.get("/invoices/{id}/print/thermal", dependencies=[Depends(require_permission(["pos.print", "pos.reprint"]))], response_class=HTMLResponse)
-def print_invoice_thermal(id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def print_invoice_thermal(
+    id: int,
+    template: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
     row = db.query(Sale).filter(Sale.id == int(id)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Invoice not found")
     invoice = _invoice_detail(db, row)
     store = get_store_profile_print_data(db)
-    return HTMLResponse(render_invoice_html(invoice, store, thermal=True))
+    return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=True, template=template))

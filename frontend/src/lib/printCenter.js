@@ -27,17 +27,19 @@ export function buildPrintCenterPath({ type = "sales_receipt", ref = "", paper =
 export async function openPrintCenter(navigate, intent = {}) {
   if (typeof navigate !== "function") return;
 
-  const { type = "sales_receipt", ref = "", paper = "thermal_80", template = "standard" } = intent;
+  const { type = "sales_receipt", ref = "", paper = "thermal_80", template = "" } = intent;
   const mappedType = TYPE_ALIASES[type] || type;
 
   try {
+    const params = {
+      document_type: mappedType,
+      ...(ref ? { reference: ref } : {}),
+      paper: paper,
+    };
+    if (template) params.template = template;
+
     const { data } = await api.get("/print-center/render", {
-      params: {
-        document_type: mappedType,
-        ...(ref ? { reference: ref } : {}),
-        paper: paper,
-        template: template,
-      },
+      params,
       responseType: "text",
       transformResponse: [(data) => data],
     });

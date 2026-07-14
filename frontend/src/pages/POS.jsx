@@ -967,7 +967,6 @@ export default function POS() {
         type: "receipt",
         ref: saleId,
         paper: "thermal_80",
-        template: "standard",
       });
     },
     [lastSale, navigate, toast],
