@@ -1,4 +1,7 @@
 import { useMemo, useRef } from "react";
+import { ModernRetailInvoice } from "../print/ModernRetailInvoice";
+import { PremiumBusinessInvoice } from "../print/PremiumBusinessInvoice";
+
 import {
   Copy,
   Download,
@@ -1573,7 +1576,9 @@ export default function InvoiceJobLabelCustomizer({
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4 overflow-auto max-h-[780px] custom-scrollbar">
                   <div className="origin-top-left" style={{ transform: `scale(${scale})`, transformOrigin: "top left" }} ref={previewRef}>
-                    {documentId === "sales_bill" && <PreviewSalesBill settings={settings} previewMode={customizer.ui.preview_mode} storeProfile={storeProfile} />}
+                                        {documentId === "sales_bill" && (!settings?.layout?.preset_type || settings?.layout?.preset_type === "legacy") && <PreviewSalesBill settings={settings} previewMode={customizer.ui.preview_mode} storeProfile={storeProfile} />}
+                    {documentId === "sales_bill" && settings?.layout?.preset_type === "modern" && <ModernRetailInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
+                    {documentId === "sales_bill" && settings?.layout?.preset_type === "premium" && <PremiumBusinessInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "job_card" && <PreviewJobCard settings={settings} previewMode={customizer.ui.preview_mode} />}
                     {documentId === "labels" && <PreviewLabel settings={settings} previewMode={customizer.ui.preview_mode} />}
                   </div>
