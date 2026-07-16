@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import html2pdf from "html2pdf.js";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { ModernRetailInvoice } from "../print/ModernRetailInvoice";
 import { PremiumBusinessInvoice } from "../print/PremiumBusinessInvoice";
 
@@ -1531,7 +1532,11 @@ export default function InvoiceJobLabelCustomizer({
                   </div>
                   <div className="text-xs text-slate-400">
                     {selectedTemplate?.deployed ? <Badge tone="green">Deployed</Badge> : <Badge tone={toneFromDocument(documentId)}>Draft</Badge>}
-                  </div>
+                          </div>
+                        </TransformComponent>
+                      </React.Fragment>
+                    )}
+                  </TransformWrapper>
                 </div>
               </SectionCard>
 
@@ -1596,14 +1601,29 @@ export default function InvoiceJobLabelCustomizer({
                   <Button size="sm" variant="secondary" onClick={exportToPdf}><Download size={13} /> Export PDF</Button>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-4 overflow-auto max-h-[780px] custom-scrollbar">
-                  <div className="origin-top-left" style={{ transform: `scale(${scale})`, transformOrigin: "top left" }} ref={previewRef}>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 overflow-hidden h-[700px] flex justify-center items-center relative">
+                  <TransformWrapper initialScale={0.8} minScale={0.5} maxScale={4} centerOnInit>
+                    {({ zoomIn, zoomOut, resetTransform }) => (
+                      <React.Fragment>
+                        <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 bg-slate-900/80 p-2 rounded-lg shadow-lg border border-white/10 backdrop-blur-sm">
+                           <button onClick={() => zoomIn()} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded text-white" title="Zoom In">+</button>
+                           <button onClick={() => zoomOut()} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded text-white" title="Zoom Out">-</button>
+                           <button onClick={() => resetTransform()} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded text-white text-[10px] uppercase font-bold" title="Reset">FIT</button>
+                        </div>
+                        <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
+                          <div ref={previewRef} className="origin-center drop-shadow-2xl">
+
                                         {documentId === "sales_bill" && (!settings?.layout?.preset_type || settings?.layout?.preset_type === "legacy") && <PreviewSalesBill settings={settings} previewMode={customizer.ui.preview_mode} storeProfile={storeProfile} />}
                     {documentId === "sales_bill" && settings?.layout?.preset_type === "modern" && <ModernRetailInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "sales_bill" && settings?.layout?.preset_type === "premium" && <PremiumBusinessInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "job_card" && <PreviewJobCard settings={settings} previewMode={customizer.ui.preview_mode} />}
                     {documentId === "labels" && <PreviewLabel settings={settings} previewMode={customizer.ui.preview_mode} />}
-                  </div>
+                          </div>
+                        </TransformComponent>
+                      </React.Fragment>
+                    )}
+                  </TransformWrapper>
                 </div>
               </SectionCard>
 
