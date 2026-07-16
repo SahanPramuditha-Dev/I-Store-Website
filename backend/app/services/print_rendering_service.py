@@ -920,3 +920,91 @@ def render_label_sheet_html(labels: list[dict], store: dict, *, paper: str = "la
 </head>
 <body><main class="sheet">{label_rows}</main></body>
 </html>"""
+
+
+
+def render_invoice_html_dynamic(invoice_data: dict, store_profile: dict, settings: dict) -> str:
+    """Render the Dynamic Builder layout using blocks array."""
+    blocks = settings.get("layout", {}).get("blocks", [
+        {"id": "header", "type": "header", "enabled": True},
+        {"id": "bill_to", "type": "bill_to", "enabled": True},
+        {"id": "items", "type": "items", "enabled": True},
+        {"id": "totals", "type": "totals", "enabled": True},
+        {"id": "footer", "type": "footer", "enabled": True}
+    ])
+    
+    html_parts = []
+    
+    for block in blocks:
+        if not block.get("enabled", False):
+            continue
+            
+        btype = block.get("type")
+        if btype == "header":
+            html_parts.append(f'''
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">{store_profile.get('store_name', 'Store Name')}</h2>
+                <p style="margin: 5px 0;">{store_profile.get('address', '')}</p>
+                <p style="margin: 5px 0;">{store_profile.get('phone', '')}</p>
+            </div>
+            ''')
+        elif btype == "bill_to":
+            html_parts.append(f'''
+            <div style="margin-bottom: 20px; padding: 10px; background: #f8fafc; border-radius: 8px;">
+                <div style="font-size: 10px; text-transform: uppercase; color: #64748b;">Billed To</div>
+                <div style="font-weight: bold; font-size: 16px;">{invoice_data.get('customer_name', '')}</div>
+                <div>{invoice_data.get('customer_phone', '')}</div>
+            </div>
+            ''')
+        elif btype == "items":
+            items_html = ""
+            for item in invoice_data.get("lines", []):
+                items_html += f'''
+                <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eee;">{item.get('description', '')}</td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: center;">{item.get('qty', 1)}</td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right;">{item.get('line_total', 0):.2f}</td>
+                </tr>
+                '''
+            html_parts.append(f'''
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #000;">
+                        <th style="text-align: left; padding: 8px 0;">Item</th>
+                        <th style="text-align: center; padding: 8px 0;">Qty</th>
+                        <th style="text-align: right; padding: 8px 0;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>{items_html}</tbody>
+            </table>
+            ''')
+        elif btype == "totals":
+            html_parts.append(f'''
+            <div style="text-align: right; margin-bottom: 20px;">
+                <div>Subtotal: {invoice_data.get('subtotal', 0):.2f}</div>
+                <div style="font-weight: bold; font-size: 18px; margin-top: 10px;">Total: {invoice_data.get('grand_total', 0):.2f}</div>
+            </div>
+            ''')
+        elif btype == "footer":
+            html_parts.append(f'''
+            <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #666;">
+                {settings.get('footer', {}).get('thank_you_text', 'Thank you for your business!')}
+            </div>
+            ''')
+            
+    content_html = "\n".join(html_parts)
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; color: #333; }}
+        </style>
+    </head>
+    <body>
+        {content_html}
+    </body>
+    </html>
+    '''

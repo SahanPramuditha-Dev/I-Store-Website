@@ -3,6 +3,7 @@ import html2pdf from "html2pdf.js";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { ModernRetailInvoice } from "../print/ModernRetailInvoice";
 import { PremiumBusinessInvoice } from "../print/PremiumBusinessInvoice";
+import { DynamicInvoice } from "../print/DynamicInvoice";
 
 import {
   Copy,
@@ -1012,6 +1013,48 @@ export default function InvoiceJobLabelCustomizer({
   };
 
   
+
+  const moveBlock = (index, direction) => {
+    const blocks = [...(settings?.layout?.blocks || [
+      { id: "header", type: "header", enabled: true, label: "Header" },
+      { id: "bill_to", type: "bill_to", enabled: true, label: "Bill To" },
+      { id: "items", type: "items", enabled: true, label: "Item Table" },
+      { id: "totals", type: "totals", enabled: true, label: "Totals" },
+      { id: "footer", type: "footer", enabled: true, label: "Footer" }
+    ])];
+    
+    if (direction === -1 && index > 0) {
+      const temp = blocks[index];
+      blocks[index] = blocks[index - 1];
+      blocks[index - 1] = temp;
+    } else if (direction === 1 && index < blocks.length - 1) {
+      const temp = blocks[index];
+      blocks[index] = blocks[index + 1];
+      blocks[index + 1] = temp;
+    }
+    updateTemplateSettings("layout.blocks", blocks);
+  };
+  
+  const toggleBlock = (index) => {
+    const blocks = [...(settings?.layout?.blocks || [
+      { id: "header", type: "header", enabled: true, label: "Header" },
+      { id: "bill_to", type: "bill_to", enabled: true, label: "Bill To" },
+      { id: "items", type: "items", enabled: true, label: "Item Table" },
+      { id: "totals", type: "totals", enabled: true, label: "Totals" },
+      { id: "footer", type: "footer", enabled: true, label: "Footer" }
+    ])];
+    blocks[index].enabled = !blocks[index].enabled;
+    updateTemplateSettings("layout.blocks", blocks);
+  };
+  
+  const currentBlocks = settings?.layout?.blocks || [
+      { id: "header", type: "header", enabled: true, label: "Header" },
+      { id: "bill_to", type: "bill_to", enabled: true, label: "Bill To" },
+      { id: "items", type: "items", enabled: true, label: "Item Table" },
+      { id: "totals", type: "totals", enabled: true, label: "Totals" },
+      { id: "footer", type: "footer", enabled: true, label: "Footer" }
+  ];
+
   const exportToPdf = () => {
     if (!previewRef.current) return;
     const element = previewRef.current;
@@ -1532,11 +1575,7 @@ export default function InvoiceJobLabelCustomizer({
                   </div>
                   <div className="text-xs text-slate-400">
                     {selectedTemplate?.deployed ? <Badge tone="green">Deployed</Badge> : <Badge tone={toneFromDocument(documentId)}>Draft</Badge>}
-                          </div>
-                        </TransformComponent>
-                      </React.Fragment>
-                    )}
-                  </TransformWrapper>
+                  </div>
                 </div>
               </SectionCard>
 
@@ -1615,6 +1654,7 @@ export default function InvoiceJobLabelCustomizer({
                           <div ref={previewRef} className="origin-center drop-shadow-2xl">
 
                                         {documentId === "sales_bill" && (!settings?.layout?.preset_type || settings?.layout?.preset_type === "legacy") && <PreviewSalesBill settings={settings} previewMode={customizer.ui.preview_mode} storeProfile={storeProfile} />}
+                                        {documentId === "sales_bill" && settings?.layout?.preset_type === "dynamic" && <DynamicInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "sales_bill" && settings?.layout?.preset_type === "modern" && <ModernRetailInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "sales_bill" && settings?.layout?.preset_type === "premium" && <PremiumBusinessInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "job_card" && <PreviewJobCard settings={settings} previewMode={customizer.ui.preview_mode} />}
