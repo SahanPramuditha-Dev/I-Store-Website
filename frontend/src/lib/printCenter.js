@@ -1,5 +1,5 @@
 import api from "./api";
-import { printHtmlDocument } from "./printBridge";
+// We no longer need printBridge here because POS will route to PrintCenter to natively render components
 
 const TYPE_ALIASES = {
   receipt: "sales_receipt",
@@ -26,27 +26,7 @@ export function buildPrintCenterPath({ type = "sales_receipt", ref = "", paper =
 
 export async function openPrintCenter(navigate, intent = {}) {
   if (typeof navigate !== "function") return;
-
-  const { type = "sales_receipt", ref = "", paper = "thermal_80", template = "" } = intent;
-  const mappedType = TYPE_ALIASES[type] || type;
-
-  try {
-    const params = {
-      document_type: mappedType,
-      ...(ref ? { reference: ref } : {}),
-      paper: paper,
-    };
-    if (template) params.template = template;
-
-    const { data } = await api.get("/print-center/render", {
-      params,
-      responseType: "text",
-      transformResponse: [(data) => data],
-    });
-
-    await printHtmlDocument(data);
-  } catch (error) {
-    console.error("Direct print failed, falling back to Print Center", error);
-    navigate(buildPrintCenterPath(intent));
-  }
+  const path = buildPrintCenterPath(intent);
+  // Auto-print will immediately trigger the print dialog in PrintCenter
+  navigate(`${path}&autoPrint=true`);
 }

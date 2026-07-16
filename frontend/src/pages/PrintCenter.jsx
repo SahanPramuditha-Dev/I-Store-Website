@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import api from "../lib/api";
 import { listDesktopPrinters, printHtmlDocument } from "../lib/printBridge";
+import { PrintOrchestrator } from "../components/print/PrintOrchestrator";
+import { useReactToPrint } from "react-to-print";
 import { DEFAULT_SHOP_NAME } from "../lib/storeProfile";
 import { useStoreProfile } from "../hooks/useStoreProfile";
 import {
@@ -394,6 +396,9 @@ function mergePrinterLists(desktopPrinters, savedPrinters) {
 
 export default function PrintCenter() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const autoPrint = searchParams.get("autoPrint") === "true";
+  const printRef = useRef(null);
+  const handleReactPrint = useReactToPrint({ content: () => printRef.current });
   const { identity, loading: profileLoading } = useStoreProfile();
   const [documentType, setDocumentType] = useState(searchParams.get("type") || "sales_receipt");
   const [reference, setReference] = useState(searchParams.get("ref") || "");
@@ -570,11 +575,10 @@ export default function PrintCenter() {
     setWorking(true);
     setError("");
     try {
-      const html = test
-        ? buildSampleDocumentHtml({ identity, doc: targetDoc, reference: targetReference || "TEST", paper })
-        : await renderDocumentHtml(false, { doc: targetDoc, reference: targetReference, paper });
-      setPreviewHtml(html);
-      await printHtmlDocument(html, { printerName, silent: silent && !test });
+      if (test) {
+        // Handle test
+      }
+      handleReactPrint();
       const row = {
         documentType: targetDoc.value,
         label: targetDoc.label,
@@ -763,8 +767,14 @@ export default function PrintCenter() {
             {working ? <Badge tone="amber">Working</Badge> : <Badge tone="green">Idle</Badge>}
           </div>
           <div className="h-[min(560px,calc(100vh-260px))] min-h-[260px] overflow-hidden rounded-2xl border border-white/10 bg-white">
-            <iframe title="Print preview" srcDoc={previewHtml} className="h-full w-full bg-white" />
+          <div className="h-full w-full overflow-y-auto bg-slate-100/50 p-4" ref={printRef}>
+            <PrintOrchestrator documentId={documentType} referenceId={reference} format={paper} templateId={template} onLoaded={() => {
+              if (autoPrint) {
+                setTimeout(handleReactPrint, 500);
+              }
+            }} />
           </div>
+        </div>
         </SectionCard>
 
         <div className="space-y-4">

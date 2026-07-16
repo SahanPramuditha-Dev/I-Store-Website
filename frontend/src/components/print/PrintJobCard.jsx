@@ -2,9 +2,9 @@ import React from "react";
 import { PrintContainer } from "./PrintContainer";
 import { PrintHeader } from "./PrintHeader";
 
-export function PrintJobCard({ settings, storeProfile }) {
-  // Use a default job card object for preview
-  const jobCard = {
+export function PrintJobCard({ jobCard: propJobCard, settings, storeProfile }) {
+  // Use a default job card object for preview if none provided
+  const jobCard = propJobCard || {
     job_number: "JOB-7890",
     customer_name: "John Doe",
     customer_phone: "+94 77 987 6543",
