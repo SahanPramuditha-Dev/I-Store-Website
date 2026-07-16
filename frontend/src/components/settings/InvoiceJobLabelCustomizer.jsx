@@ -1,4 +1,5 @@
 import { useMemo, useRef } from "react";
+import html2pdf from "html2pdf.js";
 import { ModernRetailInvoice } from "../print/ModernRetailInvoice";
 import { PremiumBusinessInvoice } from "../print/PremiumBusinessInvoice";
 
@@ -1009,6 +1010,26 @@ export default function InvoiceJobLabelCustomizer({
     }
   };
 
+  
+  const exportToPdf = () => {
+    if (!previewRef.current) return;
+    const element = previewRef.current;
+    
+    // get dimensions based on paper size
+    const isThermal = settings?.print?.paper_size === "Thermal 80mm";
+    const width = isThermal ? 80 : 210;
+    
+    const opt = {
+      margin: 0,
+      filename: `Template_${documentId}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: isThermal ? [80, 200] : 'a4', orientation: 'portrait' }
+    };
+    
+    html2pdf().from(element).set(opt).save();
+  };
+
   const handleBackendPreview = async () => {
     // Determine the correct document type and paper size based on current format
     const isA4 = !["80mm", "58mm"].includes(formatId);
@@ -1572,6 +1593,7 @@ export default function InvoiceJobLabelCustomizer({
 
                   <Button size="sm" variant="secondary" onClick={printTest}><Eye size={13} /> Print Test</Button>
                   <Button size="sm" variant="secondary" onClick={handleBackendPreview}><Monitor size={13} /> Backend Preview</Button>
+                  <Button size="sm" variant="secondary" onClick={exportToPdf}><Download size={13} /> Export PDF</Button>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4 overflow-auto max-h-[780px] custom-scrollbar">
