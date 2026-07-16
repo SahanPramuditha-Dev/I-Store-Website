@@ -247,7 +247,7 @@ function documentStyles(paper) {
   `;
 }
 
-function buildSampleDocumentHtml({ identity, doc, reference, paper, template }) {
+function buildSampleDocumentHtml({ identity, doc, reference, paper }) {
   if (paper.startsWith("label_") || doc.value === "product_label" || doc.value === "barcode_sheet") {
     const labels = Array.from({ length: doc.value === "product_label" ? 2 : 8 });
     return `<!doctype html>
@@ -279,7 +279,6 @@ function buildSampleDocumentHtml({ identity, doc, reference, paper, template }) 
           <h2>${escapeHtml(doc.label)}</h2>
           <section class="meta">
             <div><strong>Reference</strong><br />${escapeHtml(reference || "PREVIEW")}</div>
-            <div><strong>Template</strong><br />${escapeHtml(template)}</div>
             <div><strong>Printed At</strong><br />${escapeHtml(formatDate())}</div>
             <div><strong>Operator</strong><br />I Store workstation</div>
           </section>
@@ -450,16 +449,15 @@ export default function PrintCenter() {
         type: documentType,
         ...(reference ? { ref: reference } : {}),
         paper,
-        ...(template ? { template } : {}),
       },
       { replace: true }
     );
-  }, [documentType, reference, paper, template, setSearchParams]);
+  }, [documentType, reference, paper, setSearchParams]);
 
   useEffect(() => {
     setPreviewHtml("");
     setStatus({ tone: "sky", text: "Ready to render a backend production preview." });
-  }, [doc, reference, paper, template]);
+  }, [doc, reference, paper]);
 
   useEffect(() => {
     if (!identity.shopName) return; // Don't render until store profile loaded
@@ -496,7 +494,7 @@ export default function PrintCenter() {
     const activePaper = override.paper || paper;
     const activeTemplate = override.template || template;
     if (forceSample) {
-      return buildSampleDocumentHtml({ identity, doc: activeDoc, reference: activeReference, paper: activePaper, template: activeTemplate });
+      return buildSampleDocumentHtml({ identity, doc: activeDoc, reference: activeReference, paper: activePaper });
     }
 
     const { data } = await api.get("/print-center/render", {
@@ -504,7 +502,6 @@ export default function PrintCenter() {
         document_type: activeDoc.value,
         ...(activeReference ? { reference: activeReference } : {}),
         paper: activePaper,
-        ...(activeTemplate ? { template: activeTemplate } : {}),
       },
       responseType: "text",
       transformResponse: [(data) => data],
@@ -574,8 +571,8 @@ export default function PrintCenter() {
     setError("");
     try {
       const html = test
-        ? buildSampleDocumentHtml({ identity, doc: targetDoc, reference: targetReference || "TEST", paper, template })
-        : await renderDocumentHtml(false, { doc: targetDoc, reference: targetReference, paper, template });
+        ? buildSampleDocumentHtml({ identity, doc: targetDoc, reference: targetReference || "TEST", paper })
+        : await renderDocumentHtml(false, { doc: targetDoc, reference: targetReference, paper });
       setPreviewHtml(html);
       await printHtmlDocument(html, { printerName, silent: silent && !test });
       const row = {
