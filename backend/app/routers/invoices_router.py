@@ -214,94 +214,6 @@ def _invoice_detail(db: Session, sale: Sale) -> dict:
     }
 
 
-def _print_html(invoice: dict, store: dict, thermal: bool = False) -> str:
-    lines = invoice.get("lines") or []
-    line_rows = "".join(
-        [
-            (
-                f"<tr>"
-                f"<td>{(row.get('description') or row.get('item_name') or '').replace('<', '&lt;')}</td>"
-                f"<td style='text-align:right'>{int(row.get('quantity') or 0)}</td>"
-                f"<td style='text-align:right'>{_safe_float(row.get('unit_price')):,.2f}</td>"
-                f"<td style='text-align:right'>{_safe_float(row.get('line_total')):,.2f}</td>"
-                f"</tr>"
-            )
-            for row in lines
-        ]
-    )
-    warranty_rows = "".join(
-        [
-            (
-                f"<li>{(row.get('product_or_service_name') or '').replace('<', '&lt;')} "
-                f"({row.get('warranty_days') or 0} days, until {row.get('end_date') or '-'})</li>"
-            )
-            for row in (invoice.get("warranty_records") or [])
-        ]
-    )
-    max_width = "80mm" if thermal else "210mm"
-    padding = "6mm" if thermal else "12mm"
-    font_size = "11px" if thermal else "13px"
-    logo_html = ""
-    if store.get("shop_logo"):
-        logo_html = (
-            "<div style='margin-bottom:6px;'>"
-            f"<img src='{store.get('shop_logo')}' alt='Store Logo' style='max-height:{'28px' if thermal else '56px'}; max-width:100%; object-fit:contain;' />"
-            "</div>"
-        )
-    return f"""
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>{invoice.get("invoice_number")}</title>
-  <style>
-    body {{ font-family: Arial, sans-serif; background: #fff; color: #111; margin: 0; padding: {padding}; }}
-    .wrap {{ max-width: {max_width}; margin: 0 auto; }}
-    .top {{ margin-bottom: 8px; }}
-    .shop {{ font-size: {font_size}; font-weight: 700; }}
-    .muted {{ color: #555; font-size: 11px; }}
-    table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
-    th, td {{ border-bottom: 1px solid #ddd; padding: 6px 4px; font-size: {font_size}; }}
-    th {{ text-align: left; background: #f7f7f7; }}
-    .totals td {{ border: none; }}
-    .right {{ text-align: right; }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="top">
-      {logo_html}
-      <div class="shop">{store.get("shop_name") or "I Point"}</div>
-      <div class="muted">{store.get("address") or ""}</div>
-      <div class="muted">{store.get("phone") or ""} {store.get("email") or ""}</div>
-      <div class="muted">Invoice: {invoice.get("invoice_number")} | Date: {invoice.get("created_at") or ""}</div>
-      <div class="muted">Customer: {invoice.get("customer_name") or "Walk-in Customer"}</div>
-    </div>
-    <table>
-      <thead>
-        <tr><th>Item</th><th class="right">Qty</th><th class="right">Unit</th><th class="right">Total</th></tr>
-      </thead>
-      <tbody>{line_rows}</tbody>
-    </table>
-    <table class="totals">
-      <tr><td>Subtotal</td><td class="right">{_safe_float(invoice.get("subtotal")):,.2f}</td></tr>
-      <tr><td>Discount</td><td class="right">{_safe_float(invoice.get("discount_total")):,.2f}</td></tr>
-      <tr><td>Tax</td><td class="right">{_safe_float(invoice.get("tax_total")):,.2f}</td></tr>
-      <tr><td>Grand Total</td><td class="right">{_safe_float(invoice.get("grand_total")):,.2f}</td></tr>
-      <tr><td>Advance Applied</td><td class="right">{_safe_float(invoice.get("advance_applied_total")):,.2f}</td></tr>
-      <tr><td>Paid</td><td class="right">{_safe_float(invoice.get("paid_total")):,.2f}</td></tr>
-      <tr><td>Balance</td><td class="right">{_safe_float(invoice.get("balance_due")):,.2f}</td></tr>
-    </table>
-    <div class="muted" style="margin-top:8px;">
-      Warranty Terms: {(store.get("warranty_terms") or "-").replace('<', '&lt;')}
-    </div>
-    <ul class="muted">{warranty_rows}</ul>
-    <div class="muted" style="margin-top:8px;">{(store.get("invoice_footer") or "").replace('<', '&lt;')}</div>
-  </div>
-</body>
-</html>
-"""
-
 
 @router.get("/invoices", dependencies=[Depends(require_permission("pos.view"))])
 def list_invoices(
@@ -512,7 +424,6 @@ def reprint_invoice(id: int, db: Session = Depends(get_db), current_user=Depends
 @router.get("/invoices/{id}/print/a4", dependencies=[Depends(require_permission(["pos.print", "pos.reprint"]))], response_class=HTMLResponse)
 def print_invoice_a4(
     id: int,
-    template: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -521,13 +432,12 @@ def print_invoice_a4(
         raise HTTPException(status_code=404, detail="Invoice not found")
     invoice = _invoice_detail(db, row)
     store = get_store_profile_print_data(db)
-    return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=False, template=template))
+    return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=False, preview=False))
 
 
 @router.get("/invoices/{id}/print/thermal", dependencies=[Depends(require_permission(["pos.print", "pos.reprint"]))], response_class=HTMLResponse)
 def print_invoice_thermal(
     id: int,
-    template: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
@@ -536,4 +446,4 @@ def print_invoice_thermal(
         raise HTTPException(status_code=404, detail="Invoice not found")
     invoice = _invoice_detail(db, row)
     store = get_store_profile_print_data(db)
-    return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=True, template=template))
+    return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=True, preview=False))

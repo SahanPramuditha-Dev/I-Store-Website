@@ -1,4 +1,5 @@
 import json
+import logging
 from html import escape
 
 from sqlalchemy.orm import Session
@@ -7,6 +8,8 @@ from app.models import AppSetting
 
 SOFTWARE_NAME = "I Store"
 DEFAULT_SHOP_NAME = "I Point"
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_float(value) -> float:
@@ -121,6 +124,11 @@ def render_store_header(store: dict, *, thermal: bool = False) -> str:
 
 
 def render_invoice_html(invoice: dict, store: dict, *, thermal: bool = False) -> str:
+    """
+    DEPRECATED: Legacy standard invoice renderer. Do not use for invoice rendering.
+    Kept as a migration backup only. All rendering must go through
+    render_invoice_html_from_store() -> _render_invoice_html_customizer().
+    """
     line_rows = "".join(
         "<tr>"
         f"<td>{escape(str(row.get('description') or row.get('item_name') or 'Line Item'))}</td>"
@@ -161,6 +169,11 @@ def render_invoice_html(invoice: dict, store: dict, *, thermal: bool = False) ->
 
 
 def render_invoice_html_modern(invoice: dict, store: dict, *, thermal: bool = False) -> str:
+    """
+    DEPRECATED: Legacy modern invoice renderer. Do not use for invoice rendering.
+    Kept as a migration backup only. All rendering must go through
+    render_invoice_html_from_store() -> _render_invoice_html_customizer().
+    """
     # A more modern, attractive A4 invoice layout (lightweight inline styles)
     created = escape(str(invoice.get("created_at") or invoice.get("date") or ""))
     invoice_no = escape(str(invoice.get("invoice_number") or invoice.get("invoice_no") or invoice.get("id") or ""))
@@ -255,10 +268,148 @@ def render_invoice_html_modern(invoice: dict, store: dict, *, thermal: bool = Fa
 
 
 def _normalize_invoice_template_choice(template: str | None, thermal: bool) -> str:
+    """DEPRECATED: Only used by removed legacy fallback path. Retained for reference."""
     chosen = str(template or "").strip().lower()
     if not chosen:
         return "standard" if thermal else "modern"
     return chosen
+
+
+def _get_system_default_settings(thermal: bool = False) -> dict:
+    """Return canonical system-default template settings matching the frontend's
+    defaultSalesSettings(). Used when no deployed customizer template exists in the
+    store's invoice_receipt_design.customizer.templates array.
+    This ensures the same renderer code path (customizer) is always used.
+    """
+    fmt = "80mm" if thermal else "A4"
+    return {
+        "branding": {
+            "show_logo": True,
+            "logo_size": "Medium",
+            "logo_position": "Left",
+            "logo_top_margin": 8,
+            "show_shop_name": True,
+            "shop_name_text": "",
+            "shop_name_font": "Montserrat",
+            "shop_name_size": 20 if thermal else 24,
+            "shop_name_weight": "Bold",
+            "shop_name_color": "#111827",
+            "show_tagline": False,
+            "tagline_text": "",
+            "tagline_size": 10,
+            "tagline_color": "#6b7280",
+        },
+        "business": {
+            "show_address": True,
+            "show_phone": True,
+            "show_secondary_phone": False,
+            "show_email": True,
+            "show_website": True,
+            "show_tax_number": True,
+            "layout": "Stacked",
+            "align": "Right",
+            "font_size": 10,
+            "color": "#4b5563",
+        },
+        "header": {
+            "show_title": True,
+            "title_text": "TAX INVOICE",
+            "title_size": 14 if thermal else 18,
+            "title_weight": "Bold",
+            "title_color": "#111827",
+            "title_align": "Center",
+            "show_invoice_no": True,
+            "show_date": True,
+            "show_time": True,
+            "show_cashier": True,
+            "show_branch": False,
+            "date_format": "DD/MM/YYYY",
+            "time_format": "12-hour",
+            "meta_layout": "2 columns",
+            "show_qr": False,
+        },
+        "bill_to": {
+            "show_section": True,
+            "section_label": "BILL TO",
+            "show_customer_name": True,
+            "show_customer_phone": True,
+            "show_customer_address": False,
+            "show_customer_id": False,
+            "show_outstanding": True,
+            "outstanding_label": "Outstanding Balance",
+            "border_style": "Solid",
+            "border_color": "#d1d5db",
+            "background_color": "#f9fafb",
+            "radius": 6,
+        },
+        "items": {
+            "show_imei": True,
+            "show_discount": True,
+            "show_tax": False,
+            "show_warranty": True,
+            "row_height": 32,
+            "header_bg": "#f3f4f6",
+            "header_text": "#111827",
+            "row_even_bg": "#ffffff",
+            "row_odd_bg": "#f9fafb",
+            "row_text": "#111827",
+            "border_color": "#e5e7eb",
+        },
+        "totals": {
+            "show_subtotal": True,
+            "show_discount": True,
+            "show_tax": True,
+            "show_rounding": True,
+            "show_total": True,
+            "show_paid": True,
+            "show_balance": True,
+            "show_outstanding": True,
+            "show_total_words": False,
+            "totals_align": "Right",
+            "width_percent": 50,
+            "total_color": "#111827",
+            "total_bg": "#f3f4f6",
+        },
+        "payment": {
+            "show_section": True,
+            "show_method": True,
+            "show_tendered": True,
+            "show_change": True,
+            "show_partial_history": True,
+            "show_remaining": True,
+        },
+        "footer": {
+            "show_thank_you": True,
+            "thank_you_text": "Thank you for your purchase!",
+            "thank_you_size": 11,
+            "thank_you_color": "#6b7280",
+            "show_return_policy": True,
+            "return_policy_text": "Items can be returned within 7 days with receipt.",
+            "show_warranty_note": True,
+            "warranty_note_text": "All products carry manufacturer warranty.",
+            "custom_line_1": "",
+            "custom_line_2": "",
+            "custom_line_3": "",
+            "show_footer_qr": False,
+            "show_invoice_barcode": False,
+        },
+        "print": {
+            "paper_size": fmt,
+            "orientation": "Portrait",
+            "margin_top_mm": 8 if thermal else 15,
+            "margin_bottom_mm": 8 if thermal else 15,
+            "margin_left_mm": 4 if thermal else 15,
+            "margin_right_mm": 4 if thermal else 15,
+            "font_family": "Inter, Arial, sans-serif",
+            "base_font_size": 10 if thermal else 11,
+            "line_spacing": 1.4,
+            "color_scheme": "Light",
+            "accent_color": "#111827",
+            "background_color": "#ffffff",
+            "text_color": "#111827",
+            "watermark": "None",
+        },
+    }
 
 
 def _find_deployed_sales_bill_template(store: dict, *, thermal: bool = False) -> dict | None:
@@ -517,21 +668,61 @@ def _render_invoice_html_customizer(invoice: dict, store: dict, settings: dict, 
     return html
 
 
-def render_invoice_html_from_store(invoice: dict, store: dict, *, thermal: bool = False, template: str | None = None) -> str:
-  chosen = _normalize_invoice_template_choice(template, thermal)
+def render_invoice_html_from_store(
+  invoice: dict,
+  store: dict,
+  *,
+  thermal: bool = False,
+  template: str | None = None,  # retained for API compat but no longer used for routing
+  preview: bool = False,
+) -> str:
+  """Unified invoice rendering entry point.
+
+  Always renders through _render_invoice_html_customizer() using:
+  1. The deployed customizer template from invoice_receipt_design.customizer.templates, or
+  2. The system default settings (_get_system_default_settings) if no deployed template exists.
+
+  Legacy render_invoice_html() and render_invoice_html_modern() are no longer called by
+  this function. They exist only as migration backups.
+
+  Args:
+    invoice: Invoice data dict.
+    store: Store profile dict (from get_store_profile_print_data).
+    thermal: True for 80mm thermal, False for A4.
+    template: Ignored. Kept for API backward compatibility only.
+    preview: True when rendering for design preview, False for production print.
+  """
+  mode = "preview" if preview else "production"
+  format_label = "80mm thermal" if thermal else "A4"
+
+  # Step 1: find deployed customizer template
   info = _find_deployed_sales_bill_template_info(store, thermal=thermal)
   custom_settings = info[0] if info else None
   selected_template_id = info[1] if info else None
-  if custom_settings:
-    html = _render_invoice_html_customizer(invoice, store, custom_settings, thermal=thermal)
-    if selected_template_id:
-      return f"<!-- selected_template:{selected_template_id} -->\n" + html
-    return html
-  if chosen in {"modern", "attractive", "aesthetic"}:
-    html = render_invoice_html_modern(invoice, store, thermal=thermal)
-    return (f"<!-- selected_template:default:{chosen} -->\n" + html) if selected_template_id else html
-  html = render_invoice_html(invoice, store, thermal=thermal)
-  return (f"<!-- selected_template:default:{chosen} -->\n" + html) if selected_template_id else html
+
+  # Step 2: fall back to system default if no deployed template found
+  if not custom_settings:
+    custom_settings = _get_system_default_settings(thermal=thermal)
+    selected_template_id = "system_default"
+    logger.info(
+      "[InvoiceRender] No deployed template found for %s — using system default. "
+      "invoice=%s mode=%s",
+      format_label,
+      invoice.get("invoice_number") or invoice.get("id") or "(demo)",
+      mode,
+    )
+  else:
+    logger.info(
+      "[InvoiceRender] template_id=%s format=%s invoice=%s mode=%s",
+      selected_template_id,
+      format_label,
+      invoice.get("invoice_number") or invoice.get("id") or "(demo)",
+      mode,
+    )
+
+  # Step 3: always render through the customizer pipeline
+  html = _render_invoice_html_customizer(invoice, store, custom_settings, thermal=thermal)
+  return f"<!-- selected_template:{selected_template_id} render_source:customizer mode:{mode} -->\n" + html
 
 
 def render_warranty_certificate_html(record: dict, store: dict) -> str:

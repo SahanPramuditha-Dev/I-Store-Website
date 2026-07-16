@@ -4,6 +4,7 @@ import {
   Download,
   Eye,
   FileText,
+  Monitor,
   Plus,
   Printer,
   Rocket,
@@ -16,6 +17,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { Badge, Button, Input, SectionCard, Select, Table } from "../../components/UI";
+import api from "../../lib/api";
 import { printHtmlDocument } from "../../lib/printBridge";
 import { normalizeStoreProfile } from "../../lib/storeProfile";
 
@@ -1004,15 +1006,35 @@ export default function InvoiceJobLabelCustomizer({
     }
   };
 
-  const settings = selectedTemplate?.settings || {};
-
-  const defaultTemplateValue = (sectionValue && sectionValue.default_template) || "modern";
-  const updateDefaultTemplate = (value) => {
-    onSectionChange({
-      ...(sectionValue || {}),
-      default_template: value,
-    });
+  const handleBackendPreview = async () => {
+    // Determine the correct document type and paper size based on current format
+    const isA4 = !["80mm", "58mm"].includes(formatId);
+    const docType = documentId === "sales_bill" ? (isA4 ? "invoice" : "sales_receipt") : null;
+    if (!docType) {
+      toast("Backend preview is only available for Sales Bill templates", "warning");
+      return;
+    }
+    const paper = isA4 ? "a4" : "thermal_80";
+    try {
+      const { data } = await api.get("/print-center/render", {
+        params: { document_type: docType, paper },
+        responseType: "text",
+        transformResponse: [(d) => d],
+      });
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.open();
+        win.document.write(String(data || ""));
+        win.document.close();
+      } else {
+        toast("Pop-up blocked. Allow pop-ups to use backend preview.", "warning");
+      }
+    } catch (err) {
+      toast(err?.response?.data?.detail || err?.message || "Backend preview failed", "error");
+    }
   };
+
+  const settings = selectedTemplate?.settings || {};
 
   const renderSalesEditor = () => {
     if (selectedSection === "branding") {
@@ -1544,15 +1566,9 @@ export default function InvoiceJobLabelCustomizer({
                     </Select>
                   </LabeledField>
 
-                  <LabeledField label="Default Invoice Template">
-                    <Select value={defaultTemplateValue} onChange={(e) => updateDefaultTemplate(e.target.value)}>
-                      <option value="modern">Modern</option>
-                      <option value="standard">Standard</option>
-                      <option value="compact">Compact</option>
-                    </Select>
-                  </LabeledField>
 
-                  <Button size="sm" variant="secondary" onClick={printTest}><Eye size={13} /> Test View</Button>
+                  <Button size="sm" variant="secondary" onClick={printTest}><Eye size={13} /> Print Test</Button>
+                  <Button size="sm" variant="secondary" onClick={handleBackendPreview}><Monitor size={13} /> Backend Preview</Button>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/20 p-4 overflow-auto max-h-[780px] custom-scrollbar">
