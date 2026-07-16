@@ -448,225 +448,229 @@ def _format_money(value) -> str:
 
 
 def _render_invoice_html_customizer(invoice: dict, store: dict, settings: dict, *, thermal: bool = False) -> str:
+    from html import escape
+    
     branding = settings.get("branding") or {}
+    business = settings.get("business") or {}
     header_config = settings.get("header") or {}
-    body_config = settings.get("body") or {}
     bill_to = settings.get("bill_to") or {}
     items_config = settings.get("items") or {}
-    payment_config = settings.get("payment") or {}
+    totals_config = settings.get("totals") or {}
     footer_config = settings.get("footer") or {}
     print_config = settings.get("print") or {}
 
-    accent = print_config.get("accent_color") or "#111827"
-    text_color = print_config.get("text_color") or "#111827"
+    accent = print_config.get("accent_color") or "#0066cc"
+    text_color = print_config.get("text_color") or "#1a1a2e"
     bg = print_config.get("background_color") or "#ffffff"
-    font_family = print_config.get("font_family") or "Inter, Arial, sans-serif"
+    font_family = print_config.get("font_family") or "DM Sans, sans-serif"
     base_font_size = f"{print_config.get('base_font_size') or 11}px"
+    
+    max_width = "80mm" if thermal else "210mm"
+    padding = "6mm" if thermal else "12mm"
 
+    # Extraction
     invoice_number = escape(str(invoice.get("invoice_number") or invoice.get("invoice_no") or invoice.get("id") or ""))
     created_at = escape(str(invoice.get("created_at") or ""))
-    due_date = escape(str(invoice.get("due_date") or ""))
-    invoice_status = escape(str(invoice.get("invoice_status") or ""))
-    payment_method = escape(str((invoice.get("payments") or [{}])[0].get("payment_method") or invoice.get("payment_method") or ""))
     salesperson = escape(str(invoice.get("created_by_name") or invoice.get("salesperson") or ""))
+    
     customer_name = escape(str(invoice.get("customer_name") or "Walk-in Customer"))
     customer_phone = escape(str(invoice.get("customer_phone") or ""))
-    customer_email = escape(str(invoice.get("customer_email") or invoice.get("email") or ""))
-    customer_address = escape(str(invoice.get("customer_address") or invoice.get("address") or ""))
-    customer_id = escape(str(invoice.get("customer_id") or invoice.get("customer_ref") or ""))
-
-    repair_ticket_no = escape(str(invoice.get("repair_ticket_no") or invoice.get("repair_ticket_id") or ""))
-    device_model = escape(str(invoice.get("device_model") or invoice.get("device_name") or ""))
-    imei_value = escape(str(invoice.get("imei") or invoice.get("serial_number") or invoice.get("serial") or ""))
-    technician = escape(str(invoice.get("technician") or invoice.get("assigned_technician") or ""))
-    issue_description = escape(str(invoice.get("issue") or invoice.get("repair_issue") or ""))
-
+    
+    DEFAULT_SHOP_NAME = "I Point"
     shop_name = escape(str(store.get("shop_name") or DEFAULT_SHOP_NAME))
     shop_address = escape(str(store.get("address") or ""))
-    shop_contact = " | ".join([part for part in [store.get("phone"), store.get("email"), store.get("website")] if part])
-    shop_contact = escape(shop_contact)
-    tax_number = escape(str(store.get("tax_number") or ""))
-    registration_number = escape(str(store.get("registration_number") or ""))
-    footer_note = escape(str(store.get("invoice_footer") or store.get("return_policy") or ""))
-    warranty_terms = escape(str(store.get("warranty_terms") or ""))
+    shop_phone = escape(str(store.get("phone") or ""))
+    shop_email = escape(str(store.get("email") or ""))
+    shop_website = escape(str(store.get("website") or ""))
+    
+    def _format_money(value) -> str:
+        try:
+            val = float(value or 0)
+            return f"{val:,.2f}"
+        except:
+            return "0.00"
 
-    def text_or_dash(value: str | None) -> str:
-        return escape(str(value or "-")).strip() or "-"
-
+    # Items table
     line_rows = []
     for idx, row in enumerate(invoice.get("lines") or []):
         desc = escape(str(row.get("description") or row.get("item_name") or ""))
         qty = int(row.get("quantity") or 0)
         unit = _format_money(row.get("unit_price"))
-        discount = _format_money(row.get("discount_amount")) if items_config.get("show_discount") else ""
-        tax = _format_money(row.get("tax_amount")) if row.get("tax_amount") is not None else ""
         total = _format_money(row.get("line_total"))
-        row_cells = [
-            f"<td>{idx + 1}</td>",
-            f"<td>{desc}</td>",
-            f"<td class='center'>{qty}</td>",
-            f"<td class='right'>{unit}</td>",
-        ]
+        
+        row_bg = items_config.get("row_odd_bg") or "#141628" if idx % 2 else items_config.get("row_even_bg") or "#1a1d2e"
+        
+        cells = [f"<td style='padding: 6px 8px;'><div>{desc}</div>"]
+        if items_config.get("show_warranty") and row.get("warranty_days"):
+            cells.append(f"<div style='font-size: 10px; opacity: 0.7;'>Warranty: {row.get('warranty_days')} days</div>")
+        cells.append("</td>")
+        
+        if items_config.get("show_imei"):
+            imei = escape(str(row.get("imei") or row.get("serial_number") or ""))
+            cells.append(f"<td style='padding: 6px 8px;'>{imei}</td>")
+            
+        cells.append(f"<td style='padding: 6px 8px; text-align: right;'>{qty}</td>")
+        cells.append(f"<td style='padding: 6px 8px; text-align: right;'>{unit}</td>")
+        
         if items_config.get("show_discount"):
-            row_cells.append(f"<td class='right'>{discount}</td>")
-        if items_config.get("show_tax"):
-            row_cells.append(f"<td class='right'>{tax}</td>")
-        row_cells.append(f"<td class='right'>{total}</td>")
-        line_rows.append(f"<tr>{''.join(row_cells)}</tr>")
+            disc = _format_money(row.get("discount_amount"))
+            cells.append(f"<td style='padding: 6px 8px; text-align: right;'>{disc}</td>")
+            
+        cells.append(f"<td style='padding: 6px 8px; text-align: right;'>{total}</td>")
+        line_rows.append(f"<tr style='background: {row_bg};'>{''.join(cells)}</tr>")
 
-    show_discount_column = bool(items_config.get("show_discount"))
-    show_tax_column = bool(items_config.get("show_tax"))
-    table_columns = ["#", "DESCRIPTION", "QTY", "UNIT PRICE"]
-    if show_discount_column:
-        table_columns.append("DISCOUNT")
-    if show_tax_column:
-        table_columns.append("TAX")
-    table_columns.append("TOTAL")
-    col_count = len(table_columns)
-    table_header = "".join([f"<th>{escape(str(col))}</th>" for col in table_columns])
+    if not line_rows:
+        col_span = 4
+        if items_config.get("show_imei"): col_span += 1
+        if items_config.get("show_discount"): col_span += 1
+        line_rows.append(f"<tr style='background: {items_config.get('row_even_bg') or '#1a1d2e'};'><td colspan='{col_span}' style='padding: 8px;'>No items</td></tr>")
 
-    subtotal = _safe_float(invoice.get("subtotal"))
-    discount_total = _safe_float(invoice.get("discount_total"))
-    tax_total = _safe_float(invoice.get("tax_total"))
-    grand_total = _safe_float(invoice.get("grand_total"))
-    paid_total = _safe_float(invoice.get("paid_total"))
-    balance_due = _safe_float(invoice.get("balance_due"))
+    # Header columns
+    th_style = f"padding: 6px 8px; text-align: left; background: {items_config.get('header_bg') or '#252840'}; color: {items_config.get('header_text') or '#ffffff'};"
+    th_right = th_style.replace("text-align: left", "text-align: right")
+    
+    th_html = f"<th style='{th_style}'>Description</th>"
+    if items_config.get("show_imei"):
+        th_html += f"<th style='{th_style}'>IMEI</th>"
+    th_html += f"<th style='{th_right}'>Qty</th>"
+    th_html += f"<th style='{th_right}'>Unit</th>"
+    if items_config.get("show_discount"):
+        th_html += f"<th style='{th_right}'>Disc</th>"
+    th_html += f"<th style='{th_right}'>Total</th>"
 
-    repair_charges = sum(_safe_float(row.get("line_total")) for row in invoice.get("lines") or [] if row.get("line_type") in {"labor", "service"})
-    delivery_charges = _safe_float(invoice.get("delivery_charge") or invoice.get("shipping_charge") or 0)
+    logo_html = ""
+    if branding.get("show_logo") and store.get("shop_logo"):
+        logo_html = f"<img src='{escape(str(store.get('shop_logo')))}' class='logo-box' />"
+    
+    shop_name_html = ""
+    if branding.get("show_shop_name"):
+        shop_name_html = f"<div class='font-black' style='font-size: 1.1em; color: {branding.get('shop_name_color') or text_color};'>{branding.get('shop_name_text') or shop_name}</div>"
+        
+    tagline_html = ""
+    if branding.get("show_tagline"):
+        tagline_html = f"<div style='font-size: 0.9em; color: {branding.get('tagline_color') or '#777'}; margin-bottom: 8px;'>{branding.get('tagline_text') or store.get('tagline') or '-'}</div>"
 
-    body = f"""
-    <div class='invoice-root'>
-      <div class='top-section'>
-        <div class='company-block'>
-          {f"<img src='{escape(str(store.get('shop_logo') or ''))}' class='company-logo' />" if branding.get('show_shop_logo') and store.get('shop_logo') else '<div class="company-logo-placeholder">LOGO</div>'}
-          <div class='company-name'>{escape(str(branding.get('shop_name_text') or shop_name))}</div>
-          <div class='company-meta'>{shop_address}</div>
-          <div class='company-meta'>{shop_contact}</div>
-          {f"<div class='company-meta'>Reg No: {registration_number}</div>" if registration_number else ''}
-          {f"<div class='company-meta'>Tax No: {tax_number}</div>" if tax_number else ''}
-        </div>
-        <div class='document-block'>
-          <div class='document-title'>{escape(str(header_config.get('title_text') or 'SALES / REPAIR INVOICE'))}</div>
-          <div class='document-subtitle'>{escape(str(branding.get('custom_header_text') or ''))}</div>
-          <div class='document-box'>
-            <div><span>Invoice No:</span> <strong>{invoice_number}</strong></div>
-            <div><span>Date:</span> <strong>{created_at}</strong></div>
-            <div><span>Due Date:</span> <strong>{due_date or '-'}</strong></div>
-            <div><span>Salesperson:</span> <strong>{salesperson or '-'}</strong></div>
-            <div><span>Payment Method:</span> <strong>{payment_method or '-'}</strong></div>
-            <div><span>Status:</span> <strong>{invoice_status or '-'}</strong></div>
-          </div>
-        </div>
-      </div>
-      <div class='customer-device-grid'>
-        <div class='info-panel'>
-          <div class='panel-title'>CUSTOMER INFORMATION</div>
-          <div class='info-row'><span>Name</span><strong>{customer_name}</strong></div>
-          <div class='info-row'><span>Phone</span><strong>{customer_phone or '-'}</strong></div>
-          <div class='info-row'><span>Email</span><strong>{customer_email or '-'}</strong></div>
-          <div class='info-row'><span>Address</span><strong>{customer_address or '-'}</strong></div>
-          <div class='info-row'><span>Customer ID</span><strong>{customer_id or '-'}</strong></div>
-        </div>
-        <div class='info-panel'>
-          <div class='panel-title'>DEVICE INFORMATION</div>
-          <div class='info-row'><span>Device Model</span><strong>{device_model or '-'}</strong></div>
-          <div class='info-row'><span>IMEI / Serial</span><strong>{imei_value or '-'}</strong></div>
-          <div class='info-row'><span>Repair Ticket</span><strong>{repair_ticket_no or '-'}</strong></div>
-          <div class='info-row'><span>Technician</span><strong>{technician or '-'}</strong></div>
-          <div class='info-row'><span>Issue</span><strong>{issue_description or '-'}</strong></div>
-        </div>
-      </div>
-      <div class='items-section'>
-        <table>
-          <thead><tr>{table_header}</tr></thead>
-          <tbody>
-            {''.join(line_rows) or f"<tr><td colspan='{col_count}'>No items found</td></tr>"}
-          </tbody>
-        </table>
-      </div>
-      <div class='summary-grid'>
-        <div class='warranty-panel'>
-          <div class='panel-title'>WARRANTY</div>
-          <div>{warranty_terms or 'Warranty terms not available.'}</div>
-        </div>
-        <div class='totals-panel'>
-          <table>
-            <tr><td>Subtotal</td><td class='right'>{_format_money(subtotal)}</td></tr>
-            <tr><td>Discount</td><td class='right'>{_format_money(discount_total)}</td></tr>
-            <tr><td>Tax Amount</td><td class='right'>{_format_money(tax_total)}</td></tr>
-            <tr><td>Repair Charges</td><td class='right'>{_format_money(repair_charges)}</td></tr>
-            <tr><td>Delivery Charges</td><td class='right'>{_format_money(delivery_charges)}</td></tr>
-            <tr class='total-row'><td>Grand Total</td><td class='right'>{_format_money(grand_total)}</td></tr>
-            <tr><td>Paid Amount</td><td class='right'>{_format_money(paid_total)}</td></tr>
-            <tr><td>Balance Due</td><td class='right'>{_format_money(balance_due)}</td></tr>
-          </table>
-        </div>
-      </div>
-      <div class='notes-grid'>
-        <div class='note-box'>
-          <div class='panel-title'>TERMS & CONDITIONS</div>
-          <p>{escape(str(footer_config.get('custom_footer_line_1') or footer_config.get('thank_you_text') or 'Goods once sold are not returnable/exchangeable except under statutory warranty.'))}</p>
-          <p>{escape(str(footer_config.get('custom_footer_line_2') or store.get('return_policy') or 'Repairs/deposits not collected within 30 days may be treated as abandoned.'))}</p>
-        </div>
-        <div class='note-box'>
-          <div class='panel-title'>LIABILITY & DATA DISCLAIMER</div>
-          <p>{escape(str(footer_config.get('return_policy_text') or 'The shop is not liable for pre-existing damage discovered during repair. Customers are responsible for backing up data; we are not liable for data loss. Warranty is void if device shows signs of tampering by third party.'))}</p>
-        </div>
-      </div>
-    </div>
-    """
+    business_address_html = f"<div>{shop_address}</div>" if business.get("show_address") and shop_address else ""
+    business_phone_html = f"<div>{shop_phone}</div>" if business.get("show_phone") and shop_phone else ""
+    business_email_html = f"<div>{shop_email}</div>" if business.get("show_email") and shop_email else ""
+    business_website_html = f"<div>{shop_website}</div>" if business.get("show_website") and shop_website else ""
+    
+    title_html = ""
+    if header_config.get("show_title"):
+        title_html = f"<div class='mt-3 text-center font-black' style='color: {header_config.get('title_color') or accent}; font-size: {header_config.get('title_size') or 18}px;'>{header_config.get('title_text') or 'INVOICE'}</div>"
 
-    styles = f"""
-      body {{ margin: 0; padding: 0; background: {bg}; color: {text_color}; font-family: {font_family}; font-size: {base_font_size}; }}
-      .invoice-root {{ max-width: {'80mm' if thermal else '980px'}; margin: 0 auto; padding: 24px; background: #fff; border-radius: 14px; box-shadow: 0 12px 30px rgba(0,0,0,0.08); }}
-      .top-section {{ display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 20px; }}
-      .company-block {{ width: 55%; }}
-      .company-logo {{ max-height: 72px; margin-bottom: 12px; object-fit: contain; }}
-      .company-logo-placeholder {{ width: 120px; height: 80px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; color: #777; font-size: 11px; margin-bottom: 12px; }}
-      .company-name {{ font-size: 24px; font-weight: 800; color: {accent}; margin-bottom: 6px; }}
-      .company-meta {{ color: #4b5563; font-size: 12px; line-height: 1.4; }}
-      .document-block {{ width: 40%; text-align: right; }}
-      .document-title {{ font-size: 18px; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 6px; }}
-      .document-subtitle {{ color: #6b7280; font-size: 12px; margin-bottom: 12px; }}
-      .document-box {{ border: 1px solid #d1d5db; padding: 12px; border-radius: 10px; background: #f8fafc; }}
-      .document-box div {{ margin-bottom: 6px; font-size: 12px; }}
-      .document-box span {{ color: #6b7280; }}
-      .customer-device-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 20px; }}
-      .info-panel {{ border: 1px solid #d1d5db; border-radius: 12px; padding: 16px; background: #f8fafc; }}
-      .panel-title {{ font-size: 13px; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 12px; color: {accent}; }}
-      .info-row {{ display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }}
-      .info-row:last-child {{ border-bottom: none; }}
-      .info-row span {{ color: #6b7280; }}
-      .info-row strong {{ color: #111827; }}
-      .items-section table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
-      .items-section th, .items-section td {{ padding: 12px 10px; border: 1px solid #d1d5db; font-size: 12px; }}
-      .items-section th {{ background: #f8fafc; text-align: left; }}
-      .items-section td.center {{ text-align: center; }}
-      .items-section td.right {{ text-align: right; }}
-      .summary-grid {{ display: grid; grid-template-columns: 1fr 320px; gap: 18px; margin-bottom: 20px; }}
-      .warranty-panel {{ border: 1px solid #d1d5db; border-radius: 12px; padding: 16px; background: #fbfbfb; }}
-      .totals-panel table {{ width: 100%; border-collapse: collapse; }}
-      .totals-panel td {{ padding: 10px 12px; font-size: 12px; border-bottom: 1px solid #e5e7eb; }}
-      .totals-panel .total-row td {{ font-weight: 800; font-size: 13px; border-top: 2px solid #d1d5db; }}
-      .totals-panel .right {{ text-align: right; }}
-      .notes-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }}
-      .note-box {{ border: 1px solid #d1d5db; border-radius: 12px; padding: 16px; background: #f8fafc; font-size: 11px; line-height: 1.5; color: #4b5563; }}
-      .note-box p {{ margin: 0 0 8px 0; }}
-      @media print {{ body {{ padding: 12px; }} .invoice-root {{ box-shadow: none; border: none; }} }}
-    """
+    invoice_no_html = f"<div>Invoice No: {invoice_number}</div>" if header_config.get("show_invoice_no") else ""
+    
+    date_part = created_at.split("T")[0] if "T" in created_at else created_at
+    time_part = created_at.split("T")[1][:5] if "T" in created_at else "-"
+    date_html = f"<div class='text-right'>Date: {date_part}</div>" if header_config.get("show_date") else ""
+    cashier_html = f"<div>Served By: {salesperson}</div>" if header_config.get("show_cashier") else ""
+    time_html = f"<div class='text-right'>Time: {time_part}</div>" if header_config.get("show_time") else ""
 
-    html = f"""<!doctype html>
+    bill_to_html = ""
+    if bill_to.get("show_section"):
+        b_name = f"<div>{customer_name}</div>" if bill_to.get("show_customer_name") else ""
+        b_phone = f"<div>{customer_phone}</div>" if bill_to.get("show_customer_phone") else ""
+        b_out = f"<div style='margin-top: 4px;'>{bill_to.get('outstanding_label') or 'Outstanding'}: LKR {_format_money(invoice.get('balance_due'))}</div>" if bill_to.get("show_outstanding") else ""
+        bill_to_html = f"<div class='mt-3' style='border: 1px solid {bill_to.get('border_color') or '#333355'}; background: {bill_to.get('background_color') or 'transparent'}; padding: 8px; border-radius: 4px;'><div class='font-bold' style='margin-bottom: 4px;'>{bill_to.get('section_label') or 'BILL TO'}</div>{b_name}{b_phone}{b_out}</div>"
+
+    subtotal_html = f"<div class='flex-row'><span>Sub Total</span><span>LKR {_format_money(invoice.get('subtotal'))}</span></div>" if totals_config.get("show_subtotal") else ""
+    discount_total_html = f"<div class='flex-row'><span>Discount</span><span>LKR {_format_money(invoice.get('discount_total'))}</span></div>" if totals_config.get("show_discount") else ""
+    tax_total_html = f"<div class='flex-row'><span>Tax</span><span>LKR {_format_money(invoice.get('tax_total'))}</span></div>" if totals_config.get("show_tax") else ""
+    total_html = f"<div class='flex-row font-black' style='background: {totals_config.get('total_bg') or '#1a1d2e'}; color: {totals_config.get('total_color') or accent}; padding: 4px 8px; border-radius: 4px; margin-top: 4px;'><span>TOTAL</span><span>LKR {_format_money(invoice.get('grand_total'))}</span></div>" if totals_config.get("show_total") else ""
+    
+    thank_you_html = f"<div class='mt-3 text-center' style='color: {footer_config.get('thank_you_color') or '#888'}; font-size: 0.9em;'>{footer_config.get('thank_you_text') or ''}</div>" if footer_config.get("show_thank_you") else ""
+    
+    # We use double curly braces {{ }} for CSS to escape them in the Python f-string
+    html_output = f"""<!doctype html>
 <html>
 <head>
-  <meta charset=\"utf-8\" />
-  <title>{invoice_number or 'Invoice'}</title>
-  <style>{styles}</style>
+  <meta charset="utf-8" />
+  <title>{invoice_number}</title>
+  <style>
+    body {{
+      margin: 0;
+      padding: {padding};
+      background: #f1f5f9;
+    }}
+    .invoice-container {{
+      max-width: {max_width};
+      margin: 0 auto;
+      background: {bg};
+      color: {text_color};
+      font-family: '{font_family}', sans-serif;
+      font-size: {base_font_size};
+      padding: 20px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      box-sizing: border-box;
+    }}
+    .flex-between {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }}
+    .logo-box {{ margin-bottom: 8px; max-height: 40px; max-width: 100px; object-fit: contain; }}
+    .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
+    .text-right {{ text-align: right; }}
+    .text-center {{ text-align: center; }}
+    .font-black {{ font-weight: 900; }}
+    .font-bold {{ font-weight: 700; }}
+    .mt-3 {{ margin-top: 12px; }}
+    table {{ width: 100%; border-collapse: collapse; border-spacing: 0; }}
+    .totals-box {{ margin-left: auto; width: 56%; margin-top: 12px; font-size: 0.95em; }}
+    .flex-row {{ display: flex; justify-content: space-between; margin-bottom: 4px; }}
+  </style>
 </head>
-<body>{body}</body>
-</html>"""
-    return html
+<body>
+  <!-- selected_template:{settings.get('_template_id_tracker_') or 'system_default'} render_source:customizer mode:{'preview' if not str(invoice.get('id', '')).isdigit() else 'production'} -->
+  <div class="invoice-container">
+    
+    <div class="flex-between">
+      <div>
+        {logo_html}
+        {shop_name_html}
+        {tagline_html}
+      </div>
+      <div class="text-right" style="font-size: 0.9em; color: {business.get('color') or '#666'}; line-height: 1.4;">
+        {business_address_html}
+        {business_phone_html}
+        {business_email_html}
+        {business_website_html}
+      </div>
+    </div>
 
+    {title_html}
+
+    <div class="mt-3 grid-2" style="font-size: 0.95em;">
+      {invoice_no_html}
+      {date_html}
+      {cashier_html}
+      {time_html}
+    </div>
+
+    {bill_to_html}
+
+    <div class="mt-3" style="border: 1px solid {items_config.get('border_color') or '#2a2d4a'}; border-radius: 4px; overflow: hidden;">
+      <table style="color: {items_config.get('row_text') or '#e0e0e0'};">
+        <thead>
+          <tr>{th_html}</tr>
+        </thead>
+        <tbody>
+          {''.join(line_rows)}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="totals-box">
+      {subtotal_html}
+      {discount_total_html}
+      {tax_total_html}
+      {total_html}
+    </div>
+
+    {thank_you_html}
+
+  </div>
+</body>
+</html>"""
+    return html_output
 
 def render_invoice_html_from_store(
   invoice: dict,

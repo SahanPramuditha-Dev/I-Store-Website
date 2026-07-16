@@ -13,6 +13,7 @@ from app.database import SessionLocal, get_db
 from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import text
 from sqlalchemy import inspect as sa_inspect
 from app.database import Base, engine
@@ -648,11 +649,11 @@ async def request_monitor_middleware(request: Request, call_next):
         response = await call_next(request)
         elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
         _safe_request_log(f"<-- [RES] {request.method} {request.url.path} - {response.status_code} ({elapsed_ms}ms)")
-        _write_module_audit_log(request, response.status_code, elapsed_ms)
+        await run_in_threadpool(_write_module_audit_log, request, response.status_code, elapsed_ms)
         return response
     except Exception as e:
         elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-        _write_module_audit_log(request, 500, elapsed_ms)
+        await run_in_threadpool(_write_module_audit_log, request, 500, elapsed_ms)
         _safe_request_log(f"!!! [ERR] {request.method} {request.url.path} - {str(e)}")
         raise
 

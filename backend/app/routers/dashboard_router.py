@@ -58,6 +58,16 @@ def dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
     # Monthly Revenue (Last 7 months)
     import calendar
+    
+    six_months_ago = now - timedelta(days=6*30)
+    start_of_period = six_months_ago.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    sales_data = (
+        db.query(Sale.created_at, Sale.total)
+        .filter(*valid_sales_filter, Sale.created_at >= start_of_period)
+        .all()
+    )
+
     monthly_rev = []
     for i in range(6, -1, -1):
         target_date = now - timedelta(days=i*30)
@@ -68,12 +78,7 @@ def dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
             m_end = m_start.replace(month=m_start.month+1)
         
         m_label = m_start.strftime("%b")
-        val = (
-            db.query(func.coalesce(func.sum(Sale.total), 0))
-            .filter(*valid_sales_filter, Sale.created_at >= m_start, Sale.created_at < m_end)
-            .scalar()
-            or 0
-        )
+        val = sum(s.total for s in sales_data if m_start <= s.created_at < m_end and s.total)
         monthly_rev.append({"name": m_label, "value": val})
 
     product_revenue = (
