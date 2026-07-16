@@ -1,7 +1,7 @@
 import React from "react";
 import { PrintContainer } from "./PrintContainer";
 
-export function PrintLabel({ settings, storeProfile }) {
+export function PrintLabel({ product: propProduct, settings, storeProfile }) {
   const isCustom = settings?.layout?.label_type === "custom";
   
   // Parse preset format like "50x30" or use custom dimensions
@@ -22,8 +22,8 @@ export function PrintLabel({ settings, storeProfile }) {
   // Ensure default margins are tight for labels (usually 1-2mm)
   const marginMm = settings?.print?.margin_mm || 2;
 
-  // Mock product data
-  const product = {
+  // Mock product data fallback
+  const product = propProduct || {
     name: "iPhone 13 Pro Silicone Case",
     price: 4500,
     barcode: "890123456789",
