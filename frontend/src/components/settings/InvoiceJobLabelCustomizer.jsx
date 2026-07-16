@@ -4,6 +4,8 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { ModernRetailInvoice } from "../print/ModernRetailInvoice";
 import { PremiumBusinessInvoice } from "../print/PremiumBusinessInvoice";
 import { DynamicInvoice } from "../print/DynamicInvoice";
+import { PrintJobCard } from "../print/PrintJobCard";
+import { PrintLabel } from "../print/PrintLabel";
 
 import {
   Copy,
@@ -1657,8 +1659,8 @@ export default function InvoiceJobLabelCustomizer({
                                         {documentId === "sales_bill" && settings?.layout?.preset_type === "dynamic" && <DynamicInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "sales_bill" && settings?.layout?.preset_type === "modern" && <ModernRetailInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "sales_bill" && settings?.layout?.preset_type === "premium" && <PremiumBusinessInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
-                    {documentId === "job_card" && <PreviewJobCard settings={settings} previewMode={customizer.ui.preview_mode} />}
-                    {documentId === "labels" && <PreviewLabel settings={settings} previewMode={customizer.ui.preview_mode} />}
+                    {documentId === "job_card" && <PrintJobCard settings={settings} storeProfile={storeProfile} />}
+                    {documentId === "labels" && <PrintLabel settings={settings} storeProfile={storeProfile} />}
                           </div>
                         </TransformComponent>
                       </React.Fragment>

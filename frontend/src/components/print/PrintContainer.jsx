@@ -4,10 +4,17 @@ import React from "react";
  * PrintContainer creates an exact-dimension preview box.
  * Automatically scales or hides borders when rendering vs printing.
  */
-export function PrintContainer({ children, format = "a4", margin = "12mm", className = "" }) {
+export function PrintContainer({ children, format = "a4", margin = "12mm", widthMm, heightMm, className = "", style = {} }) {
   const isThermal = format === "80mm";
-  const maxWidth = isThermal ? "80mm" : "210mm";
-  const minHeight = isThermal ? "auto" : "297mm";
+  const isLabel = format === "label";
+  
+  let maxWidth = isThermal ? "80mm" : "210mm";
+  let minHeight = isThermal ? "auto" : "297mm";
+  
+  if (isLabel) {
+    maxWidth = `${widthMm}mm`;
+    minHeight = `${heightMm}mm`;
+  }
 
   return (
     <div
@@ -20,6 +27,7 @@ export function PrintContainer({ children, format = "a4", margin = "12mm", class
         boxSizing: "border-box",
         fontFamily: "var(--print-font-family, 'Inter', sans-serif)",
         color: "var(--print-text-color, #111827)",
+        ...style
       }}
     >
       {children}
