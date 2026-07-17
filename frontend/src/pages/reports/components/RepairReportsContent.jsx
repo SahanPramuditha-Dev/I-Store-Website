@@ -38,7 +38,8 @@ const TAB_KEYS = [
   { key: "profit", label: "Profitability per Job" },
   { key: "advanced", label: "Advanced Reports" },
 ];
-const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+const API_BASE = import.meta.env.VITE_API_URL || (isLocalhost ? "http://127.0.0.1:8000" : "https://i-store-website-by6z.vercel.app");
 
 function money(value) {
   return `LKR ${Math.round(Number(value || 0)).toLocaleString(MONEY_LOCALE)}`;
