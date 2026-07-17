@@ -4,8 +4,11 @@ import { clearAuthState, getAuthValue } from "./rbac";
 const REQUEST_TIMEOUT_MS = 15000;
 const MAX_GET_RETRIES = 2;
 
+const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+const defaultBaseUrl = import.meta.env.VITE_API_URL || (isLocalhost ? "http://127.0.0.1:8000" : "https://i-store-website-by6z.vercel.app");
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000",
+  baseURL: defaultBaseUrl,
   timeout: REQUEST_TIMEOUT_MS,
 });
 

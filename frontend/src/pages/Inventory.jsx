@@ -468,7 +468,7 @@ export default function Inventory() {
   const getImageUrl = (value) => {
     if (!value) return "";
     if (String(value).startsWith("http://") || String(value).startsWith("https://")) return value;
-    return `http://127.0.0.1:8000${value}`;
+    return `${import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://i-store-website-by6z.vercel.app" : "http://127.0.0.1:8000")}${value}`;
   };
 
   const uploadImage = async (file) => {
@@ -840,7 +840,7 @@ function InventoryTable({ rows, suppliers, getProductType, getItemThreshold, get
   const getImageUrl = (value) => {
     if (!value) return "";
     if (String(value).startsWith("http://") || String(value).startsWith("https://")) return value;
-    return `http://127.0.0.1:8000${value}`;
+    return `${import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://i-store-website-by6z.vercel.app" : "http://127.0.0.1:8000")}${value}`;
   };
 
   useEffect(() => {
@@ -1057,7 +1057,7 @@ function InventoryGrid({ rows, getStockStatus, onView, onAdjust, onPrint }) {
   const getImageUrl = (value) => {
     if (!value) return "";
     if (String(value).startsWith("http://") || String(value).startsWith("https://")) return value;
-    return `http://127.0.0.1:8000${value}`;
+    return `${import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://i-store-website-by6z.vercel.app" : "http://127.0.0.1:8000")}${value}`;
   };
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
