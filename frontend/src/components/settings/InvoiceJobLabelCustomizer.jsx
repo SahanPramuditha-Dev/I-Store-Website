@@ -6,6 +6,7 @@ import { PremiumBusinessInvoice } from "../print/PremiumBusinessInvoice";
 import { DynamicInvoice } from "../print/DynamicInvoice";
 import { PrintJobCard } from "../print/PrintJobCard";
 import { PrintLabel } from "../print/PrintLabel";
+import { BoxedDetailedInvoice } from "../print/BoxedDetailedInvoice";
 
 import {
   Copy,
@@ -496,12 +497,14 @@ function defaultLabelSettings(format = "50x30") {
 
 function buildDefaultTemplates() {
   return [
-    { id: "sales_a4_default", name: "Default", document: "sales_bill", format: "a4", deployed: true, settings: defaultSalesSettings("a4") },
+    { id: "sales_a4_default", name: "Default", document: "sales_bill", format: "a4", deployed: false, settings: defaultSalesSettings("a4") },
+    { id: "sales_a4_boxed", name: "Boxed Detailed", document: "sales_bill", format: "a4", deployed: true, settings: { ...defaultSalesSettings("a4"), layout: { preset_type: "boxed" } } },
     { id: "sales_a5_formal", name: "Formal A5", document: "sales_bill", format: "a5", deployed: false, settings: defaultSalesSettings("a5") },
     { id: "sales_80_minimal", name: "Minimal Thermal 80mm", document: "sales_bill", format: "80mm", deployed: false, settings: defaultSalesSettings("80mm") },
     { id: "sales_58_compact", name: "Compact 58mm", document: "sales_bill", format: "58mm", deployed: false, settings: defaultSalesSettings("58mm") },
 
-    { id: "job_a4_default", name: "Default", document: "job_card", format: "a4", deployed: true, settings: defaultJobSettings("a4") },
+    { id: "job_a4_default", name: "Default", document: "job_card", format: "a4", deployed: false, settings: defaultJobSettings("a4") },
+    { id: "job_a4_boxed", name: "Boxed Detailed", document: "job_card", format: "a4", deployed: true, settings: { ...defaultJobSettings("a4"), layout: { preset_type: "boxed" } } },
     { id: "job_a5_counter", name: "Counter A5", document: "job_card", format: "a5", deployed: false, settings: defaultJobSettings("a5") },
     { id: "job_thermal_sticker", name: "Thermal Sticker", document: "job_card", format: "thermal", deployed: false, settings: defaultJobSettings("thermal") },
 
@@ -1658,8 +1661,10 @@ export default function InvoiceJobLabelCustomizer({
                                         {documentId === "sales_bill" && (!settings?.layout?.preset_type || settings?.layout?.preset_type === "legacy") && <PreviewSalesBill settings={settings} previewMode={customizer.ui.preview_mode} storeProfile={storeProfile} />}
                                         {documentId === "sales_bill" && settings?.layout?.preset_type === "dynamic" && <DynamicInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
                     {documentId === "sales_bill" && settings?.layout?.preset_type === "modern" && <ModernRetailInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
-                    {documentId === "sales_bill" && settings?.layout?.preset_type === "premium" && <PremiumBusinessInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
-                    {documentId === "job_card" && <PrintJobCard settings={settings} storeProfile={storeProfile} />}
+                    {documentId === "sales_bill" && settings?.layout?.preset_type === "boxed" && <BoxedDetailedInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
+                  {documentId === "sales_bill" && settings?.layout?.preset_type === "premium" && <PremiumBusinessInvoice settings={settings} storeProfile={storeProfile} invoice={{ invoice_number: "INV-12345", customer_name: "Sarah Johnson", customer_phone: "+94 77 123 4567", balance_due: 0, subtotal: 8000, discount_total: 500, tax_total: 1215, grand_total: 8715, created_at: "2026-07-16T15:25:00Z", lines: [{ description: "Smartphone Stand", qty: 2, unit_price: 2500, line_total: 5000 }, { description: "Screen Protector", qty: 1, unit_price: 3000, line_total: 3000 }] }} />}
+                    {documentId === "job_card" && settings?.layout?.preset_type === "boxed" && <BoxedDetailedInvoice settings={settings} storeProfile={storeProfile} invoice={{ repair_details: { brand: "Apple", model: "iPhone 13", imei: "354123456789012", condition: "Fair", accessories: "Charger", reported_issue: "Screen cracked", technician_notes: "Needs new digitizer" } }} />}
+                  {documentId === "job_card" && settings?.layout?.preset_type !== "boxed" && <PrintJobCard settings={settings} storeProfile={storeProfile} />}
                     {documentId === "labels" && <PrintLabel settings={settings} storeProfile={storeProfile} />}
                           </div>
                         </TransformComponent>

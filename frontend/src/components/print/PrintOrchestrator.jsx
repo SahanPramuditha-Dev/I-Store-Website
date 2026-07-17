@@ -6,6 +6,7 @@ import { DynamicInvoice } from "./DynamicInvoice";
 import { PrintJobCard } from "./PrintJobCard";
 import { PrintLabel } from "./PrintLabel";
 import { GenericPrintDocument } from "./GenericPrintDocument";
+import { BoxedDetailedInvoice } from "./BoxedDetailedInvoice";
 
 // A fallback legacy view if no modern template matches
 function LegacyFallback({ html }) {
@@ -97,10 +98,12 @@ export function PrintOrchestrator({ documentId, referenceId, format, templateId,
   if (docType === "sales_bill") {
     if (preset === "dynamic") return <DynamicInvoice invoice={data} storeProfile={storeProfile} settings={settings} />;
     if (preset === "premium") return <PremiumBusinessInvoice invoice={data} storeProfile={storeProfile} settings={settings} />;
+    if (preset === "boxed") return <BoxedDetailedInvoice invoice={data} storeProfile={storeProfile} settings={settings} />;
     return <ModernRetailInvoice invoice={data} storeProfile={storeProfile} settings={settings} />;
   }
   
   if (docType === "repair_job_card" || docType === "job_card") {
+    if (preset === "boxed") return <BoxedDetailedInvoice invoice={{ ...data, repair_details: data }} storeProfile={storeProfile} settings={settings} />;
     return <PrintJobCard jobCard={data} storeProfile={storeProfile} settings={settings} />;
   }
   
