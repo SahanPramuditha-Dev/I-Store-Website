@@ -47,6 +47,7 @@ export default function POS() {
   const [taxAmount, setTaxAmount] = useState(0);
   
   const [paid, setPaid] = useState(true);
+  const [autoPrint, setAutoPrint] = useState(() => localStorage.getItem("pos_auto_print") === "true");
   const [cashReceived, setCashReceived] = useState("");
   const [cardAmount, setCardAmount] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
@@ -519,6 +520,11 @@ export default function POS() {
     localStorage.setItem("pos_suspended_carts", JSON.stringify(suspendedCarts));
   }, [suspendedCarts]);
 
+  useEffect(() => {
+    localStorage.setItem("pos_auto_print", autoPrint);
+  }, [autoPrint]);
+
+
   // Auto-save draft every 3 seconds
   useEffect(() => {
     if (!cart.length) return;
@@ -916,6 +922,7 @@ export default function POS() {
       const { data: r } = await api.post(endpoint, payload);
       setLastSale(r);
       toast("Sale completed successfully", "success");
+      if (autoPrint) { directPrintReceipt(r); }
       clearCart();
       setSelectedAdvanceMap({});
       setAvailableAdvances([]);
