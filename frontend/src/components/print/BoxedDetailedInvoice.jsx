@@ -193,10 +193,10 @@ export function BoxedDetailedInvoice({ invoice, storeProfile, settings }) {
               Warranty
             </div>
             <div className="p-2">
-              <Field label="Warranty Period" value="30 Days" />
-              <Field label="Repair Warranty" value="Parts Only" />
+              <Field label="Warranty Period" value={settings?.terms?.warranty_period || "30 Days"} />
+              <Field label="Repair Warranty" value={settings?.terms?.repair_warranty || "Parts Only"} />
               <p className="mt-2 text-[9px] leading-tight text-slate-700">
-                Warranty does not cover physical damage, liquid damage, or damage occurring after the device leaves our premises. Software issues are covered for 7 days from delivery.
+                {settings?.terms?.warranty_text || "Warranty does not cover physical damage, liquid damage, or damage occurring after the device leaves our premises. Software issues are covered for 7 days from delivery."}
               </p>
             </div>
           </div>
@@ -231,19 +231,15 @@ export function BoxedDetailedInvoice({ invoice, storeProfile, settings }) {
         <div className="grid grid-cols-2 gap-4 mt-auto">
           <div className="border border-black text-[8px] leading-tight p-2">
             <div className="font-bold uppercase mb-1 border-b border-slate-300 pb-1">Terms & Conditions</div>
-            <ul className="list-disc pl-3 space-y-0.5">
-              <li>Goods once sold are not returnable/exchangeable except under statutory warranty.</li>
-              <li>Repaired devices not collected within 30 days may be treated as abandoned.</li>
-              <li>All disputes are subject to local jurisdiction only.</li>
-            </ul>
+            <div className="whitespace-pre-wrap font-mono">
+              {settings?.terms?.terms_text || "Goods once sold are not returnable/exchangeable except under statutory warranty.\nRepaired devices not collected within 30 days may be treated as abandoned.\nAll disputes are subject to local jurisdiction only."}
+            </div>
           </div>
           <div className="border border-black text-[8px] leading-tight p-2">
             <div className="font-bold uppercase mb-1 border-b border-slate-300 pb-1">Liability & Data Disclaimer</div>
-            <ul className="list-disc pl-3 space-y-0.5">
-              <li>The shop is not liable for pre-existing damage discovered during repair.</li>
-              <li>Customers are responsible for backing up data; we are not liable for data loss during servicing.</li>
-              <li>Warranty is void if the device shows signs of tampering by a third party.</li>
-            </ul>
+            <div className="whitespace-pre-wrap font-mono">
+              {settings?.terms?.liability_text || "The shop is not liable for pre-existing damage discovered during repair.\nCustomers are responsible for backing up data; we are not liable for data loss during servicing.\nWarranty is void if the device shows signs of tampering by a third party."}
+            </div>
           </div>
         </div>
 
