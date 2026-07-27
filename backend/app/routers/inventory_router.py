@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 from app.database import get_db
 from app.auth import get_current_user, require_permission
 from sqlalchemy import func, or_
+from app.services.storage import get_storage_service, validate_file, STORAGE_PREFIX_PRODUCTS
 from app.models import (
     ActivityLog,
     InventoryItem,
@@ -117,19 +118,30 @@ def _margin_pct(sale_price: float | int | None, cost_price: float | int | None) 
 
 
 @router.post("/upload-image", dependencies=[Depends(require_permission("inventory.edit_product"))])
-def upload_inventory_image(file: UploadFile = File(...), _=Depends(get_current_user)):
-    allowed = {".png", ".jpg", ".jpeg", ".webp"}
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in allowed:
-        raise HTTPException(status_code=400, detail="Only PNG/JPG/JPEG/WEBP files are allowed")
-
-    filename = f"{uuid4().hex}{ext}"
-    target = UPLOAD_DIR / filename
-    data = file.file.read()
-    if len(data) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Max image size is 5MB")
-    target.write_bytes(data)
-    return {"url": f"/uploads/inventory/{filename}"}
+async def upload_inventory_image(file: UploadFile = File(...), _=Depends(get_current_user)):
+    ok, info = validate_file(
+        file,
+        max_size_bytes=5 * 1024 * 1024,
+        allowed_ext={"png", "jpg", "jpeg", "webp"},
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=info)
+    try:
+        stored = await get_storage_service().upload_file(
+            file=file,
+            prefix=STORAGE_PREFIX_PRODUCTS,
+            optimize_images=True,
+            max_size_bytes=5 * 1024 * 1024,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "url": stored.url,
+        "storage_key": stored.storage_key,
+        "backend": stored.storage_backend,
+        "size_bytes": stored.size_bytes,
+        "content_type": stored.content_type,
+    }
 
 @router.get('', dependencies=[Depends(require_permission("inventory.view"))])
 def list_inventory(

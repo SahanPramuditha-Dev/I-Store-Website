@@ -91,6 +91,12 @@ class Settings(BaseModel):
     seed_demo_data: bool = os.getenv("SEED_DEMO_DATA", "false").lower() == "true"
     test_owner_bootstrap_password: str = os.getenv("TEST_OWNER_BOOTSTRAP_PASSWORD", "")
     test_admin_bootstrap_password: str = os.getenv("TEST_ADMIN_BOOTSTRAP_PASSWORD", "")
+    # Cloudflare R2 (S3-compatible) storage — all 4 vars must be set to enable R2.
+    r2_access_key: str = os.getenv("R2_ACCESS_KEY", "").strip()
+    r2_secret_key: str = os.getenv("R2_SECRET_KEY", "").strip()
+    r2_bucket: str = os.getenv("R2_BUCKET", "").strip()
+    r2_endpoint: str = os.getenv("R2_ENDPOINT", "").strip()
+    r2_public_base_url: str = os.getenv("R2_PUBLIC_BASE_URL", "").strip()
 
     @property
     def is_production(self) -> bool:

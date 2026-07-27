@@ -1,7 +1,17 @@
+import os
+from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy import event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
+
+UPLOADS_DIR = Path(__file__).resolve().parents[1] / "uploads"
+if os.getenv("VERCEL"):
+    UPLOADS_DIR = Path("/tmp/uploads")
+try:
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 db_url = settings.sqlite_url
 is_sqlite = db_url.startswith("sqlite")
