@@ -170,13 +170,7 @@ async def app_lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="i Store API", lifespan=app_lifespan)
-UPLOADS_DIR = Path(__file__).resolve().parents[1] / "uploads"
-if os.getenv("VERCEL"):
-    UPLOADS_DIR = Path("/tmp/uploads")
-try:
-    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-except Exception:
-    pass
+from app.database import UPLOADS_DIR  # noqa: E402 - centralized path
 FAVICON_PATH = Path(__file__).resolve().parents[2] / "frontend" / "public" / "favicon.ico"
 DEV_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1):\d+$" if settings.env.lower() != "production" else None
 
@@ -607,21 +601,31 @@ def _write_module_audit_log(request: Request, status_code: int, elapsed_ms: floa
     action = getattr(request.state, "audit_action", None)
     if not module or not action:
         return
+    method = str(request.method or "").upper()
+    path = str(request.url.path or "")
+    status = int(status_code)
+    is_successful_read = (
+        (method in {"GET", "HEAD"})
+        and (200 <= status < 400)
+        and not path.startswith("/auth/")
+    )
+    if is_successful_read:
+        return
     user_id = (
         getattr(request.state, "audit_user_id", None)
         or getattr(request.state, "current_user_id", None)
         or _safe_user_id(getattr(request.state, "current_user", None))
     )
-    target_ref = request.url.path
+    target_ref = path
     if request.url.query:
         target_ref = f"{target_ref}?{request.url.query[:250]}"
-    result = "success" if 200 <= int(status_code) < 400 else "failed"
-    detail = f"{request.method} {request.url.path} -> {status_code}"
+    result = "success" if 200 <= status < 400 else "failed"
+    detail = f"{method} {path} -> {status}"
     metadata = {
-        "method": request.method,
-        "path": request.url.path,
+        "method": method,
+        "path": path,
         "query": request.url.query or None,
-        "status_code": int(status_code),
+        "status_code": status,
         "elapsed_ms": float(elapsed_ms),
     }
     try:

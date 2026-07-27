@@ -19,6 +19,7 @@ electron/dist/
 *.db-wal
 database/
 backups/
+backup/
 backend/backups/
 backend/audit_tmp/
 logs/

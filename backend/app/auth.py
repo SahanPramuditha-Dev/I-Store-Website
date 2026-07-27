@@ -94,8 +94,10 @@ def get_current_user(
             db.commit()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session timed out")
 
-        session.last_seen_at = now
-        db.commit()
+        LAST_SEEN_DEBOUNCE_SECONDS = 120
+        if (session.last_seen_at is None) or (now - session.last_seen_at) >= timedelta(seconds=LAST_SEEN_DEBOUNCE_SECONDS):
+            session.last_seen_at = now
+            db.commit()
         request.state.auth_session = session
 
     request.state.current_user = user
