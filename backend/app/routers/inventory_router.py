@@ -166,10 +166,13 @@ def list_inventory(
             | InventoryItem.brand.ilike(like)
             | InventoryItem.model.ilike(like)
         )
-    if category:
+    if category and not hasattr(category, 'default'):
         query = query.filter(InventoryItem.category == category)
-    if supplier_id:
-        query = query.filter(InventoryItem.supplier_id == int(supplier_id))
+    if supplier_id is not None and not hasattr(supplier_id, 'default'):
+        try:
+            query = query.filter(InventoryItem.supplier_id == int(supplier_id))
+        except (ValueError, TypeError):
+            pass
     total = query.count()
     response.headers["X-Total-Count"] = str(total)
     resolved_offset = int(offset) if offset is not None else (page - 1) * page_size

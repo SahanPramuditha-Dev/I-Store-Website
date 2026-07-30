@@ -258,7 +258,11 @@ def render_print_center_document(
 
     # Real mode: load actual data from database
     if doc_key in {"invoice", "sales_receipt"}:
-        sale = db.query(Sale).filter(Sale.id == _numeric_reference(token, "Invoice ID")).first()
+        sale = None
+        if token.isdigit():
+            sale = db.query(Sale).filter(Sale.id == int(token)).first()
+        if not sale:
+            sale = db.query(Sale).filter(Sale.invoice_no == token).first()
         if not sale:
             raise HTTPException(status_code=404, detail="Invoice not found")
         invoice = _invoice_detail(db, sale)
@@ -273,7 +277,11 @@ def render_print_center_document(
         return HTMLResponse(render_advance_receipt_html(receipt, store, thermal=thermal))
 
     if doc_key in {"repair_job_card", "repair_delivery_receipt"}:
-        repair = db.query(RepairTicket).options(joinedload(RepairTicket.customer)).filter(RepairTicket.id == _numeric_reference(token, "Repair ID")).first()
+        repair = None
+        if token.isdigit():
+            repair = db.query(RepairTicket).options(joinedload(RepairTicket.customer)).filter(RepairTicket.id == int(token)).first()
+        if not repair:
+            repair = db.query(RepairTicket).options(joinedload(RepairTicket.customer)).filter(RepairTicket.ticket_no == token).first()
         if not repair:
             raise HTTPException(status_code=404, detail="Repair ticket not found")
         title = "Repair Delivery Receipt" if doc_key == "repair_delivery_receipt" else "Repair Job Card"

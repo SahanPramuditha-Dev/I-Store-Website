@@ -129,8 +129,9 @@ def list_customers(
             | Customer.address.ilike(text)
         )
     total = query.count()
-    response.headers["X-Total-Count"] = str(total)
-    rows = query.order_by(Customer.created_at.desc(), Customer.id.desc()).offset(offset).limit(limit).all()
+    resolved_offset = int(offset) if (offset is not None and not hasattr(offset, 'default')) else 0
+    resolved_limit = int(limit) if (limit is not None and not hasattr(limit, 'default')) else 1000
+    rows = query.order_by(Customer.created_at.desc(), Customer.id.desc()).offset(resolved_offset).limit(resolved_limit).all()
     customer_ids = [int(row.id) for row in rows]
     warranty_count_map: dict[int, int] = {}
     if customer_ids:

@@ -90,8 +90,11 @@ export default function Inventory() {
     })
   );
 
-  const suppliersQuery = useCachedQuery("suppliers", () => apiService.inventory.getSuppliers().then(res => res.data));
-  const movementQuery = useCachedQuery("movements", () => apiService.inventory.getMovements().then(res => res.data));
+const fetchSuppliersList = () => apiService.inventory.getSuppliers().then((res) => res.data);
+const fetchMovementsList = () => apiService.inventory.getMovements().then((res) => res.data);
+
+  const suppliersQuery = useCachedQuery("suppliers", fetchSuppliersList);
+  const movementQuery = useCachedQuery("movements", fetchMovementsList);
 
   const suppliers = suppliersQuery.data || [];
   const movements = movementQuery.data || [];

@@ -87,13 +87,18 @@ DEFAULT_VISIBLE_COLUMNS.advance_payment = false;
 DEFAULT_VISIBLE_COLUMNS.balance = false;
 DEFAULT_VISIBLE_COLUMNS.parts = false;
 
+const fetchRepairsList = () => apiService.repairs.list({ pageSize: 1000 });
+const fetchCustomersList = () => apiService.customers.list({ pageSize: 1000 }).then(res => res.items);
+const fetchInventoryList = () => apiService.inventory.list({ pageSize: 1000 }).then(res => res.items);
+const fetchStaffList = () => apiService.staff.list().then(res => res.data);
+
 export default function Repairs() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast, confirm, prompt } = useFeedback();
   const { data: repairsData, loading, error, refetch, setData: setCacheData } = useCachedQuery(
     "repairs",
-    () => apiService.repairs.list({ pageSize: 1000 })
+    fetchRepairsList
   );
   const data = repairsData?.items || [];
   const refreshRepairs = refetch;
@@ -110,7 +115,7 @@ export default function Repairs() {
     });
   };
 
-  const customersQuery = useCachedQuery("customers", () => apiService.customers.list({ pageSize: 1000 }).then(res => res.items));
+  const customersQuery = useCachedQuery("customers", fetchCustomersList);
   const customers = customersQuery.data || [];
   const customersFetch = {
     data: customers,
@@ -139,7 +144,7 @@ export default function Repairs() {
   const [timeline, setTimeline] = useState([]);
   const [parts, setParts] = useState([]);
   const [repairAdvances, setRepairAdvances] = useState([]);
-  const inventoryQuery = useCachedQuery("inventory_minimal", () => apiService.inventory.list({ pageSize: 1000 }).then(res => res.items));
+  const inventoryQuery = useCachedQuery("inventory_minimal", fetchInventoryList);
   const inventory = inventoryQuery.data || [];
   const inventoryFetch = {
     data: inventory,
@@ -434,7 +439,7 @@ export default function Repairs() {
     }
   };
 
-  const staffQuery = useCachedQuery("staff", () => apiService.staff.list().then(res => res.data));
+  const staffQuery = useCachedQuery("staff", fetchStaffList);
   const technicians = staffQuery.data || [];
   const techniciansFetch = {
     data: technicians

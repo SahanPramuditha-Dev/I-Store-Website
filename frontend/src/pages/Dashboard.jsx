@@ -25,6 +25,7 @@ import {
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
+import { useSyncStatus } from "../hooks/useSyncStatus";
 import { X } from "lucide-react";
 
 function pctChange(curr, prev) {
@@ -106,11 +107,37 @@ export default function Dashboard() {
 
   const totalSales = salesData.reduce((a, b) => a + (b.value || 0), 0);
 
+  const { pendingCount, isOnline } = useSyncStatus();
+
   const health = [
-    { label: "Database Connected", tone: "green", icon: <Database size={13} />, meta: "Live", accent: "text-emerald-300" },
-    { label: "Backup Enabled", tone: "sky", icon: <HardDriveDownload size={13} />, meta: "02:00 AM", accent: "text-cyan-300" },
-    { label: "Offline Ready", tone: "indigo", icon: <WifiOff size={13} />, meta: "Queue 0", accent: "text-indigo-300" },
-    { label: "API Healthy", tone: "amber", icon: <Server size={13} />, meta: "<120ms", accent: "text-amber-300" },
+    {
+      label: "Database Connected",
+      tone: isOnline ? "green" : "rose",
+      icon: <Database size={13} />,
+      meta: isOnline ? "Live" : "Offline Mode",
+      accent: isOnline ? "text-emerald-300" : "text-rose-300",
+    },
+    {
+      label: "Backup Enabled",
+      tone: "sky",
+      icon: <HardDriveDownload size={13} />,
+      meta: "23:59 UTC",
+      accent: "text-cyan-300",
+    },
+    {
+      label: "Offline Ready",
+      tone: pendingCount > 0 ? "amber" : "indigo",
+      icon: <WifiOff size={13} />,
+      meta: `Queue ${pendingCount}`,
+      accent: pendingCount > 0 ? "text-amber-300" : "text-indigo-300",
+    },
+    {
+      label: "API Healthy",
+      tone: isOnline ? "amber" : "rose",
+      icon: <Server size={13} />,
+      meta: isOnline ? "<50ms" : "Offline",
+      accent: isOnline ? "text-amber-300" : "text-rose-300",
+    },
   ];
 
   const quickActions = useMemo(() => {

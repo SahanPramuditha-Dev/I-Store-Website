@@ -1,0 +1,59 @@
+{
+  "name": "istore-electron",
+  "version": "1.0.0",
+  "description": "I-Store ERP – Electron Desktop Host (Offline Engine)",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development node node_modules/electron/dist/electron.exe .",
+    "start": "electron .",
+    "package": "electron-builder --dir",
+    "dist": "electron-builder",
+    "setup:electron": "node scripts/extract-electron.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "cross-env": "^7.0.3",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.istore.erp",
+    "productName": "I-Store ERP",
+    "directories": {
+      "output": "../dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "local-db.js",
+      "sync-bridge.js",
+      "node_modules/**/*",
+      "../frontend/dist/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "../assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "../assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "../assets/icon.png"
+    },
+    "extraMetadata": {
+      "main": "main.js"
+    },
+    "nativeRebuilder": "sequential"
+  },
+  "comments": {
+    "storage": "sql.js uses pure WebAssembly SQLite - no native compilation required. Works on all Node/Electron versions.",
+    "encryption": "File-level encryption can be layered using OS-level encryption (BitLocker/FileVault) or by AES-encrypting the exported DB buffer before writing to disk.",
+    "install": "Run 'npm install' inside this electron/ directory before 'npm run dev'"
+  }
+}

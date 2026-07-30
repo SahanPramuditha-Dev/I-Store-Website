@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
+from app.core.limiter import limiter
 from app.database import get_db
 from app.models import AppSetting, Role, User
 from app.schemas import TokenResponse, UserOut
@@ -90,6 +91,7 @@ def bootstrap_status(db: Session = Depends(get_db)):
 
 
 @router.post("/bootstrap/owner")
+@limiter.limit("10/minute")
 def bootstrap_owner(payload: BootstrapOwnerIn, request: Request, db: Session = Depends(get_db)):
     ensure_security_defaults(db)
     if _owner_exists(db):
@@ -153,6 +155,7 @@ def bootstrap_owner(payload: BootstrapOwnerIn, request: Request, db: Session = D
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     ensure_security_defaults(db)
     if not _owner_exists(db):
@@ -229,6 +232,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 
 
 @router.post("/login-pin", response_model=TokenResponse)
+@limiter.limit("5/minute")
 def login_pin(payload: PinLoginIn, request: Request, db: Session = Depends(get_db)):
     ensure_security_defaults(db)
     if not _owner_exists(db):
@@ -406,7 +410,7 @@ def terminate_all_sessions(
 
 
 @router.get("/active-staff")
-def list_active_staff(db: Session = Depends(get_db)):
+def list_active_staff(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     users = db.query(User).filter(User.is_active == True, User.is_deleted == False).all()
     return [
         {
@@ -441,6 +445,10 @@ def reset_password(
     new_password = str(payload.get("new_password") or "").strip()
     if not new_password:
         raise HTTPException(status_code=400, detail="new_password is required")
+    security = get_security_settings(db)
+    issues = validate_password_against_policy(new_password, security)
+    if issues:
+        raise HTTPException(status_code=400, detail=" ".join(issues))
     target.password_hash = hash_password(new_password)
     target.last_password_change_at = utcnow()
     db.commit()

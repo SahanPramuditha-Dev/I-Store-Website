@@ -1,6 +1,7 @@
 import json
 import importlib
 import re
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Any
@@ -318,7 +319,22 @@ def _json_dump(value: Any) -> str:
     return json.dumps(value)
 
 
+_security_settings_cache: dict[str, Any] | None = None
+_security_settings_cache_expires_at: float = 0.0
+
+
+def invalidate_security_settings_cache():
+    global _security_settings_cache, _security_settings_cache_expires_at
+    _security_settings_cache = None
+    _security_settings_cache_expires_at = 0.0
+
+
 def get_security_settings(db: Session) -> dict[str, Any]:
+    global _security_settings_cache, _security_settings_cache_expires_at
+    now = time.time()
+    if _security_settings_cache is not None and now < _security_settings_cache_expires_at:
+        return _security_settings_cache
+
     rows = db.query(SecuritySetting).all()
     current: dict[str, Any] = {}
     for row in rows:
@@ -326,10 +342,13 @@ def get_security_settings(db: Session) -> dict[str, Any]:
     merged = dict(DEFAULT_SECURITY_SETTINGS)
     for k, v in current.items():
         merged[k] = v
+    _security_settings_cache = merged
+    _security_settings_cache_expires_at = now + 60.0
     return merged
 
 
 def set_security_settings(db: Session, payload: dict[str, Any], updated_by_user_id: int | None = None) -> dict[str, Any]:
+    invalidate_security_settings_cache()
     existing = get_security_settings(db)
     merged = dict(existing)
     merged.update(payload or {})
@@ -588,21 +607,29 @@ def _ensure_default_role_permissions(db: Session, role_map: dict[str, Role], per
                 row.allowed = allowed
 
 
+_SECURITY_DEFAULTS_INITIALIZED = False
+
+
 def ensure_security_defaults(db: Session) -> None:
+    global _SECURITY_DEFAULTS_INITIALIZED
+    if _SECURITY_DEFAULTS_INITIALIZED:
+        try:
+            if db.query(Role).first() is not None:
+                return
+        except Exception:
+            pass
+
     from sqlalchemy import inspect as sa_inspect
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=db.bind)
+    except Exception:
+        pass
+        
     try:
         inspector = sa_inspect(db.bind)
         users_table_exists = inspector.has_table("users")
     except Exception:
-        users_table_exists = False
-        
-    if not users_table_exists:
-        # In some reload scenarios (notably tests), model metadata can be stale.
-        # Reload models so tables bind to the current Base, then create again.
-        import app.models as models_module
-        importlib.reload(models_module)
-        Base.metadata.create_all(bind=engine)
+        users_table_exists = True
 
     required_user_columns = {
         "role_id": "INTEGER",
@@ -757,6 +784,8 @@ def ensure_security_defaults(db: Session) -> None:
     role_map = _ensure_roles(db)
     perm_map = _ensure_permissions(db)
     _ensure_default_role_permissions(db, role_map, perm_map)
+    db.commit()
+    _SECURITY_DEFAULTS_INITIALIZED = True
     set_security_settings(db, get_security_settings(db))
 
     users = db.query(User).all()

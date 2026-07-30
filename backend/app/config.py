@@ -31,7 +31,7 @@ def get_user_data_dir():
         pass
     return path
 
-DATA_DIR = get_user_data_dir()
+DATA_DIR = Path(__file__).resolve().parents[2] / "database"
 DB_FILE = DATA_DIR / "istore.db"
 BACKUP_DIR = DATA_DIR / "backups"
 LOG_DIR = DATA_DIR / "logs"
@@ -50,7 +50,11 @@ class Settings(BaseModel):
     algorithm: str = os.getenv("ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 8)))
     sqlite_file: str = os.getenv("SQLITE_FILE", str(DB_FILE))
-    sqlite_url: str = os.getenv("SQLITE_URL", f"sqlite:///{DB_FILE.as_posix()}")
+    database_url: str = os.getenv("DATABASE_URL", os.getenv("SQLITE_URL", f"sqlite:///{DB_FILE.as_posix()}"))
+
+    @property
+    def sqlite_url(self) -> str:
+        return self.database_url
     backup_folder: str = os.getenv("BACKUP_FOLDER", str(BACKUP_DIR))
     cors_origins: list[str] = [
         o.strip()
@@ -113,9 +117,7 @@ class Settings(BaseModel):
 
         if self.secret_key.strip() in {"", "change-this-secret"} or len(self.secret_key.strip()) < 32:
             msg = "Production SECRET_KEY must be set to a strong non-default value."
-            if _raise:
-                raise RuntimeError(msg)
-            logger.warning(f"[config] {msg}")
+            raise RuntimeError(msg)
 
         if any(origin.lower() == "null" for origin in self.cors_origins):
             # Always hard-fail for null CORS — this is a CORS bypass risk.

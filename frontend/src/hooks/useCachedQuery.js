@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import api from "../lib/api";
 
 const cache = {};
@@ -7,6 +7,11 @@ const pendingRequests = {};
 export function useCachedQuery(key, fetchFnOrUrl, options = {}) {
   const { staleTime = 5 * 60 * 1000, enabled = true } = options;
   const cacheKey = typeof key === "string" ? key : JSON.stringify(key);
+
+  const fetchRef = useRef(fetchFnOrUrl);
+  useEffect(() => {
+    fetchRef.current = fetchFnOrUrl;
+  }, [fetchFnOrUrl]);
 
   const getInitialState = useCallback(() => {
     const cached = cache[cacheKey];
@@ -46,10 +51,11 @@ export function useCachedQuery(key, fetchFnOrUrl, options = {}) {
     }
 
     const promise = (async () => {
-      if (typeof fetchFnOrUrl === "function") {
-        return await fetchFnOrUrl();
+      const fnOrUrl = fetchRef.current;
+      if (typeof fnOrUrl === "function") {
+        return await fnOrUrl();
       } else {
-        const response = await api.get(fetchFnOrUrl);
+        const response = await api.get(fnOrUrl);
         return response.data;
       }
     })();
@@ -65,11 +71,12 @@ export function useCachedQuery(key, fetchFnOrUrl, options = {}) {
     } finally {
       delete pendingRequests[cacheKey];
     }
-  }, [cacheKey, fetchFnOrUrl, staleTime, enabled]);
+  }, [cacheKey, staleTime, enabled]);
 
   useEffect(() => {
     fetchData();
   }, [cacheKey, fetchData]);
+
 
   const refetch = useCallback(() => fetchData(true), [fetchData]);
 

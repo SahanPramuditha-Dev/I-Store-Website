@@ -14,6 +14,9 @@ from fastapi.responses import Response, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.limiter import limiter
 from sqlalchemy import text
 from sqlalchemy import inspect as sa_inspect
 from app.database import Base, engine
@@ -111,9 +114,13 @@ def _run_startup_tasks() -> None:
 
         try:
             if settings.allow_runtime_schema_sync:
-                ensure_tables_exist()
-                ensure_security_schema_columns()
-                ensure_inventory_schema_columns()
+                Base.metadata.create_all(bind=engine)
+                try:
+                    from sync_schema import sync_schema
+                    from app.config import DB_FILE
+                    sync_schema(DB_FILE)
+                except Exception as sync_err:
+                    logger.warning(f"Automatic schema column sync warning: {sync_err}")
             else:
                 logger.info("Runtime schema sync disabled; relying on Alembic-managed schema.")
             if settings.env.lower() != "production" and settings.seed_demo_data:
@@ -170,6 +177,8 @@ async def app_lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="i Store API", lifespan=app_lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 from app.database import UPLOADS_DIR  # noqa: E402 - centralized path
 FAVICON_PATH = Path(__file__).resolve().parents[2] / "frontend" / "public" / "favicon.ico"
 DEV_CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1):\d+$" if settings.env.lower() != "production" else None
@@ -234,236 +243,6 @@ def _sqlite_table_exists(db, table_name: str) -> bool:
             return False
 
 
-def ensure_inventory_schema_columns() -> None:
-    """
-    Lightweight runtime migration for SQLite/Postgres installs.
-    Adds newly introduced inventory columns if missing.
-    """
-    required_columns = {
-        "brand": "TEXT",
-        "model": "TEXT",
-        "storage": "TEXT",
-        "color": "TEXT",
-        "condition": "TEXT",
-        "product_type": "TEXT",
-        "location": "TEXT",
-        "image_url": "TEXT",
-        "warranty_days": "INTEGER DEFAULT 0",
-        "damaged_quantity": "INTEGER DEFAULT 0",
-        "is_draft": "BOOLEAN DEFAULT 0",
-        "is_manual_creation": "BOOLEAN DEFAULT 0",
-        "supplier_id": "INTEGER",
-        "is_deleted": "BOOLEAN DEFAULT 0",
-        "deleted_at": "DATETIME",
-        "deleted_by": "INTEGER",
-        "delete_reason": "TEXT",
-        "created_at": "DATETIME",
-        "updated_at": "DATETIME",
-    }
-    stock_movement_required_columns = {
-        "user_id": "INTEGER",
-    }
-    grn_required_columns = {
-        "po_id": "INTEGER",
-        "is_cancelled": "BOOLEAN DEFAULT 0",
-        "cancelled_at": "DATETIME",
-        "cancelled_by_user_id": "INTEGER",
-        "cancel_reason": "TEXT",
-    }
-    with SessionLocal() as db:
-        def add_missing_columns(table_name: str, column_map: dict[str, str]) -> None:
-            if not _sqlite_table_exists(db, table_name):
-                return
-            try:
-                inspector = sa_inspect(db.bind)
-                existing = {col["name"] for col in inspector.get_columns(table_name)}
-            except Exception:
-                existing = set()
-            for column, col_type in column_map.items():
-                if column not in existing:
-                    type_str = col_type
-                    is_postgres = db.bind.dialect.name == "postgresql"
-                    if is_postgres:
-                        if "DATETIME" in col_type.upper():
-                            type_str = type_str.upper().replace("DATETIME", "TIMESTAMP")
-                        if "BOOLEAN DEFAULT 1" in col_type.upper():
-                            type_str = type_str.upper().replace("BOOLEAN DEFAULT 1", "BOOLEAN DEFAULT TRUE")
-                        if "BOOLEAN DEFAULT 0" in col_type.upper():
-                            type_str = type_str.upper().replace("BOOLEAN DEFAULT 0", "BOOLEAN DEFAULT FALSE")
-                    db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {type_str}"))
-
-        supplier_required_columns = {
-            "email": "TEXT",
-            "address": "TEXT",
-            "notes": "TEXT",
-            "payment_terms_days": "INTEGER DEFAULT 0",
-            "opening_balance": "REAL DEFAULT 0",
-            "is_deleted": "BOOLEAN DEFAULT 0",
-            "deleted_at": "DATETIME",
-            "deleted_by": "INTEGER",
-            "delete_reason": "TEXT",
-            "created_at": "DATETIME",
-            "updated_at": "DATETIME",
-        }
-        customer_required_columns = {
-            "birthday": "DATE",
-            "notes": "TEXT",
-            "is_deleted": "BOOLEAN DEFAULT 0",
-            "deleted_at": "DATETIME",
-            "deleted_by": "INTEGER",
-            "delete_reason": "TEXT",
-            "created_at": "DATETIME",
-            "updated_at": "DATETIME",
-        }
-
-        repair_required_columns = {
-            "assigned_technician_user_id": "INTEGER",
-            "assigned_at": "DATETIME",
-            "estimate_status": "TEXT DEFAULT 'draft'",
-            "approval_status": "TEXT DEFAULT 'pending'",
-            "invoice_status": "TEXT DEFAULT 'not_invoiced'",
-            "payment_status": "TEXT DEFAULT 'unpaid'",
-            "delivery_status": "TEXT DEFAULT 'not_delivered'",
-            "outstanding_balance": "REAL DEFAULT 0",
-            "final_sale_id": "INTEGER",
-            "approved_at": "DATETIME",
-            "invoiced_at": "DATETIME",
-            "is_deleted": "BOOLEAN DEFAULT 0",
-            "deleted_at": "DATETIME",
-            "deleted_by": "INTEGER",
-            "delete_reason": "TEXT",
-        }
-
-        sales_required_columns = {
-            "invoice_no": "TEXT",
-            "invoice_type": "TEXT DEFAULT 'product_sale'",
-            "repair_ticket_id": "INTEGER",
-            "reservation_id": "INTEGER",
-            "amount_paid": "REAL DEFAULT 0",
-            "balance_due": "REAL DEFAULT 0",
-            "payment_status": "TEXT DEFAULT 'paid'",
-            "advance_applied_total": "REAL DEFAULT 0",
-            "invoice_status": "TEXT DEFAULT 'finalized'",
-            "is_return": "BOOLEAN DEFAULT 0",
-            "paid": "BOOLEAN DEFAULT 1",
-            "is_voided": "BOOLEAN DEFAULT 0",
-            "void_reason": "TEXT",
-            "created_by": "INTEGER",
-            "finalized_at": "DATETIME",
-            "voided_at": "DATETIME",
-            "voided_by": "INTEGER",
-        }
-
-        sale_items_required_columns = {
-            "line_type": "TEXT DEFAULT 'product'",
-            "description": "TEXT",
-            "variant_id": "TEXT",
-            "serial_id": "INTEGER",
-            "discount_amount": "REAL DEFAULT 0",
-            "line_total": "REAL DEFAULT 0",
-            "warranty_rule_id": "INTEGER",
-            "warranty_record_id": "INTEGER",
-        }
-
-        invoice_payments_required_columns = {
-            "payment_number": "TEXT",
-            "reference_number": "TEXT",
-        }
-
-        serial_required_columns = {
-            "status": "TEXT DEFAULT 'in_stock'",
-            "sale_id": "INTEGER",
-        }
-
-        notification_required_columns = {
-            "read_at": "DATETIME",
-            "is_acknowledged": "BOOLEAN DEFAULT 0",
-            "acknowledged_at": "DATETIME",
-            "acknowledged_by_user_id": "INTEGER",
-            "severity": "TEXT DEFAULT 'medium'",
-            "source_module": "TEXT",
-            "escalation_level": "INTEGER DEFAULT 0",
-            "due_at": "DATETIME",
-        }
-        expenses_required_columns = {
-            "tax_amount": "REAL DEFAULT 0",
-        }
-        warranty_rule_required_columns = {
-            "rule_type": "TEXT",
-            "category_id": "INTEGER",
-            "product_id": "INTEGER",
-            "variant_id": "TEXT",
-            "serial_id": "INTEGER",
-            "repair_service_id": "TEXT",
-            "warranty_duration_value": "INTEGER DEFAULT 0",
-            "warranty_duration_unit": "TEXT DEFAULT 'days'",
-            "coverage_type": "TEXT DEFAULT 'repair'",
-            "priority": "INTEGER DEFAULT 100",
-            "conditions_text": "TEXT",
-            "exclusion_text": "TEXT",
-            "created_by": "INTEGER",
-            "is_deleted": "BOOLEAN DEFAULT 0",
-            "deleted_at": "DATETIME",
-            "deleted_by": "INTEGER",
-            "delete_reason": "TEXT",
-        }
-        warranty_record_required_columns = {
-            "warranty_number": "TEXT",
-            "invoice_item_id": "INTEGER",
-            "warranty_rule_id": "INTEGER",
-            "product_id": "INTEGER",
-            "variant_id": "TEXT",
-            "serial_id": "INTEGER",
-            "imei": "TEXT",
-            "coverage_type": "TEXT DEFAULT 'repair'",
-            "is_deleted": "BOOLEAN DEFAULT 0",
-            "deleted_at": "DATETIME",
-            "deleted_by": "INTEGER",
-            "delete_reason": "TEXT",
-        }
-        warranty_claim_required_columns = {
-            "claim_number": "TEXT",
-            "customer_id": "INTEGER",
-            "claim_date": "DATETIME",
-            "issue_description": "TEXT",
-            "technician_id": "INTEGER",
-            "inspection_notes": "TEXT",
-            "decision_status": "TEXT DEFAULT 'pending_inspection'",
-            "rejection_reason": "TEXT",
-            "resolution_type": "TEXT",
-            "replacement_product_id": "INTEGER",
-            "replacement_serial_id": "INTEGER",
-            "linked_repair_ticket_id": "INTEGER",
-            "resolved_at": "DATETIME",
-            "created_by": "INTEGER",
-            "is_deleted": "BOOLEAN DEFAULT 0",
-            "deleted_at": "DATETIME",
-            "deleted_by": "INTEGER",
-            "delete_reason": "TEXT",
-        }
-
-        add_missing_columns("suppliers", supplier_required_columns)
-        add_missing_columns("customers", customer_required_columns)
-        add_missing_columns("inventory_items", required_columns)
-        add_missing_columns("stock_movements", stock_movement_required_columns)
-        add_missing_columns("goods_received_notes", grn_required_columns)
-        add_missing_columns("repair_tickets", repair_required_columns)
-        add_missing_columns("sales", sales_required_columns)
-        add_missing_columns("sale_items", sale_items_required_columns)
-        add_missing_columns("invoice_payments", invoice_payments_required_columns)
-        add_missing_columns("inventory_serials", serial_required_columns)
-        add_missing_columns("notifications", notification_required_columns)
-        add_missing_columns("expenses", expenses_required_columns)
-        add_missing_columns("warranty_rules", warranty_rule_required_columns)
-        add_missing_columns("warranty_records", warranty_record_required_columns)
-        add_missing_columns("warranty_claims", warranty_claim_required_columns)
-
-        # Performance indexes for larger datasets.
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs (created_at)"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs (user_id)"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs (action)"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_activity_logs_entity_type ON activity_logs (entity_type)"))
-        db.execute(text("CREATE INDEX IF NOT EXISTS idx_security_audit_logs_created_at ON security_audit_logs (created_at)"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_security_audit_logs_action ON security_audit_logs (action)"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_security_audit_logs_target_type ON security_audit_logs (target_type)"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_security_audit_logs_user_id ON security_audit_logs (user_id)"))
@@ -509,12 +288,11 @@ def ensure_tables_exist() -> None:
     Ensure newly introduced ORM tables exist for local/dev SQLite databases.
     Safe to call repeatedly.
     """
-    # Tests can reload app.database and app.main without reloading app.models first.
-    # If metadata is empty, reload models so classes bind to the current Base.
+    from app.database import engine as current_engine
     if "users" not in Base.metadata.tables:
         import app.models as models_module
         importlib.reload(models_module)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=current_engine)
 
 
 def ensure_security_schema_columns() -> None:
@@ -565,7 +343,7 @@ app.add_middleware(
     allow_origin_regex=DEV_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
     expose_headers=["Content-Disposition", "Content-Type", "X-Total-Count"]
 )
 
@@ -590,9 +368,12 @@ app.include_router(warranty_router, dependencies=[Depends(require_module_access(
 app.include_router(financial_audit_router, dependencies=[Depends(require_module_access("financial_audit"))])
 app.include_router(labels_router, dependencies=[Depends(require_module_access("labels"))])
 app.include_router(audit_trail_router, dependencies=[Depends(require_module_access("audit_logs"))])
+from app.routers.analytics_ai_router import router as analytics_ai_router
+
 app.include_router(advance_router)
 app.include_router(access_router)
 app.include_router(print_center_router)
+app.include_router(analytics_ai_router)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 

@@ -222,19 +222,20 @@ def returns_report_refunds(
     _=Depends(get_current_user),
 ):
     query = db.query(RefundPayment)
-    if method and method.lower() != "all":
+    if method and not hasattr(method, 'default') and str(method).lower() != "all":
         query = query.filter(RefundPayment.refund_method == str(method).strip().lower())
-    if date_from:
+    if date_from and not hasattr(date_from, 'default'):
         try:
             query = query.filter(RefundPayment.created_at >= datetime.fromisoformat(str(date_from)))
         except Exception:
             pass
-    if date_to:
+    if date_to and not hasattr(date_to, 'default'):
         try:
             query = query.filter(RefundPayment.created_at < datetime.fromisoformat(str(date_to)))
         except Exception:
             pass
-    rows = query.order_by(RefundPayment.created_at.desc()).limit(int(limit)).all()
+    bounded_limit = int(limit) if (limit is not None and not hasattr(limit, 'default')) else 5000
+    rows = query.order_by(RefundPayment.created_at.desc()).limit(bounded_limit).all()
     return {
         "total_refunds": round(sum(float(row.refund_amount or 0) for row in rows if row.refund_status == "paid"), 2),
         "rows": [_serialize_refund(row) for row in rows],
@@ -250,17 +251,18 @@ def returns_report_exchanges(
     _=Depends(get_current_user),
 ):
     query = db.query(ExchangeRecord)
-    if date_from:
+    if date_from and not hasattr(date_from, 'default'):
         try:
             query = query.filter(ExchangeRecord.created_at >= datetime.fromisoformat(str(date_from)))
         except Exception:
             pass
-    if date_to:
+    if date_to and not hasattr(date_to, 'default'):
         try:
             query = query.filter(ExchangeRecord.created_at < datetime.fromisoformat(str(date_to)))
         except Exception:
             pass
-    rows = query.order_by(ExchangeRecord.created_at.desc()).limit(int(limit)).all()
+    bounded_limit = int(limit) if (limit is not None and not hasattr(limit, 'default')) else 5000
+    rows = query.order_by(ExchangeRecord.created_at.desc()).limit(bounded_limit).all()
     return {
         "exchange_count": len(rows),
         "balance_to_pay_total": round(sum(float(row.balance_to_pay or 0) for row in rows), 2),
@@ -278,17 +280,18 @@ def returns_report_damaged_stock(
     _=Depends(get_current_user),
 ):
     query = db.query(DamagedStockRecord)
-    if date_from:
+    if date_from and not hasattr(date_from, 'default'):
         try:
             query = query.filter(DamagedStockRecord.created_at >= datetime.fromisoformat(str(date_from)))
         except Exception:
             pass
-    if date_to:
+    if date_to and not hasattr(date_to, 'default'):
         try:
             query = query.filter(DamagedStockRecord.created_at < datetime.fromisoformat(str(date_to)))
         except Exception:
             pass
-    rows = query.order_by(DamagedStockRecord.created_at.desc()).limit(int(limit)).all()
+    bounded_limit = int(limit) if (limit is not None and not hasattr(limit, 'default')) else 5000
+    rows = query.order_by(DamagedStockRecord.created_at.desc()).limit(bounded_limit).all()
     return {
         "damaged_count": len(rows),
         "loss_quantity": int(sum(int(row.quantity or 0) for row in rows)),
@@ -341,17 +344,24 @@ def list_returns(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    def _clean_s(v):
+        return None if (v is None or hasattr(v, 'default')) else str(v).strip() or None
+    def _clean_i(v):
+        if v is None or hasattr(v, 'default'): return None
+        try: return int(v)
+        except (ValueError, TypeError): return None
+
     rows = list_return_cases(
         db,
-        q=q,
-        return_type=return_type,
-        inspection_status=inspection_status,
-        decision_status=decision_status,
-        refund_status=refund_status,
-        customer_id=customer_id,
-        date_from=date_from,
-        date_to=date_to,
-        limit=limit,
+        q=_clean_s(q),
+        return_type=_clean_s(return_type),
+        inspection_status=_clean_s(inspection_status),
+        decision_status=_clean_s(decision_status),
+        refund_status=_clean_s(refund_status),
+        customer_id=_clean_i(customer_id),
+        date_from=_clean_s(date_from),
+        date_to=_clean_s(date_to),
+        limit=_clean_i(limit) or 500,
     )
     return [serialize_return_case(db, row, include_items=False) for row in rows]
 

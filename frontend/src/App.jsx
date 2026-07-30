@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
-import { bootstrapPermissions, canAccessPath, clearAuthState, getAuthValue, hasPermission } from "./lib/rbac";
+import { bootstrapPermissions, canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions } from "./lib/rbac";
 import InvoiceView from "./pages/InvoiceView";
 
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -68,42 +68,20 @@ function RouteFallback() {
 
 function Guard({ children }) {
   const location = useLocation();
-  const [authState, setAuthState] = useState({
-    checking: true,
-    authenticated: false,
-    allowed: false,
-  });
+  const token = getAuthValue("token");
 
-  useEffect(() => {
-    let mounted = true;
-    const runCheck = async () => {
-      const token = getAuthValue("token");
-      if (!token) {
-        if (mounted) setAuthState({ checking: false, authenticated: false, allowed: false });
-        return;
-      }
-      try {
-        const permissions = await bootstrapPermissions(api);
-        const allowed = location.pathname === "/access-denied" ? true : canAccessPath(location.pathname, permissions);
-        if (mounted) setAuthState({ checking: false, authenticated: true, allowed });
-      } catch {
-        clearAuthState();
-        if (mounted) setAuthState({ checking: false, authenticated: false, allowed: false });
-      }
-    };
-    runCheck();
-    return () => {
-      mounted = false;
-    };
-  }, [location.pathname]);
-
-  if (authState.checking) {
-    return <div className="h-dvh grid place-items-center text-slate-400">Checking access permissions...</div>;
+  if (!token) {
+    clearAuthState();
+    return <Navigate to="/login" replace />;
   }
-  if (!authState.authenticated) return <Navigate to="/login" replace />;
-  if (!authState.allowed && location.pathname !== "/access-denied") {
+
+  const permissions = loadPermissions();
+  const allowed = location.pathname === "/access-denied" ? true : canAccessPath(location.pathname, permissions);
+
+  if (!allowed && location.pathname !== "/access-denied") {
     return <Navigate to="/access-denied" replace />;
   }
+
   return children;
 }
 
@@ -111,7 +89,7 @@ export default function App() {
   // NOTE: Auto-backups are handled by the backend scheduler (backup_scheduler.py).
   // Removed client-side backup trigger to prevent concurrent backup races under multi-user load.
 
-  return <BrowserRouter future={{ v7_relativeSplatPath: true }}>
+  return <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<Login/>} />

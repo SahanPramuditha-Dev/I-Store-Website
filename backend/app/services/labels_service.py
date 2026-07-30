@@ -194,7 +194,7 @@ def _upsert_setting(db: Session, key: str, default_value):
 
 def ensure_label_defaults(db: Session) -> None:
     # Safe, repeatable guard for local SQLite databases where migrations may be skipped.
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=db.bind)
 
     for template in BUILTIN_TEMPLATES:
         row = db.query(LabelTemplate).filter(LabelTemplate.name == template["name"]).first()

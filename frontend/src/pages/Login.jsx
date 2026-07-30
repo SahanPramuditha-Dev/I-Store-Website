@@ -2,7 +2,7 @@ import { Eye, EyeOff, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
-import { clearAuthState, hasPermission, NAV_PERMISSION_MAP, savePermissions, setSessionAuthValue } from "../lib/rbac";
+import { clearAuthState, getAuthValue, hasPermission, NAV_PERMISSION_MAP, savePermissions, setSessionAuthValue } from "../lib/rbac";
 import { useStoreProfile } from "../hooks/useStoreProfile";
 import "./Login.css";
 
@@ -121,14 +121,17 @@ export default function Login() {
       const required = Boolean(res?.data?.setup_required);
       setSetupRequired(required);
       setServiceStatus("online");
-      if (!required) {
+      const token = getAuthValue("token");
+      if (!required && token) {
         try {
           const staffRes = await api.get("/auth/active-staff");
           if (Array.isArray(staffRes?.data)) {
             setActiveStaff(staffRes.data);
           }
         } catch (staffErr) {
-          console.error("Failed to load active staff in checkBootstrapStatus:", staffErr);
+          if (staffErr?.response?.status !== 401) {
+            console.error("Failed to load active staff in checkBootstrapStatus:", staffErr);
+          }
         }
       }
     } catch (err) {
@@ -150,7 +153,8 @@ export default function Login() {
         const required = Boolean(res?.data?.setup_required);
         setSetupRequired(required);
         setServiceStatus("online");
-        if (!required) {
+        const token = getAuthValue("token");
+        if (!required && token) {
           api.get("/auth/active-staff")
             .then((staffRes) => {
               if (active && Array.isArray(staffRes?.data)) {
@@ -158,7 +162,9 @@ export default function Login() {
               }
             })
             .catch((staffErr) => {
-              console.error("Failed to load active staff on mount:", staffErr);
+              if (staffErr?.response?.status !== 401) {
+                console.error("Failed to load active staff on mount:", staffErr);
+              }
             });
         }
       })
