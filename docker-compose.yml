@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: istore_db
+    restart: always
+    environment:
+      POSTGRES_DB: istore
+      POSTGRES_USER: istore_user
+      POSTGRES_PASSWORD: istore_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: istore_backend
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://istore_user:istore_password@db:5432/istore
+      SECRET_KEY: "change-this-to-a-very-secure-32-character-random-secret-key"
+      APP_ENV: production
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:

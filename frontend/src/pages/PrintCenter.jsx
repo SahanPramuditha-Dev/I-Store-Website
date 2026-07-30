@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -28,7 +28,6 @@ import {
   ErrorState,
   FilterToolbar,
   Input,
-  PageContainer,
   PageHeader,
   SectionCard,
   Select,
@@ -615,7 +614,7 @@ export default function PrintCenter() {
   }
 
   return (
-    <PageContainer className="print-center-page">
+    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 w-full">
       <PageHeader
         eyebrow="System"
         title="Print Center"
@@ -707,7 +706,7 @@ export default function PrintCenter() {
         </label>
       </FilterToolbar>
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(300px,0.78fr)_minmax(520px,1.4fr)_minmax(310px,0.82fr)]">
+      <div className="grid w-full min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,1fr)_minmax(420px,2fr)_minmax(260px,1fr)]">
         <div className="space-y-4">
           <SectionCard title="Document Control" subtitle={doc.help} right={<Badge tone="indigo">{doc.badge}</Badge>}>
             <div className="space-y-3 text-xs text-slate-300">
@@ -766,8 +765,8 @@ export default function PrintCenter() {
             <Badge tone={status.tone}>{status.text}</Badge>
             {working ? <Badge tone="amber">Working</Badge> : <Badge tone="green">Idle</Badge>}
           </div>
-          <div className="h-[min(560px,calc(100vh-260px))] min-h-[260px] overflow-hidden rounded-2xl border border-white/10 bg-white">
-          <div className="h-full w-full overflow-y-auto bg-slate-100/50 p-4" ref={printRef}>
+          <div className="h-[min(560px,calc(100vh-260px))] min-h-[260px] overflow-hidden rounded-xl bg-slate-900/40">
+          <div className="h-full w-full overflow-y-auto bg-slate-950/30 p-3" ref={printRef}>
             <PrintOrchestrator documentId={documentType} referenceId={reference} format={paper} templateId={template} onLoaded={() => {
               if (autoPrint) {
                 setTimeout(handleReactPrint, 500);
@@ -863,6 +862,6 @@ export default function PrintCenter() {
           ) : null}
         </div>
       </div>
-    </PageContainer>
+    </div>
   );
 }

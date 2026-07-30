@@ -24,6 +24,8 @@ backend/backups/
 backend/audit_tmp/
 logs/
 *.log
+*_backup.txt
+*hash_backup*
 
 __pycache__/
 *.py[cod]

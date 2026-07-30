@@ -24,49 +24,72 @@ export function PrintOrchestrator({ documentId, referenceId, format, templateId,
     async function fetchData() {
       try {
         setLoading(true);
-        // 1. Fetch the raw data for the document
-        // 2. Fetch the store profile
-        // 3. Fetch the customizer settings for this documentId
-        
-        // As a shortcut to bridge the legacy gap quickly, we can call a new endpoint 
-        // OR we can just fetch the existing /print-center/data endpoint if it existed.
-        // Wait, the backend already has /print-center/render which returns HTML.
-        // We need the raw JSON data to feed into our React components.
-        
-        // Let's see how PrintCenter normally fetches data. It calls /print-center/render.
-        // If we want raw data, we need to fetch the invoice/job details directly.
-        
-        // Actually, if we look at Customizer, it fetches `settings` via /settings/print-templates
-        // and uses mock data. For real data, we must fetch from /invoices/{ref}, /repairs/{ref}, etc.
-        
+        const storeRes = await api.get("/settings/section/store_profile");
+        const designRes = await api.get("/settings/section/invoice_receipt_design");
+
+        const header = designRes.data?.header_configuration || {};
+        const body = designRes.data?.body_configuration || {};
+        const footer = designRes.data?.footer_configuration || {};
+        const receiptFormat = designRes.data?.receipt_format || {};
+
+        const derivedSettings = {
+          print: {
+            paper_size: receiptFormat.paper_size || "",
+            margin_mm: 12,
+          },
+          branding: {
+            show_logo: Boolean(header.show_shop_logo),
+            show_shop_name: Boolean(header.show_shop_name),
+          },
+          business: {
+            show_address: Boolean(header.show_address),
+            show_phone: Boolean(header.show_phone_number),
+            show_email: Boolean(header.show_email),
+            show_website: Boolean(header.show_website),
+          },
+          header: {
+            title_text: header.custom_header_text || "",
+          },
+          bill_to: {
+            show_section: Boolean(body.show_customer_name),
+          },
+          footer: {
+            show_thank_you: Boolean(footer.show_thank_you_message),
+            thank_you_text: footer.thank_you_text || "",
+          },
+        };
+
         let docData = null;
-        if (documentId === "sales_receipt" || documentId === "sales_bill") {
-          const res = await api.get(`/invoices/number/${referenceId}`);
+        const printableDoc = String(documentId || "").trim();
+        const token = String(referenceId || "").trim();
+        const isInvoice = printableDoc === "invoice" || printableDoc === "sales_receipt" || printableDoc === "sales_bill";
+
+        if (token && isInvoice) {
+          const isNumeric = /^\d+$/.test(token);
+          const res = isNumeric
+            ? await api.get(`/invoices/${encodeURIComponent(token)}`)
+            : await api.get(`/invoices/number/${encodeURIComponent(token)}`);
           docData = res.data;
-        } else if (documentId === "repair_job_card" || documentId === "job_card") {
-          const res = await api.get(`/repairs/${referenceId}`);
-          docData = res.data;
-        }
-        
-        const storeRes = await api.get("/settings/store-profile");
-        const settingsRes = await api.get("/settings/print-templates");
-        
-        // Find active template settings
-        const templates = settingsRes.data?.templates || [];
-        let activeTemplate = templateId 
-          ? templates.find(t => t.id === templateId) 
-          : templates.find(t => (t.document === documentId || t.document === "sales_bill") && t.deployed);
-          
-        if (!activeTemplate) {
-          activeTemplate = templates.find(t => t.document === "sales_bill");
         }
 
-        setData(docData);
+        if (docData) {
+          setData(docData);
+          setLegacyHtml(null);
+        } else {
+          const res = await api.get("/print-center/render", {
+            params: { document_type: documentId, reference: referenceId, paper: format },
+          });
+          setLegacyHtml(res.data);
+          setData(null);
+        }
+
         setStoreProfile(storeRes.data);
-        setSettings(activeTemplate?.settings || {});
-        
+        setSettings(derivedSettings);
       } catch (err) {
-        console.error("Error fetching print data, falling back to legacy HTML", err);
+        const status = err?.response?.status;
+        if (status && status !== 404) {
+          console.error("Error fetching print data, falling back to legacy HTML", err);
+        }
         // Fallback to legacy HTML render
         try {
           const res = await api.get("/print-center/render", {

@@ -52,12 +52,16 @@ const QUICK_FILTERS = [
   { key: "recent", label: "Visited 30d" },
 ];
 
+const fetchCustomersList = () => apiService.customers.list({ pageSize: 1000 });
+const fetchSalesList = () => apiService.sales.list({ pageSize: 1000 });
+const fetchRepairsList = () => apiService.repairs.list({ pageSize: 1000 });
+
 export default function Customers() {
   const { toast, confirm } = useFeedback();
 
   const { data: customersData, loading: customersLoading, setData: setCustomersCache } = useCachedQuery(
     "customers",
-    () => apiService.customers.list({ pageSize: 1000 })
+    fetchCustomersList
   );
   const customers = customersData?.items || [];
 
@@ -75,13 +79,13 @@ export default function Customers() {
 
   const { data: salesData, loading: salesLoading } = useCachedQuery(
     "sales",
-    () => apiService.sales.list({ pageSize: 1000 })
+    fetchSalesList
   );
   const sales = salesData?.items || [];
 
   const { data: repairsData, loading: repairsLoading } = useCachedQuery(
     "repairs",
-    () => apiService.repairs.list({ pageSize: 1000 })
+    fetchRepairsList
   );
   const repairs = repairsData?.items || [];
 
@@ -228,7 +232,11 @@ export default function Customers() {
   }, [filteredCustomers.length, tableRowsPerPage, tablePage]);
 
   useEffect(() => {
-    setSelectedRows((prev) => prev.filter((id) => filteredCustomers.some((c) => c.id === id)));
+    setSelectedRows((prev) => {
+      if (!prev.length) return prev;
+      const next = prev.filter((id) => filteredCustomers.some((c) => c.id === id));
+      return next.length === prev.length ? prev : next;
+    });
   }, [filteredCustomers]);
 
   const handleSort = (column) => {

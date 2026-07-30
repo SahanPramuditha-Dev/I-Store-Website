@@ -1605,20 +1605,33 @@ def returns_summary_report(
             query = query.filter(ReturnCase.created_at < datetime.fromisoformat(str(date_to)) + timedelta(days=1))
         except Exception:
             pass
-    if customer_id:
-        query = query.filter(ReturnCase.customer_id == int(customer_id))
-    if cashier_id:
-        query = query.filter(ReturnCase.processed_by == int(cashier_id))
-    if manager_id:
-        query = query.filter(ReturnCase.approved_by == int(manager_id))
-    if return_reason:
-        query = query.filter(ReturnCase.reason == str(return_reason))
-    if return_status:
-        query = query.filter(ReturnCase.decision_status == str(return_status).strip().lower())
+    def _to_i(val):
+        if val is None or hasattr(val, 'default'): return None
+        try: return int(val)
+        except (ValueError, TypeError): return None
+    def _to_s(val):
+        return None if (val is None or hasattr(val, 'default')) else str(val).strip() or None
 
-    if product_id:
-        query = query.join(ReturnItem, ReturnItem.return_id == ReturnCase.id).filter(ReturnItem.product_id == int(product_id))
-    bounded_limit = max(1, min(int(limit or 5000), 20000))
+    cid = _to_i(customer_id)
+    if cid is not None:
+        query = query.filter(ReturnCase.customer_id == cid)
+    cashier = _to_i(cashier_id)
+    if cashier is not None:
+        query = query.filter(ReturnCase.processed_by == cashier)
+    manager = _to_i(manager_id)
+    if manager is not None:
+        query = query.filter(ReturnCase.approved_by == manager)
+    rr = _to_s(return_reason)
+    if rr is not None:
+        query = query.filter(ReturnCase.reason == rr)
+    rs = _to_s(return_status)
+    if rs is not None:
+        query = query.filter(ReturnCase.decision_status == rs.lower())
+
+    pid = _to_i(product_id)
+    if pid is not None:
+        query = query.join(ReturnItem, ReturnItem.return_id == ReturnCase.id).filter(ReturnItem.product_id == pid)
+    bounded_limit = max(1, min(_to_i(limit) or 5000, 20000))
     rows = query.order_by(ReturnCase.created_at.desc()).limit(bounded_limit).all()
 
     refunds_q = db.query(RefundPayment)

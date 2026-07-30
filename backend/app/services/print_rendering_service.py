@@ -579,7 +579,8 @@ def _render_invoice_html_customizer(invoice: dict, store: dict, settings: dict, 
     tax_total_html = f"<div class='flex-row'><span>Tax</span><span>LKR {_format_money(invoice.get('tax_total'))}</span></div>" if totals_config.get("show_tax") else ""
     total_html = f"<div class='flex-row font-black' style='background: {totals_config.get('total_bg') or '#1a1d2e'}; color: {totals_config.get('total_color') or accent}; padding: 4px 8px; border-radius: 4px; margin-top: 4px;'><span>TOTAL</span><span>LKR {_format_money(invoice.get('grand_total'))}</span></div>" if totals_config.get("show_total") else ""
     
-    thank_you_html = f"<div class='mt-3 text-center' style='color: {footer_config.get('thank_you_color') or '#888'}; font-size: 0.9em;'>{footer_config.get('thank_you_text') or ''}</div>" if footer_config.get("show_thank_you") else ""
+    show_thank_you = bool(footer_config.get("show_thank_you") or footer_config.get("show_thank_you_message"))
+    thank_you_html = f"<div class='mt-3 text-center' style='color: {footer_config.get('thank_you_color') or '#888'}; font-size: 0.9em;'>{footer_config.get('thank_you_text') or ''}</div>" if show_thank_you else ""
     
     # We use double curly braces {{ }} for CSS to escape them in the Python f-string
     html_output = f"""<!doctype html>

@@ -46,13 +46,30 @@ REPAIR_STATUS_TRANSITIONS = {
         REPAIR_STATUS_REPAIRING,
         REPAIR_STATUS_CANCELLED,
     },
-    REPAIR_STATUS_WAITING_FOR_APPROVAL: {REPAIR_STATUS_REPAIRING, REPAIR_STATUS_CANCELLED},
-    REPAIR_STATUS_WAITING_FOR_PARTS: {REPAIR_STATUS_REPAIRING, REPAIR_STATUS_CANCELLED},
-    REPAIR_STATUS_REPAIRING: {REPAIR_STATUS_QUALITY_CHECKING, REPAIR_STATUS_WAITING_FOR_PARTS, REPAIR_STATUS_CANCELLED},
-    REPAIR_STATUS_QUALITY_CHECKING: {REPAIR_STATUS_COMPLETED, REPAIR_STATUS_REPAIRING, REPAIR_STATUS_CANCELLED},
-    REPAIR_STATUS_COMPLETED: {REPAIR_STATUS_DELIVERED, REPAIR_STATUS_REPAIRING},
+    REPAIR_STATUS_WAITING_FOR_APPROVAL: {
+        REPAIR_STATUS_REPAIRING,
+        REPAIR_STATUS_WAITING_FOR_PARTS,
+        REPAIR_STATUS_CANCELLED,
+    },
+    REPAIR_STATUS_WAITING_FOR_PARTS: {
+        REPAIR_STATUS_REPAIRING,
+        REPAIR_STATUS_WAITING_FOR_APPROVAL,
+        REPAIR_STATUS_CANCELLED,
+    },
+    REPAIR_STATUS_REPAIRING: {
+        REPAIR_STATUS_QUALITY_CHECKING,
+        REPAIR_STATUS_WAITING_FOR_PARTS,
+        REPAIR_STATUS_CANCELLED,
+    },
+    REPAIR_STATUS_QUALITY_CHECKING: {
+        REPAIR_STATUS_COMPLETED,
+        REPAIR_STATUS_REPAIRING,
+        REPAIR_STATUS_WAITING_FOR_PARTS,
+        REPAIR_STATUS_CANCELLED,
+    },
+    REPAIR_STATUS_COMPLETED: {REPAIR_STATUS_DELIVERED, REPAIR_STATUS_REPAIRING, REPAIR_STATUS_QUALITY_CHECKING},
     REPAIR_STATUS_DELIVERED: set(),
-    REPAIR_STATUS_CANCELLED: set(),
+    REPAIR_STATUS_CANCELLED: {REPAIR_STATUS_PENDING, REPAIR_STATUS_DIAGNOSING},
 }
 
 
@@ -128,13 +145,16 @@ def list_repairs(
     _=Depends(get_current_user),
 ):
     query = db.query(RepairTicket).filter(RepairTicket.is_deleted == False)  # noqa: E712
-    if status and str(status).lower() != "all":
+    if status and not hasattr(status, 'default') and str(status).lower() != "all":
         query = query.filter(RepairTicket.status == _normalize_status(status))
-    if customer_id:
-        query = query.filter(RepairTicket.customer_id == int(customer_id))
-    if imei:
+    if customer_id is not None and not hasattr(customer_id, 'default'):
+        try:
+            query = query.filter(RepairTicket.customer_id == int(customer_id))
+        except (ValueError, TypeError):
+            pass
+    if imei and not hasattr(imei, 'default'):
         query = query.filter(RepairTicket.imei.ilike(f"%{str(imei).strip()}%"))
-    if technician:
+    if technician and not hasattr(technician, 'default'):
         query = query.filter(RepairTicket.technician.ilike(f"%{str(technician).strip()}%"))
     if date_from:
         try:
@@ -312,6 +332,8 @@ def update_repair_status(repair_id: int, status: str, request: Request, note: st
         raise HTTPException(status_code=400, detail=f"Invalid repair status transition: {old_status} -> {new_status}")
 
     repair.status = new_status
+    db.commit()
+    db.refresh(repair)
     if new_status == REPAIR_STATUS_DELIVERED:
         enforce_repair_delivery_policy(db, repair)
         repair.delivered_at = utcnow()
@@ -337,10 +359,10 @@ def update_repair_status(repair_id: int, status: str, request: Request, note: st
             created_by_id=current_user.id if current_user else None,
         )
 
-    db.commit()
+    req_id = getattr(request.state, "request_id", None) if (request and hasattr(request, "state")) else None
     logger.info(json.dumps({
         "event": "repair_status_changed",
-        "request_id": getattr(request.state, "request_id", None),
+        "request_id": str(req_id) if req_id else None,
         "repair_id": repair.id,
         "status": new_status,
     }))

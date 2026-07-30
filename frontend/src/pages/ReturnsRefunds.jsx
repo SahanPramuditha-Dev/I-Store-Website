@@ -166,20 +166,20 @@ export default function ReturnsRefunds() {
         api.get("/damaged-stock"),
       ]);
       setRecords(Array.isArray(recordsRes.data) ? recordsRes.data : []);
-      setMeta(metaRes.data || meta);
+      if (metaRes.data) setMeta(metaRes.data);
       setReportSummary(summaryRes.data || null);
       setRefundReport(Array.isArray(refundsRes.data?.rows) ? refundsRes.data.rows : []);
       setExchangeReport(Array.isArray(exchangesRes.data?.rows) ? exchangesRes.data.rows : []);
       setDamagedRows(Array.isArray(damagedRes.data) ? damagedRes.data : []);
-      if (!createForm.reason && Array.isArray(metaRes.data?.return_reasons) && metaRes.data.return_reasons.length) {
-        setCreateForm((prev) => ({ ...prev, reason: metaRes.data.return_reasons[0] }));
+      if (Array.isArray(metaRes.data?.return_reasons) && metaRes.data.return_reasons.length) {
+        setCreateForm((prev) => (prev.reason ? prev : { ...prev, reason: metaRes.data.return_reasons[0] }));
       }
     } catch (error) {
       toast(error.userMessage || error.response?.data?.detail || "Failed to load returns module", "error");
     } finally {
       setLoading(false);
     }
-  }, [buildQuery, createForm.reason, filters, meta, toast]);
+  }, [buildQuery, filters, toast]);
 
   useEffect(() => {
     loadAll();

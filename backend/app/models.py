@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, ForeignKey, Text, CheckConstraint, UniqueConstraint, event
 from sqlalchemy.orm import relationship
@@ -7,7 +8,19 @@ from app.database import Base
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-class User(Base):
+
+class BaseHybridModel:
+    """Hybrid Local-First Base Mixin introducing UUID primary keys, store identification, and sync metadata."""
+    uuid = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    store_id = Column(String(36), nullable=True, index=True)
+    device_id = Column(String(100), nullable=True, index=True)
+    sync_status = Column(String(20), default="synced", index=True)  # pending, syncing, synced, conflict
+    sync_version = Column(Integer, default=1)
+    is_deleted = Column(Boolean, default=False, index=True)
+    deleted_at = Column(DateTime, nullable=True)
+
+
+class User(Base, BaseHybridModel):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
@@ -218,7 +231,7 @@ class SecuritySetting(Base):
 
     updated_by = relationship("User")
 
-class Customer(Base):
+class Customer(Base, BaseHybridModel):
     __tablename__ = "customers"
     id = Column(Integer, primary_key=True)
     name = Column(String, index=True)
@@ -234,7 +247,7 @@ class Customer(Base):
     created_at = Column(DateTime, default=utcnow, index=True)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, index=True)
 
-class Supplier(Base):
+class Supplier(Base, BaseHybridModel):
     __tablename__ = "suppliers"
     id = Column(Integer, primary_key=True)
     name = Column(String)
@@ -267,7 +280,7 @@ class Brand(Base):
     logo_url = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
 
-class InventoryItem(Base):
+class InventoryItem(Base, BaseHybridModel):
     __tablename__ = "inventory_items"
     __table_args__ = (
         CheckConstraint("quantity >= 0", name="ck_inventory_items_quantity_non_negative"),
@@ -313,7 +326,7 @@ class InventorySerial(Base):
     created_at = Column(DateTime, default=utcnow)
     item = relationship("InventoryItem")
 
-class RepairTicket(Base):
+class RepairTicket(Base, BaseHybridModel):
     __tablename__ = "repair_tickets"
     id = Column(Integer, primary_key=True)
     ticket_no = Column(String, unique=True, index=True)
@@ -390,7 +403,7 @@ class RepairEstimate(Base):
     creator = relationship("User", foreign_keys=[created_by])
 
 
-class Sale(Base):
+class Sale(Base, BaseHybridModel):
     __tablename__ = "sales"
     id = Column(Integer, primary_key=True)
     invoice_no = Column(String, unique=True, index=True, nullable=True)
@@ -426,7 +439,7 @@ class Sale(Base):
     creator = relationship("User", foreign_keys=[created_by])
     voider = relationship("User", foreign_keys=[voided_by])
 
-class SaleItem(Base):
+class SaleItem(Base, BaseHybridModel):
     __tablename__ = "sale_items"
     id = Column(Integer, primary_key=True)
     sale_id = Column(Integer, ForeignKey("sales.id"))
@@ -832,7 +845,7 @@ class WarrantyCondition(Base):
     created_at = Column(DateTime, default=utcnow)
 
 
-class WarrantyRecord(Base):
+class WarrantyRecord(Base, BaseHybridModel):
     __tablename__ = "warranty_records"
     id = Column(Integer, primary_key=True, index=True)
     warranty_code = Column(String, unique=True, index=True)
@@ -1580,3 +1593,44 @@ class RestoreAuditEvent(Base):
 
     restore_request = relationship("RestoreRequest")
     actor = relationship("User", foreign_keys=[actor_user_id])
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 & 5: Inventory Ledger Architecture & Event Outbox
+# ---------------------------------------------------------------------------
+
+class InventoryLedger(Base):
+    """Immutable Inventory Ledger tracking all stock movements."""
+    __tablename__ = "inventory_ledger"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=False, index=True)
+    item_uuid = Column(String(36), nullable=True, index=True)
+    store_id = Column(String(36), nullable=True, index=True)
+    movement_type = Column(String(30), nullable=False, index=True)  # GRN | SALE | RETURN | DAMAGE | ADJUSTMENT | TRANSFER
+    reference_id = Column(String(50), nullable=True, index=True)  # Invoice No, GRN Code, Ticket No, etc.
+    quantity_change = Column(Float, nullable=False, default=0.0)
+    unit_cost = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+
+    item = relationship("InventoryItem")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class SyncOutbox(Base):
+    """Sync Outbox event store for asynchronous edge-to-cloud replication."""
+    __tablename__ = "sync_outbox"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    entity_type = Column(String(50), nullable=False, index=True)
+    entity_id = Column(String(36), nullable=False, index=True)
+    action = Column(String(20), nullable=False, index=True)  # CREATE | UPDATE | DELETE
+    payload = Column(Text, nullable=False)
+    retry_count = Column(Integer, default=0)
+    status = Column(String(20), default="pending", index=True)  # pending | syncing | completed | failed | conflict
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
