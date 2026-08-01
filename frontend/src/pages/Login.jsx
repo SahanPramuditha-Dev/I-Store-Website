@@ -264,8 +264,8 @@ export default function Login() {
 
     const me = meRes?.data || {};
 
-    // Check if user needs to set a PIN for the first time
-    if (!me.pin_set && !me.pin_hash) {
+    // Check if user needs to set a PIN for the first time (if pin_set is false)
+    if (!me.pin_set) {
       setPendingLoginData({ meRes, permissionRes, fallbackUsername });
       setPinSetupModal(true);
       setSubmitting(false);

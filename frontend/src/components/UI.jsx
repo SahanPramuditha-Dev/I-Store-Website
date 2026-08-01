@@ -302,7 +302,12 @@ export function Select({
   sx = {},
   menuPaperSx = {},
   menuProps = {},
-  ...props
+  PaperProps,
+  paperProps,
+  MenuProps,
+  value,
+  onChange,
+  ...restProps
 }) {
   const resolvedOptions = options ?? optionsFromChildren(children);
   const resolvedSize = size || inferSizeFromClassName(className);
@@ -311,11 +316,27 @@ export function Select({
     .filter((token) => token && token !== "field")
     .join(" ");
 
+  const resolvedPaperProps = PaperProps || paperProps || MenuProps?.PaperProps || menuProps?.PaperProps;
+  const combinedMenuProps = {
+    ...(MenuProps || {}),
+    ...(menuProps || {}),
+    ...(resolvedPaperProps ? { PaperProps: resolvedPaperProps } : {}),
+  };
+
+  // Strip any prop that must not reach the DOM
+  const {
+    PaperProps: _rp1,
+    paperProps: _rp2,
+    MenuProps: _rp3,
+    menuProps: _rp4,
+    ...safeRestProps
+  } = restProps;
+
   return (
     <AppSelect
       className={normalizedClassName}
-      value={props.value}
-      onChange={props.onChange}
+      value={value}
+      onChange={onChange}
       options={resolvedOptions}
       placeholder={placeholder ?? null}
       size={resolvedSize}
@@ -325,8 +346,8 @@ export function Select({
       disabled={disabled}
       sx={sx}
       menuPaperSx={menuPaperSx}
-      menuProps={menuProps}
-      {...props}
+      menuProps={combinedMenuProps}
+      {...safeRestProps}
     />
   );
 }
@@ -400,6 +421,38 @@ export function AppSelect({
     )
   );
 
+  // Prevent accidental passing of MenuProps/PaperProps as DOM attributes by
+  // stripping them from the rest props and building a safe MenuProps object.
+  const { MenuProps: incomingMenuProps, PaperProps: incomingPaperProps, ...selectPropsRest } = selectProps || {};
+  // Defensive: remove any accidentally cased variants that might still be present
+  delete selectPropsRest.PaperProps;
+  delete selectPropsRest.MenuProps;
+  delete selectPropsRest.paperProps;
+  delete selectPropsRest.menuProps;
+
+  const mergedPaperProps = {
+    ...(incomingPaperProps || {}),
+    ...(incomingMenuProps?.PaperProps || {}),
+    ...(menuProps?.PaperProps || {}),
+  };
+  mergedPaperProps.sx = {
+    ...APP_SELECT_MENU_PAPER_SX,
+    ...(mergedPaperProps.sx || {}),
+    ...(incomingMenuProps?.PaperProps?.sx || {}),
+    ...(incomingPaperProps?.sx || {}),
+    ...(menuProps?.PaperProps?.sx || {}),
+    ...menuPaperSx,
+  };
+
+  const { PaperProps: _mp1, paperProps: _mp2, ...cleanMenuProps } = menuProps || {};
+  const { PaperProps: _imp1, paperProps: _imp2, ...cleanIncomingMenuProps } = incomingMenuProps || {};
+
+  const finalMenuProps = {
+    ...cleanIncomingMenuProps,
+    ...cleanMenuProps,
+    PaperProps: mergedPaperProps,
+  };
+
   return (
     <FormControl
       size={sizeConfig.formControlSize}
@@ -412,7 +465,7 @@ export function AppSelect({
         value={value ?? ""}
         onChange={onChange}
         displayEmpty
-        {...selectProps}
+        {...selectPropsRest}
         renderValue={(selected) => {
           const normalized = String(selected ?? "");
           if (!normalized && placeholder !== null) {
@@ -434,22 +487,7 @@ export function AppSelect({
           "& .MuiSvgIcon-root": { color: "#cbd5e1" },
           ...selectSx,
         }}
-        MenuProps={{
-          ...menuProps,
-          PaperProps: {
-            ...(menuProps.PaperProps || {}),
-            sx: {
-              ...APP_SELECT_MENU_PAPER_SX,
-              "& .MuiMenuItem-root": {
-                ...(APP_SELECT_MENU_PAPER_SX["& .MuiMenuItem-root"] || {}),
-                fontSize: sizeConfig.itemFontSize,
-                minHeight: sizeConfig.itemMinHeight,
-              },
-              ...menuProps?.PaperProps?.sx,
-              ...menuPaperSx,
-            },
-          },
-        }}
+        MenuProps={finalMenuProps}
       >
         {placeholder !== null && (
           <MenuItem value="">

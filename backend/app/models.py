@@ -303,10 +303,16 @@ class InventoryItem(Base, BaseHybridModel):
     damaged_quantity = Column(Integer, default=0)
     cost_price = Column(Float, default=0)
     sale_price = Column(Float, default=0)
+    wholesale_price = Column(Float, default=0)
+    min_allowed_price = Column(Float, default=0)
     low_stock_threshold = Column(Integer, default=5)
+    shop_warranty_days = Column(Integer, default=0)
+    supplier_warranty_days = Column(Integer, default=0)
     has_serials = Column(Boolean, default=False)
     is_draft = Column(Boolean, default=False, index=True)
     is_manual_creation = Column(Boolean, default=False, index=True)
+    master_product_id = Column(Integer, ForeignKey("master_products.id"), nullable=True, index=True)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     is_deleted = Column(Boolean, default=False, index=True)
     deleted_at = Column(DateTime, nullable=True, index=True)
@@ -1633,4 +1639,177 @@ class SyncOutbox(Base):
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow, index=True)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Catalog & Variation Architecture Models (ERP Standard)
+# ---------------------------------------------------------------------------
+
+class ProductType(Base):
+    __tablename__ = "product_types"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False, index=True)  # Mobile Phone, Accessory, Spare Part, Service
+    requires_serialization = Column(Boolean, default=False)
+    requires_inventory = Column(Boolean, default=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class MasterProduct(Base):
+    __tablename__ = "master_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    product_name = Column(String, nullable=True, index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id"), nullable=True)
+    category_id = Column(Integer, ForeignKey("product_categories.id"), nullable=True)
+    product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=True)
+    description = Column(Text, nullable=True)
+    has_variants = Column(Boolean, default=True)
+    master_image_url = Column(String, nullable=True)
+    barcode_prefix = Column(String, nullable=True)
+    specifications = Column(Text, nullable=True)  # JSON string metadata
+    status = Column(String, default="ACTIVE")  # ACTIVE, INACTIVE, DRAFT
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    product_type = relationship("ProductType")
+    variants = relationship("ProductVariant", foreign_keys="[ProductVariant.product_id]", back_populates="product", cascade="all, delete-orphan")
+
+
+class ProductAttribute(Base):
+    __tablename__ = "product_attributes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)  # Storage, Color, RAM, Region, Condition
+    display_name = Column(String, nullable=True)
+    sort_order = Column(Integer, default=0)
+
+    values = relationship("AttributeValue", back_populates="attribute", cascade="all, delete-orphan")
+
+
+class AttributeValue(Base):
+    __tablename__ = "attribute_values"
+
+    id = Column(Integer, primary_key=True, index=True)
+    attribute_id = Column(Integer, ForeignKey("product_attributes.id"), nullable=False)
+    value = Column(String, nullable=False)
+    color_code = Column(String, nullable=True)
+
+    attribute = relationship("ProductAttribute", back_populates="values")
+
+
+class AttributePreset(Base):
+    __tablename__ = "attribute_presets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, nullable=False)
+    attribute_ids = Column(Text, nullable=False)  # JSON string list
+
+
+class ProductVariant(Base):
+    __tablename__ = "product_variants"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("master_products.id"), nullable=False)
+    master_product_id = Column(Integer, ForeignKey("master_products.id"), nullable=True)
+    sku = Column(String, unique=True, index=True, nullable=False)
+    barcode = Column(String, unique=True, index=True, nullable=True)
+    display_name = Column(String, nullable=True, index=True)  # "iPhone 15 Pro - 256GB - Black"
+    default_cost_price = Column(Float, default=0)
+    default_selling_price = Column(Float, default=0)
+    default_wholesale_price = Column(Float, default=0)
+    min_allowed_price = Column(Float, default=0)
+    supplier_warranty_days = Column(Integer, default=0)
+    shop_warranty_days = Column(Integer, default=0)
+    reorder_level = Column(Integer, default=5)
+    image_url = Column(String, nullable=True)
+    is_default = Column(Boolean, default=False)
+    status = Column(String, default="ACTIVE")
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    product = relationship("MasterProduct", foreign_keys=[product_id], back_populates="variants")
+    attribute_values = relationship("VariantAttributeValue", back_populates="variant", cascade="all, delete-orphan")
+    prices = relationship("VariantPrice", back_populates="variant", cascade="all, delete-orphan")
+
+
+class IMEIMovementLog(Base):
+    __tablename__ = "imei_movement_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    inventory_serial_id = Column(Integer, ForeignKey("inventory_serials.id"), nullable=False)
+    event_type = Column(String, nullable=False, index=True)  # GRN_RECEIVED | POS_SOLD | CUSTOMER_RETURNED | REPAIR_CHECKIN
+    reference_id = Column(String, nullable=True, index=True)
+    performed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+
+class VariantAttributeValue(Base):
+    __tablename__ = "variant_attribute_values"
+
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=False)
+    attribute_id = Column(Integer, ForeignKey("product_attributes.id"), nullable=False)
+    attribute_value_id = Column(Integer, ForeignKey("attribute_values.id"), nullable=False)
+
+    variant = relationship("ProductVariant", back_populates="attribute_values")
+    attribute = relationship("ProductAttribute")
+    val = relationship("AttributeValue")
+
+
+class VariantPrice(Base):
+    __tablename__ = "variant_prices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=False)
+    tier_name = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+
+    variant = relationship("ProductVariant", back_populates="prices")
+
+
+class VariantPriceHistory(Base):
+    __tablename__ = "variant_price_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=False)
+    price_type = Column(String, default="selling_price")
+    old_price = Column(Float, default=0)
+    new_price = Column(Float, default=0)
+    changed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ProductBundle(Base):
+    __tablename__ = "product_bundles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    bundle_sku = Column(String, unique=True, nullable=False)
+    bundle_price = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+    items = relationship("BundleItem", back_populates="bundle", cascade="all, delete-orphan")
+
+
+class BundleItem(Base):
+    __tablename__ = "bundle_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bundle_id = Column(Integer, ForeignKey("product_bundles.id"), nullable=False)
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=False)
+    quantity = Column(Integer, default=1)
+
+    bundle = relationship("ProductBundle", back_populates="items")
+
+
+class ProductAccessory(Base):
+    __tablename__ = "product_accessories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    master_product_id = Column(Integer, ForeignKey("master_products.id"), nullable=False)
+    recommended_variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=False)
 

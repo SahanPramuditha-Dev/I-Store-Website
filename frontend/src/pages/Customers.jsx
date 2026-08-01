@@ -25,6 +25,7 @@ import {
   Trash2,
   AlertTriangle,
   Filter,
+  Sparkles,
 } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 
@@ -106,6 +107,35 @@ export default function Customers() {
   const [rowMenuCustomer, setRowMenuCustomer] = useState(null);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [walkInForm, setWalkInForm] = useState({ name: "", phone: "" });
+
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageCustomer, setMessageCustomer] = useState(null);
+  const [loadingMessageDraft, setLoadingMessageDraft] = useState(false);
+  const [draftResult, setDraftResult] = useState(null);
+
+  const openDraftMessageModal = async (cust) => {
+    setMessageCustomer(cust);
+    setShowMessageModal(true);
+    setLoadingMessageDraft(true);
+    try {
+      const type = cust.outstanding_balance > 0 ? "payment_reminder" : "customer_update";
+      const res = await api.post("/api/ai/draft-message", {
+        message_type: type,
+        customer_name: cust.name,
+        details: {
+          outstanding_balance: cust.outstanding_balance,
+          total_spent: cust.total_spent,
+          repairs_count: cust.repairs_count
+        }
+      });
+      setDraftResult(res.data);
+    } catch (err) {
+      toast("Failed to generate AI message draft", "error");
+    } finally {
+      setLoadingMessageDraft(false);
+    }
+  };
+
 
   const salesByCustomerId = useMemo(() => {
     const map = new Map();
@@ -624,6 +654,14 @@ export default function Customers() {
           </MenuItem>
           <MenuItem
             onClick={() => {
+              if (rowMenuCustomer) openDraftMessageModal(rowMenuCustomer);
+              setRowMenuAnchor(null);
+            }}
+          >
+            <Sparkles size={14} className="mr-2 text-purple-400" /> Draft AI Message
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
               if (rowMenuCustomer) deleteCustomer(rowMenuCustomer);
               setRowMenuAnchor(null);
             }}
@@ -633,6 +671,52 @@ export default function Customers() {
           </MenuItem>
         </Menu>
       </div>
+
+      {showMessageModal && (
+        <AppModal
+          open
+          onClose={() => setShowMessageModal(false)}
+          title={<span className="flex items-center gap-2"><Sparkles size={18} className="text-purple-400" /> Draft Customer Message — {messageCustomer?.name}</span>}
+          panelClassName="max-w-md"
+        >
+          {loadingMessageDraft ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-3">
+              <Sparkles size={28} className="animate-spin text-purple-400" />
+              <p className="text-xs text-slate-400">Gemini AI is drafting personalized customer message...</p>
+            </div>
+          ) : draftResult ? (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">SMS Version (Under 160 chars)</p>
+                <div className="p-3 rounded-xl border border-white/10 bg-slate-900 font-mono text-xs text-slate-200 select-all">
+                  {draftResult.sms_draft}
+                </div>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(draftResult.sms_draft); toast("Copied SMS draft to clipboard", "success"); }}
+                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-slate-300 font-semibold"
+                >
+                  Copy SMS
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">WhatsApp / Email Version</p>
+                <div className="p-3 rounded-xl border border-white/10 bg-slate-900 text-xs text-slate-200 whitespace-pre-wrap select-all">
+                  {draftResult.whatsapp_draft}
+                </div>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(draftResult.whatsapp_draft); toast("Copied WhatsApp draft to clipboard", "success"); }}
+                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-slate-300 font-semibold"
+                >
+                  Copy WhatsApp Message
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-red-400">Could not generate message draft.</p>
+          )}
+        </AppModal>
+      )}
 
       <AppModal
         open={showAddModal}

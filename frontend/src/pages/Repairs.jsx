@@ -8,7 +8,7 @@ import { useFeedback } from "../components/FeedbackProvider";
 import { AppSelect, AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageHeader, PageTitle, Select, Table } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import { Menu, MenuItem } from "@mui/material";
-import { CheckCircle2, ClipboardList, Loader2, Wrench, LayoutGrid, List, Search, Plus, Filter, Clock, MoreVertical, Bell, AlertTriangle, UserCheck, Phone, CheckCheck, X } from "lucide-react";
+import { CheckCircle2, ClipboardList, Loader2, Wrench, LayoutGrid, List, Search, Plus, Filter, Clock, MoreVertical, Bell, AlertTriangle, UserCheck, Phone, CheckCheck, X, Sparkles } from "lucide-react";
 import { isValidLuhnIMEI } from "../lib/tableUtils";
 
 const REPAIR_STATUS_OPTIONS = [
@@ -140,6 +140,46 @@ export default function Repairs() {
   });
   const [imeiIntelligence, setImeiIntelligence] = useState(null);
   const [checkingImei, setCheckingImei] = useState(false);
+  const [diagnosingAI, setDiagnosingAI] = useState(false);
+  const [aiDiagnosisResult, setAiDiagnosisResult] = useState(null);
+
+  const runAIDiagnose = async () => {
+    if (!form.issue.trim()) {
+      toast("Please enter an issue description first", "warning");
+      return;
+    }
+    setDiagnosingAI(true);
+    try {
+      const parts = (form.device_model || "").split(" ");
+      const brand = parts[0] || "Unknown";
+      const model = parts.slice(1).join(" ") || form.device_model || "Device";
+
+      const res = await api.post("/api/ai/repair-diagnose", {
+        device_brand: brand,
+        device_model: model,
+        issue_description: form.issue,
+      });
+
+      const data = res.data;
+      setAiDiagnosisResult(data);
+
+      // Auto-fill suggested labor cost if available
+      if (data.estimated_cost && Number(data.estimated_cost) > 0) {
+        setForm((prev) => ({
+          ...prev,
+          estimated_cost: Number(data.estimated_cost),
+          notes: prev.notes ? `${prev.notes}\n[AI Diagnosis]: ${data.probable_cause}` : `[AI Diagnosis]: ${data.probable_cause}`
+        }));
+      }
+
+      toast("AI Diagnosis complete!", "success");
+    } catch (err) {
+      toast("Failed to run AI diagnosis", "error");
+    } finally {
+      setDiagnosingAI(false);
+    }
+  };
+
 
   useEffect(() => {
     const clean = (form.imei || "").trim();
@@ -1533,13 +1573,42 @@ export default function Repairs() {
                 </Select>
               </div>
               <div className="md:col-span-2 space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Issue / Fault Description</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Issue / Fault Description</p>
+                  <button
+                    type="button"
+                    onClick={runAIDiagnose}
+                    disabled={diagnosingAI}
+                    className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border border-purple-500/40 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 text-[10px] font-bold transition flex items-center gap-1 shadow-md shadow-purple-500/10 disabled:opacity-50"
+                  >
+                    <Sparkles size={12} className={`text-purple-300 ${diagnosingAI ? "animate-spin" : ""}`} />
+                    {diagnosingAI ? "Diagnosing..." : "AI Auto-Diagnose"}
+                  </button>
+                </div>
                 <textarea 
                   className="w-full bg-[#0f172a] border border-white/10 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-indigo-500/50 min-h-[80px]"
                   placeholder="Describe the problem..."
                   value={form.issue}
                   onChange={e => setForm({...form, issue: e.target.value})}
                 />
+                {aiDiagnosisResult && (
+                  <div className="p-3.5 rounded-2xl border border-purple-500/30 bg-purple-950/30 space-y-2 text-xs">
+                    <div className="flex items-center justify-between font-bold text-purple-300">
+                      <span className="flex items-center gap-1.5"><Sparkles size={14} /> AI Diagnostic Suggestion</span>
+                      <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 border border-purple-500/30">
+                        {aiDiagnosisResult.urgency || "Normal"} Priority
+                      </span>
+                    </div>
+                    <p className="text-slate-300"><strong className="text-white">Probable Cause:</strong> {aiDiagnosisResult.probable_cause}</p>
+                    <p className="text-slate-300"><strong className="text-white">Recommended Action:</strong> {aiDiagnosisResult.suggested_action}</p>
+                    {aiDiagnosisResult.recommended_parts?.length > 0 && (
+                      <p className="text-slate-300"><strong className="text-white">Parts Needed:</strong> {aiDiagnosisResult.recommended_parts.join(", ")}</p>
+                    )}
+                    {aiDiagnosisResult.estimated_cost && (
+                      <p className="text-emerald-400 font-semibold">Suggested Est. Labor: ${Number(aiDiagnosisResult.estimated_cost).toFixed(2)} (auto-applied below)</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Estimated Labor Cost</p>

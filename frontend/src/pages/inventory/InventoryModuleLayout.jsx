@@ -3,7 +3,9 @@ import { PageHeader } from "../../components/UI";
 
 export const inventoryTabs = [
   ["/inventory/overview", "Overview"],
-  ["/inventory/products", "Products"],
+  ["/inventory/master-products", "Master Catalog"],
+  ["/inventory/products", "Products (SKUs)"],
+  ["/inventory/product-types", "Product Types"],
   ["/inventory/categories", "Categories"],
   ["/inventory/brands", "Brands"],
   ["/inventory/variants", "Variants"],

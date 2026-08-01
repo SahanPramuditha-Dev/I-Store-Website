@@ -13,6 +13,7 @@ from app.services.storage import get_storage_service, validate_file, STORAGE_PRE
 from app.models import (
     ActivityLog,
     InventoryItem,
+    ProductVariant,
     Supplier,
     StockMovement,
     InventorySerial,
@@ -189,10 +190,45 @@ def list_inventory(
 def create_inventory(payload: InventoryIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
     data = payload.model_dump()
     data["barcode"] = _validated_barcode(payload.barcode, payload.sku)
+
+    # Strip UI-only fields that don't exist on the DB model
+    ui_only_fields = {"selected_variant_id"}
+    for f in ui_only_fields:
+        data.pop(f, None)
+
     duplicate = db.query(InventoryItem).filter(InventoryItem.barcode == data["barcode"]).first()
     if duplicate:
         raise HTTPException(status_code=400, detail=f"Duplicate barcode detected: {data['barcode']}")
-    item = InventoryItem(**data)
+    
+    # Auto-link or create ProductVariant if master_product_id is provided
+    if data.get("master_product_id"):
+        # SKU is UNIQUE on product_variants — always search by SKU alone
+        variant = db.query(ProductVariant).filter(
+            ProductVariant.sku == data["sku"]
+        ).first()
+        if not variant:
+            # Only create a new variant if one with this SKU truly doesn't exist
+            variant = ProductVariant(
+                product_id=data["master_product_id"],
+                master_product_id=data["master_product_id"],
+                sku=data["sku"],
+                barcode=data.get("barcode") or None,
+                display_name=f"{data['name']} - {data.get('storage') or ''} {data.get('color') or ''}".strip(" -"),
+                default_cost_price=data.get("cost_price", 0),
+                default_selling_price=data.get("sale_price", 0),
+                default_wholesale_price=data.get("wholesale_price", 0),
+                min_allowed_price=data.get("min_allowed_price", 0),
+                status="ACTIVE",
+            )
+            db.add(variant)
+            db.flush()
+        data["variant_id"] = variant.id
+
+    # Only pass columns that exist on InventoryItem
+    valid_columns = {c.key for c in InventoryItem.__table__.columns}
+    filtered_data = {k: v for k, v in data.items() if k in valid_columns}
+
+    item = InventoryItem(**filtered_data)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -205,6 +241,9 @@ def update_inventory(item_id: int, payload: InventoryIn, db: Session = Depends(g
         raise HTTPException(status_code=404, detail="Item not found")
     update_data = payload.model_dump()
     update_data["barcode"] = _validated_barcode(payload.barcode, payload.sku)
+    # Strip UI-only fields
+    for f in {"selected_variant_id"}:
+        update_data.pop(f, None)
     duplicate = (
         db.query(InventoryItem)
         .filter(InventoryItem.barcode == update_data["barcode"], InventoryItem.id != item_id)
@@ -212,8 +251,10 @@ def update_inventory(item_id: int, payload: InventoryIn, db: Session = Depends(g
     )
     if duplicate:
         raise HTTPException(status_code=400, detail=f"Duplicate barcode detected: {update_data['barcode']}")
+    valid_columns = {c.key for c in InventoryItem.__table__.columns}
     for k, v in update_data.items():
-        setattr(item, k, v)
+        if k in valid_columns:
+            setattr(item, k, v)
     db.commit()
     db.refresh(item)
     return item
@@ -937,6 +978,101 @@ def variants(db: Session = Depends(get_db), _=Depends(get_current_user)):
         for r in rows
     ]
 
+@router.get('/variants/items', dependencies=[Depends(require_permission("inventory.view"))])
+def variant_items(
+    brand: str = "",
+    model: str = "",
+    storage: str = "",
+    color: str = "",
+    condition: str = "",
+    category: str = "",
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user)
+):
+    query = db.query(InventoryItem)
+    if brand:
+        query = query.filter(InventoryItem.brand == brand)
+    if model:
+        query = query.filter(InventoryItem.model == model)
+    if storage:
+        query = query.filter(InventoryItem.storage == storage)
+    if color:
+        query = query.filter(InventoryItem.color == color)
+    if condition:
+        query = query.filter(InventoryItem.condition == condition)
+    if category:
+        query = query.filter(InventoryItem.category == category)
+        
+    items = query.all()
+    results = []
+    for item in items:
+        serials = db.query(InventorySerial).filter(InventorySerial.item_id == item.id).all()
+        results.append({
+            "id": item.id,
+            "name": item.name,
+            "sku": item.sku,
+            "brand": item.brand,
+            "model": item.model,
+            "storage": item.storage,
+            "color": item.color,
+            "condition": item.condition,
+            "category": item.category,
+            "quantity": item.quantity,
+            "sale_price": float(item.sale_price or 0),
+            "cost_price": float(item.cost_price or 0),
+            "serials": [
+                {
+                    "id": s.id,
+                    "serial_number": s.serial_number,
+                    "status": s.status,
+                    "cost_price": float(s.cost_price or 0),
+                    "selling_price": float(s.selling_price or 0),
+                }
+                for s in serials
+            ]
+        })
+    return results
+
+@router.post('/variants/bulk-price', dependencies=[Depends(require_permission("inventory.manage"))])
+def bulk_update_variant_price(
+    payload: dict,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    brand = payload.get("brand", "")
+    model = payload.get("model", "")
+    storage = payload.get("storage", "")
+    color = payload.get("color", "")
+    condition = payload.get("condition", "")
+    category = payload.get("category", "")
+    new_price = float(payload.get("new_sale_price", 0))
+
+    if new_price <= 0:
+        raise HTTPException(status_code=400, detail="New sale price must be greater than 0")
+
+    query = db.query(InventoryItem)
+    if brand:
+        query = query.filter(InventoryItem.brand == brand)
+    if model:
+        query = query.filter(InventoryItem.model == model)
+    if storage:
+        query = query.filter(InventoryItem.storage == storage)
+    if color:
+        query = query.filter(InventoryItem.color == color)
+    if condition:
+        query = query.filter(InventoryItem.condition == condition)
+    if category:
+        query = query.filter(InventoryItem.category == category)
+
+    items = query.all()
+    updated_count = len(items)
+    for item in items:
+        item.sale_price = new_price
+
+    db.commit()
+    return {"status": "success", "updated_items": updated_count, "new_sale_price": new_price}
+
+
 @router.get('/serials/search', dependencies=[Depends(require_permission("inventory.serial_manage"))])
 def search_serials(query: str = "", db: Session = Depends(get_db), _=Depends(get_current_user)):
     q = (query or "").strip()
@@ -1353,7 +1489,7 @@ def list_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
     rows = db.query(ProductCategory).order_by(ProductCategory.name.asc()).all()
     counts = dict(
         db.query(func.lower(InventoryItem.category), func.count(InventoryItem.id))
-        .filter(InventoryItem.category.isnot(None), InventoryItem.category != "")
+        .filter(InventoryItem.category.isnot(None), InventoryItem.category != "", InventoryItem.is_deleted == False)
         .group_by(func.lower(InventoryItem.category))
         .all()
     )
@@ -1438,7 +1574,7 @@ def list_brands(db: Session = Depends(get_db), _=Depends(get_current_user)):
     rows = db.query(Brand).order_by(Brand.name.asc()).all()
     counts = dict(
         db.query(func.lower(InventoryItem.brand), func.count(InventoryItem.id))
-        .filter(InventoryItem.brand.isnot(None), InventoryItem.brand != "")
+        .filter(InventoryItem.brand.isnot(None), InventoryItem.brand != "", InventoryItem.is_deleted == False)
         .group_by(func.lower(InventoryItem.brand))
         .all()
     )

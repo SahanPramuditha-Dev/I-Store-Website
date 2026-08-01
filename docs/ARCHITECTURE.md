@@ -64,6 +64,7 @@ Normal shop operations must work without internet:
 - Returns/refunds: returns, refunds, exchanges, store credit, damaged stock.
 - Reports: sales, repairs, inventory, expenses, outstanding payments, audit exports.
 - Backup/restore: backup records, restore requests, approvals, checksums, emergency snapshots.
+- Auto-update engine: background release checking via GitHub Releases, automated pre-install DB backups, and versioned schema migrations on launch (see [AUTO_UPDATE.md](file:///c:/D/Projects/Websites/I%20Store%20Website/docs/AUTO_UPDATE.md)).
 
 ## Data Flow Examples
 
