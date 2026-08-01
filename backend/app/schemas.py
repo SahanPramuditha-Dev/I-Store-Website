@@ -82,6 +82,8 @@ class InventoryIn(BaseModel):
     sale_price: float = 0
     wholesale_price: float = 0
     min_allowed_price: float = 0
+    max_discount_amount: float = 0
+    max_discount_percent: float = 0
     low_stock_threshold: int = 5
     shop_warranty_days: int = 0
     supplier_warranty_days: int = 0
