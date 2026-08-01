@@ -661,6 +661,42 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
 
     subtotal = round(float(subtotal or 0), 2)
     total = round(max(0.0, subtotal - float(payload.discount_amount or 0) + float(payload.tax_amount or 0)), 2)
+    # Server-side: compute per-line maximum allowed discount (LKR) and enforce
+    # Logic mirrors frontend: prefer per-item `max_discount_amount`, then `max_discount_percent`,
+    # then `min_allowed_price` floor guard, else fallback to 35% of line total.
+    max_allowed_discount_total = 0.0
+    for line in payload.lines:
+        try:
+            qty = int(line.quantity or 0)
+        except Exception:
+            qty = 0
+        if qty <= 0:
+            continue
+        try:
+            price = float(line.price or 0)
+        except Exception:
+            price = 0.0
+        line_total = float(qty) * price
+        if line_total <= 0:
+            continue
+        item = None
+        if getattr(line, "item_id", None):
+            item = db.query(InventoryItem).filter(InventoryItem.id == int(line.item_id), InventoryItem.is_deleted == False).first()  # noqa: E712
+        if item:
+            per_amount = float(item.max_discount_amount or 0)
+            per_pct = float(item.max_discount_percent or 0)
+            min_allowed_price = float(item.min_allowed_price or 0)
+            if per_amount > 0:
+                allowed = min(per_amount, line_total)
+            elif per_pct > 0:
+                allowed = (per_pct / 100.0) * line_total
+            elif min_allowed_price > 0:
+                allowed = max(0.0, line_total - (min_allowed_price * qty))
+            else:
+                allowed = 0.35 * line_total
+        else:
+            allowed = 0.35 * line_total
+        max_allowed_discount_total += allowed
     allow_freebie = bool(((sales_rules or {}).get("allow_freebie_invoice", False)))
     if total <= 0 and not allow_freebie:
         raise HTTPException(status_code=400, detail="Zero/negative total invoice is not allowed by policy")
@@ -675,6 +711,12 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
         total=float(total or 0),
         lines=payload.lines,
     )
+
+    # Final enforcement: reject if requested discount exceeds aggregated per-item allowances
+    requested_discount = float(payload.discount_amount or 0)
+    # Allow tiny floating rounding tolerance
+    if requested_discount > max_allowed_discount_total + 0.001:
+        raise HTTPException(status_code=400, detail=f"Requested discount exceeds allowed maximum LKR {round(max_allowed_discount_total,2)}")
 
     applied_advances: list[tuple[AdvancePayment, float]] = []
     applied_advance_total = 0.0

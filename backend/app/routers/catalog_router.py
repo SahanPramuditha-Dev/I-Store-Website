@@ -618,6 +618,8 @@ def search_pos_variants(q: str = "", db: Session = Depends(get_db), _=Depends(ge
             "selling_price": float(v.default_selling_price or 0),
             "cost_price": float(v.default_cost_price or 0),
             "min_allowed_price": float(v.min_allowed_price or 0),
+            "max_discount_amount": float(v.max_discount_amount or 0) if hasattr(v, 'max_discount_amount') else 0,
+            "max_discount_percent": float(v.max_discount_percent or 0) if hasattr(v, 'max_discount_percent') else 0,
             "available_stock": int(stock),
             "image_url": v.image_url or (v.product.master_image_url if v.product else None),
         })

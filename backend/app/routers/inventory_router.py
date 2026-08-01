@@ -217,7 +217,9 @@ def create_inventory(payload: InventoryIn, db: Session = Depends(get_db), _=Depe
                 default_cost_price=data.get("cost_price", 0),
                 default_selling_price=data.get("sale_price", 0),
                 default_wholesale_price=data.get("wholesale_price", 0),
-                min_allowed_price=data.get("min_allowed_price", 0),
+                    min_allowed_price=data.get("min_allowed_price", 0),
+                    max_discount_amount=data.get("max_discount_amount", 0),
+                    max_discount_percent=data.get("max_discount_percent", 0),
                 status="ACTIVE",
             )
             db.add(variant)
