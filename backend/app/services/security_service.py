@@ -524,6 +524,9 @@ def _default_role_permission_allowed(role_name: str, module: str, action: str) -
             "reservation.create",
             "reservation.edit",
             "reservation.invoice",
+            "inventory.view",
+            "suppliers.view",
+            "financial_audit.view",
             # legacy compatibility
             "pos.create",
             "pos.print",
@@ -603,7 +606,7 @@ def _ensure_default_role_permissions(db: Session, role_map: dict[str, Role], per
             if not row:
                 row = RolePermission(role_id=role.id, permission_id=perm.id, allowed=allowed)
                 db.add(row)
-            elif role_name in {"owner", "admin"}:
+            elif role_name in {"owner", "admin", "cashier", "storekeeper", "technician", "accountant"}:
                 row.allowed = allowed
 
 

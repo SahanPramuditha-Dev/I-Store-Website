@@ -14,6 +14,7 @@ class UserOut(BaseModel):
     role: str
     is_active: bool = True
     last_login_at: datetime | None = None
+    pin_set: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 class EmployeeIn(BaseModel):
@@ -61,6 +62,8 @@ class SupplierIn(BaseModel):
     opening_balance: float = 0
 
 class InventoryIn(BaseModel):
+    master_product_id: int | None = None
+    variant_id: int | None = None
     name: str
     category: str
     brand: str | None = None
@@ -74,9 +77,14 @@ class InventoryIn(BaseModel):
     warranty_days: int = 0
     sku: str
     barcode: str | None = None
-    quantity: int
-    cost_price: float
-    sale_price: float
+    quantity: int = 0
+    cost_price: float = 0
+    sale_price: float = 0
+    wholesale_price: float = 0
+    min_allowed_price: float = 0
+    low_stock_threshold: int = 5
+    shop_warranty_days: int = 0
+    supplier_warranty_days: int = 0
     has_serials: bool = False
     supplier_id: int | None = None
 

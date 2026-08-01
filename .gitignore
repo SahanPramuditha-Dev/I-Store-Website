@@ -6,6 +6,8 @@ dist/
 build/
 frontend/dist/
 electron/dist/
+dist-electron/
+electron/frontend-dist/
 
 .env
 .env.local

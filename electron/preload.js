@@ -24,10 +24,11 @@ const ALLOWED_INVOKE = new Set([
   "db:cursor:get", "db:cursor:set",
   "db:auth:setToken",
   "db:sync:push", "db:sync:pull",
+  "updater:check", "updater:install",
 ]);
 
 // ── Whitelist of valid "on" event channels ────────────────────────────────
-const ALLOWED_EVENTS = new Set(["sync:completed", "sync:error"]);
+const ALLOWED_EVENTS = new Set(["sync:completed", "sync:error", "updater:status", "updater:progress"]);
 
 function safeInvoke(channel, ...args) {
   if (!ALLOWED_INVOKE.has(channel)) {
@@ -63,6 +64,22 @@ contextBridge.exposeInMainWorld("istore", {
       const handler = (_e, data) => callback(data);
       ipcRenderer.on("sync:completed", handler);
       return () => ipcRenderer.removeListener("sync:completed", handler);
+    },
+  },
+
+  // ── Auto Updater ─────────────────────────────────────────────────────
+  updater: {
+    checkForUpdates: () => safeInvoke("updater:check"),
+    installUpdate:   () => safeInvoke("updater:install"),
+    onStatus: (callback) => {
+      const handler = (_e, data) => callback(data);
+      ipcRenderer.on("updater:status", handler);
+      return () => ipcRenderer.removeListener("updater:status", handler);
+    },
+    onProgress: (callback) => {
+      const handler = (_e, data) => callback(data);
+      ipcRenderer.on("updater:progress", handler);
+      return () => ipcRenderer.removeListener("updater:progress", handler);
     },
   },
 

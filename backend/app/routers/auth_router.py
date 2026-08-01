@@ -327,9 +327,11 @@ def logout(
     return {"ok": True, "terminated": terminated}
 
 
-@router.get("/me", response_model=UserOut)
+@router.get("/me")
 def me(user: User = Depends(get_current_user)):
-    return user
+    res = UserOut.model_validate(user).model_dump()
+    res["pin_set"] = bool(user.pin_hash)
+    return res
 
 
 @router.get("/me/permissions")

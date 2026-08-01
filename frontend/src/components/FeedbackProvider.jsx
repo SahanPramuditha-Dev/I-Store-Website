@@ -15,7 +15,18 @@ export function FeedbackProvider({ children }) {
 
   const toast = (message, tone = "info", timeoutMs = 2800) => {
     const id = makeId();
-    setToasts((prev) => [...prev, { id, message, tone }]);
+    let messageText = "";
+    if (message === null || message === undefined) messageText = "";
+    else if (typeof message === "string") messageText = message;
+    else if (typeof message === "object") {
+      // Common API error shapes
+      if (message.message) messageText = String(message.message);
+      else if (message.detail) messageText = String(message.detail);
+      else messageText = JSON.stringify(message);
+    } else {
+      messageText = String(message);
+    }
+    setToasts((prev) => [...prev, { id, message: messageText, tone }]);
     if (timeoutMs > 0) setTimeout(() => dismissToast(id), timeoutMs);
   };
 

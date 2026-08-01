@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
+import UpdateNotification from "./components/UpdateNotification";
 import { bootstrapPermissions, canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions } from "./lib/rbac";
 import InvoiceView from "./pages/InvoiceView";
 
@@ -13,6 +14,8 @@ const ProductReservations = lazy(() => import("./pages/ProductReservations"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const InventoryModuleLayout = lazy(() => import("./pages/inventory/InventoryModuleLayout"));
 const InventoryOverview = lazy(() => import("./pages/inventory/InventoryOverview"));
+const MasterProducts = lazy(() => import("./pages/inventory/MasterProducts"));
+const ProductTypes = lazy(() => import("./pages/inventory/ProductTypes"));
 const InventoryVariants = lazy(() => import("./pages/inventory/InventoryVariants"));
 const InventorySerials = lazy(() => import("./pages/inventory/InventorySerials"));
 const InventoryMovements = lazy(() => import("./pages/inventory/InventoryMovements"));
@@ -90,6 +93,7 @@ export default function App() {
   // Removed client-side backup trigger to prevent concurrent backup races under multi-user load.
 
   return <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <UpdateNotification />
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<Login/>} />
@@ -101,7 +105,9 @@ export default function App() {
           <Route path="/inventory" element={<Navigate to="/inventory/overview" replace />} />
           <Route path="/inventory/*" element={<InventoryModuleLayout/>}>
             <Route path="overview" element={<InventoryOverview/>} />
+            <Route path="master-products" element={<MasterProducts/>} />
             <Route path="products" element={<Inventory/>} />
+            <Route path="product-types" element={<ProductTypes/>} />
             <Route path="categories" element={<InventoryCategories/>} />
             <Route path="brands" element={<InventoryBrands/>} />
             <Route path="variants" element={<InventoryVariants/>} />

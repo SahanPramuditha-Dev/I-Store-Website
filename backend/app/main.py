@@ -47,6 +47,7 @@ from app.routers.audit_trail_router import router as audit_trail_router
 from app.routers.advance_router import router as advance_router
 from app.routers.access_router import router as access_router
 from app.routers.print_center_router import router as print_center_router
+from app.routers.catalog_router import router as catalog_router
 from app.config import settings
 from app.auth import require_admin, require_module_access, require_permission
 from app.seed import seed_data
@@ -396,6 +397,7 @@ app.include_router(labels_router, dependencies=[Depends(require_module_access("l
 app.include_router(audit_trail_router, dependencies=[Depends(require_module_access("audit_logs"))])
 from app.routers.analytics_ai_router import router as analytics_ai_router
 
+app.include_router(catalog_router, dependencies=[Depends(require_module_access("inventory"))])
 app.include_router(advance_router)
 app.include_router(access_router)
 app.include_router(print_center_router)
@@ -479,7 +481,10 @@ async def global_exception_handler(request: Request, exc: Exception):
             "success": False,
             "error_code": ERROR_INTERNAL_SERVER_ERROR,
             "message": "Internal server error",
-            "meta": {"error_id": error_id},
+            "meta": {
+                "error_id": error_id,
+                "detail": f"{type(exc).__name__}: {str(exc)}",
+            },
         },
         status_code=500,
         headers=headers,

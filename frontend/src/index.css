@@ -488,14 +488,27 @@ html:not(.dark) .table-sticky thead th {
 
 .table-base tbody tr:hover td { background: rgba(255,255,255,0.03); }
 
-/* Subtle scrollbars */
-* { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,0.35) rgba(2,6,23,0.05); }
-*::-webkit-scrollbar { height: 10px; width: 10px; }
-*::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.30); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+/* Clean Number Input Spinners (Hide browser default white/blue steer buttons) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Subtle, sleek custom scrollbars & input focus styling */
+* { scrollbar-width: thin; scrollbar-color: rgba(129,140,248,0.3) transparent; }
+*::-webkit-scrollbar { height: 6px; width: 6px; }
+*::-webkit-scrollbar-thumb { background: rgba(129,140,248,0.25); border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(129,140,248,0.45); }
 *::-webkit-scrollbar-track { background: transparent; }
 
-html:not(.dark) *::-webkit-scrollbar-thumb { background-color: rgba(100,116,139,0.25); }
-html:not(.dark) *::-webkit-scrollbar-track { background-color: rgba(100,116,139,0.05); }
+html:not(.dark) * { scrollbar-color: rgba(99,102,241,0.3) transparent; }
+html:not(.dark) *::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.25); }
+html:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.45); }
 
 .login-shell {
   min-height: 100vh;

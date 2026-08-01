@@ -125,16 +125,39 @@ export default function InventorySuppliers() {
   return (
     <div className="space-y-3">
       <AppCard title={editingId ? "Edit Supplier" : "Add Supplier"}>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Supplier name" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
-          <input value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="Contact details" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
-          <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
-          <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
-          <input value={form.payment_terms_days} onChange={(e) => setForm({ ...form, payment_terms_days: e.target.value })} type="number" min="0" placeholder="Payment terms (days)" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
-          <input value={form.opening_balance} onChange={(e) => setForm({ ...form, opening_balance: e.target.value })} type="number" placeholder="Opening balance" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
-          <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 md:col-span-2" />
-          <button onClick={save} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white">{editingId ? "Update" : "Add"}</button>
-          <button onClick={reset} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-slate-200">Clear</button>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Supplier Name</label>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Colombo Fort Traders" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Contact Details</label>
+            <input value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} placeholder="Phone / Person" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Email Address</label>
+            <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@domain.com" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Address</label>
+            <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Supplier address" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Payment Terms (Days)</label>
+            <input value={form.payment_terms_days} onChange={(e) => setForm({ ...form, payment_terms_days: e.target.value })} type="number" min="0" placeholder="0" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Opening Balance (Rs.)</label>
+            <input value={form.opening_balance} onChange={(e) => setForm({ ...form, opening_balance: e.target.value })} type="number" placeholder="0.00" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div className="flex flex-col gap-1 md:col-span-2">
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Notes / Remarks</label>
+            <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Additional supplier notes..." className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div className="flex items-end gap-2 md:col-span-4 justify-end pt-1">
+            <button onClick={reset} className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/10">Clear</button>
+            <button onClick={save} className="rounded-lg bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-indigo-500">{editingId ? "Update Supplier" : "Add Supplier"}</button>
+          </div>
         </div>
       </AppCard>
 

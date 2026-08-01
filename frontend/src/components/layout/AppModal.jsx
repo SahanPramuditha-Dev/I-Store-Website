@@ -18,6 +18,9 @@ export default function AppModal({
 }) {
   const panelRef = useRef(null);
   const titleId = useId();
+  const titleIsNode = title !== null && typeof title === "object";
+
+  const pointerStartedInsideRef = useRef(false);
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -81,7 +84,18 @@ export default function AppModal({
   if (!open) return null;
 
   return (
-    <div className={cx("fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm", className)} onClick={onClose}>
+    <div
+      className={cx("fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm", className)}
+      onPointerUp={(event) => {
+        // Only close when pointer up happens directly on the overlay (not the panel),
+        // and the pointer DID NOT start inside the panel. This avoids closing the
+        // modal when the user selects text or drags from inside the modal to outside.
+        if (event.target === event.currentTarget && !pointerStartedInsideRef.current) {
+          onClose?.();
+        }
+        pointerStartedInsideRef.current = false;
+      }}
+    >
       <div
         ref={panelRef}
         role="dialog"
@@ -93,14 +107,27 @@ export default function AppModal({
           panelClassName,
         )}
         onClick={(event) => event.stopPropagation()}
+        onPointerDown={() => {
+          // Mark that a pointer interaction started inside the panel so an eventual
+          // pointerup outside the panel (e.g., from a drag/selection) won't trigger close.
+          pointerStartedInsideRef.current = true;
+        }}
       >
         {(title || headerActions || onClose) && (
-          <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-            {title ? (
-              <h3 id={titleId} className="min-w-0 truncate text-base font-bold text-white">{title}</h3>
-            ) : (
-              <span className="min-w-0 text-base font-bold text-white">Dialog</span>
-            )}
+          <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5 sm:py-4">
+            <div className="min-w-0 flex-1">
+              {title ? (
+                titleIsNode ? (
+                  <div id={titleId}>{title}</div>
+                ) : (
+                  <h3 id={titleId} className="min-w-0 truncate text-base font-bold text-white">
+                    {title}
+                  </h3>
+                )
+              ) : (
+                <span className="min-w-0 text-base font-bold text-white">Dialog</span>
+              )}
+            </div>
             <div className="flex shrink-0 items-center gap-2">
               {headerActions}
               {onClose ? (

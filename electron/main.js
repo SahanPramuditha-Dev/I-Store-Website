@@ -21,6 +21,7 @@ const { app, BrowserWindow, shell } = require("electron");
 const path = require("path");
 const db   = require("./local-db");
 const syncBridge = require("./sync-bridge");
+const { initAutoUpdater } = require("./updater");
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -86,7 +87,7 @@ function createWindow() {
     win.loadURL("http://localhost:5173");
     win.webContents.openDevTools();
   } else {
-    win.loadFile(path.join(__dirname, "../frontend/dist/index.html"));
+    win.loadFile(path.join(__dirname, "frontend-dist/index.html"));
   }
 
   win.once("ready-to-show", () => win.show());
@@ -101,10 +102,14 @@ function createWindow() {
 // ── App lifecycle ──────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   await initDatabase();
-  createWindow();
+  const win = createWindow();
+  initAutoUpdater(win);
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const newWin = createWindow();
+      initAutoUpdater(newWin);
+    }
   });
 });
 

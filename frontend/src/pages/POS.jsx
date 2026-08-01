@@ -5,7 +5,7 @@ import { openPrintCenter } from "../lib/printCenter";
 import { printHtmlDocument } from "../lib/printBridge";
 import { useFetch } from "../hooks/useFetch";
 import { Badge, Input, Select, SensitiveActionIndicators } from "../components/UI";
-import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Info, ImageOff, AlertCircle, Check, Zap, ChevronDown, ChevronUp } from "lucide-react";
+import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Zap, ChevronDown, ChevronUp } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
@@ -43,6 +43,7 @@ export default function POS() {
   
   const [discountMode, setDiscountMode] = useState("amount"); 
   const [discountValue, setDiscountValue] = useState(0);
+  const [discountError, setDiscountError] = useState("");
   const [taxAmount, setTaxAmount] = useState(0);
   
   const [paid, setPaid] = useState(true);
@@ -170,6 +171,12 @@ export default function POS() {
     return Math.max(0, Number(cashReceived || 0) - dueAfterCredits);
   }, [cashReceived, dueAfterCredits, paid, paymentMethod]);
 
+  const signedChange = useMemo(() => {
+    // Positive = customer gave more than due (change to return)
+    // Negative = customer gave less than due (balance remaining)
+    return Number(cashReceived || 0) - dueAfterCredits;
+  }, [cashReceived, dueAfterCredits]);
+
   const [lastSale, setLastSale] = useState(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [showDraftSaveModal, setShowDraftSaveModal] = useState(false);
@@ -183,7 +190,42 @@ export default function POS() {
   }, [paymentMethod, dueAfterCredits, cashReceived, cardAmount]);
 
   // Validation helpers
-  const maxDiscountAllowed = useMemo(() => subtotal * 0.35, [subtotal]); // Max 35% discount
+  const maxDiscountAllowed = useMemo(() => {
+    // Compute max discount allowed from per-product limits (if present on inventory items).
+    // inventoryFetch.data is expected to contain items with optional fields:
+    //  - max_discount_amount (absolute LKR)
+    //  - max_discount_percent (percentage of the line total)
+    // Fallback to 35% of the line total when no per-product limit is set.
+    const inv = inventoryFetch.data || [];
+    if (!cart.length) return 0;
+    let totalAllowed = 0;
+    for (const c of cart) {
+      const lineTotal = Number(c.quantity || 0) * Number(c.price || 0);
+      if (!lineTotal) continue;
+      const item = inv.find((i) => Number(i.id) === Number(c.item_id)) || {};
+      const perAmount = Number(item.max_discount_amount || item.max_discount || 0);
+      const perPct = Number(item.max_discount_percent || 0);
+      const minAllowedPrice = Number(item.min_allowed_price || 0);
+      if (perAmount > 0) {
+        totalAllowed += Math.min(perAmount, lineTotal);
+      } else if (perPct > 0) {
+        totalAllowed += (perPct / 100) * lineTotal;
+      } else if (minAllowedPrice > 0) {
+        // Can't discount below the min allowed price per unit
+        const qty = Number(c.quantity || 0) || 1;
+        const allowedByFloor = Math.max(0, lineTotal - (minAllowedPrice * qty));
+        totalAllowed += Math.min(allowedByFloor, lineTotal);
+      } else {
+        totalAllowed += 0.35 * lineTotal; // fallback
+      }
+    }
+    return totalAllowed;
+  }, [cart, inventoryFetch.data, subtotal]);
+
+  const maxDiscountPercentAllowed = useMemo(() => {
+    if (!subtotal) return 0;
+    return (maxDiscountAllowed / subtotal) * 100;
+  }, [maxDiscountAllowed, subtotal]);
   const minSellingPrice = useMemo(() => {
     return cart.map(c => {
       const inv = (inventoryFetch.data || []).find(x => x.id === c.item_id);
@@ -665,17 +707,26 @@ export default function POS() {
 
   const updateDiscountValue = (val) => {
     const numVal = Number(val || 0);
-    if (discountMode === "percent" && numVal > 35) {
-      toast("Max discount: 35%", "warning");
-      setDiscountValue(35);
-      return;
+    if (discountMode === "percent") {
+      const pctAllowed = Math.max(0, Math.floor(maxDiscountPercentAllowed || 0));
+      if (numVal > pctAllowed) {
+        toast(`Max discount: ${pctAllowed}%`, "warning");
+        setDiscountValue(pctAllowed);
+        setDiscountError(`Max discount is ${pctAllowed}%.`);
+        return;
+      }
     }
-    if (discountMode === "amount" && numVal > maxDiscountAllowed) {
-      toast(`Max discount: LKR ${Math.round(maxDiscountAllowed)}`, "warning");
-      setDiscountValue(maxDiscountAllowed);
-      return;
+    if (discountMode === "amount") {
+      const amountAllowed = Number(maxDiscountAllowed || 0);
+      if (numVal > amountAllowed) {
+        toast(`Max discount: LKR ${Math.round(amountAllowed)}`, "warning");
+        setDiscountValue(amountAllowed);
+        setDiscountError(`Max discount is LKR ${Math.round(amountAllowed)}.`);
+        return;
+      }
     }
     setDiscountValue(numVal);
+    setDiscountError("");
   };
 
   const stepQty = (itemId, delta) => {
@@ -1152,68 +1203,58 @@ export default function POS() {
     <div className="h-full min-h-0 flex flex-col gap-3 text-slate-200 overflow-hidden">
       
       {/* TOP COMPACT STATUS BAR */}
-      <div className="flex flex-wrap items-start justify-between gap-2 bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-xl p-2 shrink-0 shadow-sm">
-        <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
+      <div className="flex flex-nowrap items-center justify-between gap-3 bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-xl p-2 shrink-0 shadow-sm overflow-x-auto">
+        <div className="flex items-center shrink-0 bg-black/40 p-1 rounded-lg border border-white/5">
           <button 
-            className={`px-3 2xl:px-5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${mode === "sale" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "sale" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
             onClick={() => setMode("sale")}
           >
             Product Sale
           </button>
           <button 
-            className={`px-3 2xl:px-5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${mode === "repair" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "repair" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
             onClick={() => setMode("repair")}
           >
             Repair Billing
           </button>
           <button 
-            className={`px-3 2xl:px-5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${mode === "reservation" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "reservation" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
             onClick={() => setMode("reservation")}
           >
             Reservation
           </button>
           <a
             href="/returns"
-            className="px-3 2xl:px-5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all text-rose-300 hover:text-white hover:bg-rose-500/20"
+            className="px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap text-rose-300 hover:text-white hover:bg-rose-500/20"
           >
             Return / Exchange
           </a>
-          <Link
-            to="/print-center?type=sales_receipt&paper=thermal_80"
-            className="flex items-center gap-1.5 px-3 2xl:px-5 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all text-sky-300 hover:text-white hover:bg-sky-500/20"
-            title="Open unified production printing"
-          >
-            <Printer size={13} /> Print Center
-          </Link>
-          <div className="hidden 2xl:flex items-center pl-2">
-            <SensitiveActionIndicators items={["approval", "audit"]} />
-          </div>
         </div>
         
-        <div className="grid w-full grid-cols-3 gap-2 px-2 lg:w-auto 2xl:grid-cols-6 2xl:gap-4 2xl:px-4">
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Subtotal</span>
-            <span className="text-sm font-black">LKR {Math.round(subtotal).toLocaleString()}</span>
+        <div className="flex items-center shrink-0 gap-5 2xl:gap-8 px-4 2xl:px-6">
+          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">Subtotal</span>
+            <span className="text-base font-black text-slate-200 leading-none">LKR {Math.round(subtotal).toLocaleString()}</span>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Discount</span>
-            <span className="text-sm font-black text-rose-400">LKR {Math.round(discountAmount).toLocaleString()}</span>
+          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">Discount</span>
+            <span className="text-base font-black text-rose-400 leading-none">LKR {Math.round(discountAmount).toLocaleString()}</span>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Grand Total</span>
-            <span className="text-lg font-black text-indigo-400 leading-none mt-0.5">LKR {Math.round(grandTotal).toLocaleString()}</span>
+          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+            <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest leading-none mb-1">Grand Total</span>
+            <span className="text-base font-black text-indigo-400 leading-none">LKR {Math.round(grandTotal).toLocaleString()}</span>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Advance</span>
-            <span className="text-sm font-black text-emerald-300">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
+          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest leading-none mb-1">Advance</span>
+            <span className="text-base font-black text-emerald-300 leading-none">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">Store Credit</span>
-            <span className="text-sm font-black text-cyan-300">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
+          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+            <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest leading-none mb-1">Store Credit</span>
+            <span className="text-base font-black text-cyan-300 leading-none">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-widest">Due Now</span>
-            <span className="text-lg font-black text-amber-300 leading-none mt-0.5">LKR {Math.round(dueAfterCredits).toLocaleString()}</span>
+          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-widest leading-none mb-1">Due Now</span>
+            <span className="text-base font-black text-amber-300 leading-none">LKR {Math.round(dueAfterCredits).toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -1696,10 +1737,14 @@ export default function POS() {
                     </button>
                   ))}
                 </div>
-                {paymentMethod === "Cash" && (
+                  {paymentMethod === "Cash" && (
                   <div className="flex gap-2">
                     {[dueAfterCredits, 1000, 1500].map((amt, i) => (
-                      <button key={i} onClick={() => setCashReceived(Math.round(Math.max(amt, dueAfterCredits)))} className="flex-1 rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10">
+                      <button
+                        key={i}
+                        onClick={() => setCashReceived(i === 0 ? Math.round(dueAfterCredits) : Math.round(amt))}
+                        className="flex-1 rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
+                      >
                         {i === 0 ? "Exact" : `${amt}`}
                       </button>
                     ))}
@@ -1708,17 +1753,46 @@ export default function POS() {
               </div>
 
               <div className="space-y-2 min-w-0">
-                <div className="flex items-center justify-between bg-black/20 border border-white/5 rounded-lg px-3 py-1.5">
-                   <div className="text-xs text-slate-400 font-medium flex items-center gap-2">
-                      Discount 
-                      <button onClick={() => setDiscountMode(m => m === "amount" ? "percent" : "amount")} className="text-indigo-400 bg-indigo-400/10 px-1 rounded text-[10px] font-bold">{discountMode === "amount" ? "LKR" : "%"}</button>
-                   </div>
-                   <input type="number" className="w-24 bg-transparent text-right text-sm font-bold outline-none" placeholder="0" value={discountValue} onChange={e => updateDiscountValue(e.target.value)} />
+                <div className="bg-black/20 border border-white/5 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Percent size={14} className="text-indigo-300" />
+                      <span className="text-xs font-semibold text-slate-200">Discount</span>
+                    </div>
+                    <div className="flex items-center gap-1 rounded-md bg-white/5 p-0.5">
+                      <button type="button" onClick={() => setDiscountMode('amount')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'amount' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
+                        LKR
+                      </button>
+                      <button type="button" onClick={() => setDiscountMode('percent')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'percent' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
+                        %
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
+                      type="number"
+                      className="flex-1 bg-transparent text-right text-sm font-bold outline-none"
+                      placeholder={discountMode === 'percent' ? 'Enter % (max 35)' : 'Enter amount (LKR)'}
+                      value={discountValue}
+                      onChange={e => updateDiscountValue(e.target.value)}
+                    />
+                    {discountMode === 'percent' ? <span className="text-xs text-slate-400">%</span> : <span className="text-xs text-slate-400">LKR</span>}
+                  </div>
+                  <div className="mt-1 text-[11px]">
+                    {discountError ? (
+                      <span className="text-rose-400">{discountError}</span>
+                    ) : (
+                      <span className="text-slate-500">
+                        {discountMode === 'percent' ? `Max discount ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max discount LKR ${Math.round(maxDiscountAllowed)}`}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {paymentMethod === "Cash" && (
                   <div className="flex items-center justify-between bg-black/20 border border-white/5 rounded-lg px-3 py-1.5 focus-within:border-emerald-500/50">
-                     <span className="text-xs text-slate-400 font-medium">Cash Given</span>
-                     <input ref={cashInputRef} type="number" className="w-28 bg-transparent text-right text-sm font-bold text-emerald-400 outline-none" placeholder="0" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
+                    <span className="text-xs text-slate-400 font-medium flex items-center gap-2"><Banknote size={12} /> <span className="font-semibold">Cash Given</span></span>
+                    <input aria-label="Cash given amount" ref={cashInputRef} type="number" className="w-36 bg-transparent text-right text-sm font-bold text-emerald-400 outline-none" placeholder="Enter amount or use quick buttons" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
                   </div>
                 )}
                 {paymentMethod === "Mixed" && (
@@ -1780,11 +1854,18 @@ export default function POS() {
                 Complete Sale
               </button>
             </div>
-            {paymentMethod === "Cash" && cashReceived && change >= 0 && (
-              <div className="text-center mt-3 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <div className="text-xs text-emerald-300/70 font-medium mb-1">CHANGE TO RETURN</div>
-                <div className="text-lg font-black text-emerald-400">LKR {change.toLocaleString()}</div>
-              </div>
+            {paymentMethod === "Cash" && cashReceived !== "" && (
+              signedChange >= 0 ? (
+                <div className="text-center mt-3 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="text-xs text-emerald-300/70 font-medium mb-1">CHANGE TO RETURN</div>
+                  <div className="text-lg font-black text-emerald-400">LKR {change.toLocaleString()}</div>
+                </div>
+              ) : (
+                <div className="text-center mt-3 p-2 rounded-lg bg-amber-600/10 border border-amber-600/20">
+                  <div className="text-xs text-amber-300/70 font-medium mb-1">BALANCE DUE</div>
+                  <div className="text-lg font-black text-amber-300">LKR {Math.abs(signedChange).toLocaleString()}</div>
+                </div>
+              )
             )}
             <div className="text-center mt-2 text-[9px] text-slate-500/70 space-y-1">
               <div>F2: Product Search | F3: Customer | F4: Payment | Ctrl+R: Repair | Ctrl+I: Invoice | Ctrl+P: Print</div>
@@ -1844,22 +1925,31 @@ export default function POS() {
               </div>
 
               <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-                  Discount
-                  <button
-                    onClick={() => setDiscountMode(m => m === "amount" ? "percent" : "amount")}
-                    className="rounded bg-indigo-400/10 px-1.5 py-0.5 text-[10px] font-black text-indigo-300"
-                  >
-                    {discountMode === "amount" ? "LKR" : "%"}
-                  </button>
+                <div className="flex items-center gap-2">
+                  <Percent size={14} className="text-indigo-300" />
+                  <span className="text-xs font-semibold text-slate-200">Discount</span>
                 </div>
-                <input
-                  type="number"
-                  className="w-24 bg-transparent text-right text-sm font-bold text-slate-100 outline-none"
-                  placeholder="0"
-                  value={discountValue}
-                  onChange={e => updateDiscountValue(e.target.value)}
-                />
+                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 rounded-md bg-white/5 p-0.5">
+                    <button type="button" onClick={() => setDiscountMode('amount')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'amount' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
+                      LKR
+                    </button>
+                    <button type="button" onClick={() => setDiscountMode('percent')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'percent' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
+                      %
+                    </button>
+                  </div>
+                  <div>
+                    <input
+                      aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
+                      type="number"
+                      className="w-20 bg-transparent text-right text-sm font-bold outline-none"
+                      placeholder={discountMode === 'percent' ? 'Enter %' : 'Enter LKR'}
+                      value={discountValue}
+                      onChange={e => updateDiscountValue(e.target.value)}
+                    />
+                    <div className="text-[11px]">{discountError ? <span className="text-rose-400">{discountError}</span> : <span className="text-slate-500">{discountMode === 'percent' ? `Max ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max LKR ${Math.round(maxDiscountAllowed)}`}</span>}</div>
+                  </div>
+                </div>
               </div>
 
               {customerId && (
@@ -1972,19 +2062,24 @@ export default function POS() {
               {paymentMethod === "Cash" && (
                 <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-400">Cash Given</span>
+                    <span className="text-xs font-semibold text-slate-400 flex items-center gap-2"><Banknote size={12} /> Cash Given</span>
                     <input
+                      aria-label="Cash given amount"
                       ref={cashInputRef}
                       type="number"
-                      className="w-28 bg-transparent text-right text-sm font-black text-emerald-300 outline-none"
-                      placeholder="0"
+                      className="w-36 bg-transparent text-right text-sm font-black text-emerald-300 outline-none"
+                      placeholder="Enter amount or use quick buttons"
                       value={cashReceived}
                       onChange={e => setCashReceived(e.target.value)}
                     />
                   </div>
                   <div className="grid grid-cols-3 gap-1">
                     {[dueAfterCredits, 1000, 1500].map((amt, i) => (
-                      <button key={`rail-cash-${i}`} onClick={() => setCashReceived(Math.round(Math.max(amt, dueAfterCredits)))} className="rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10">
+                      <button
+                        key={`rail-cash-${i}`}
+                        onClick={() => setCashReceived(i === 0 ? Math.round(dueAfterCredits) : Math.round(amt))}
+                        className="rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
+                      >
                         {i === 0 ? "Exact" : `${amt}`}
                       </button>
                     ))}
@@ -2051,11 +2146,18 @@ export default function POS() {
                   Complete Sale
                 </button>
               </div>
-              {paymentMethod === "Cash" && cashReceived && change >= 0 && (
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-center">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/70">Change</div>
-                  <div className="text-base font-black text-emerald-300">LKR {change.toLocaleString()}</div>
-                </div>
+              {paymentMethod === "Cash" && cashReceived !== "" && (
+                signedChange >= 0 ? (
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/70">Change</div>
+                    <div className="text-base font-black text-emerald-300">LKR {change.toLocaleString()}</div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-amber-600/20 bg-amber-600/10 px-3 py-2 text-center">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/70">Balance Due</div>
+                    <div className="text-base font-black text-amber-300">LKR {Math.abs(signedChange).toLocaleString()}</div>
+                  </div>
+                )
               )}
             </div>
           </div>

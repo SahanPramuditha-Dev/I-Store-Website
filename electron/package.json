@@ -12,13 +12,15 @@
     "setup:electron": "node scripts/extract-electron.js"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "sql.js": "^1.12.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
     "cross-env": "^7.0.3",
     "electron": "^31.7.7",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "innosetup-compiler": "^6.3.1"
   },
   "build": {
     "appId": "com.istore.erp",
@@ -31,12 +33,15 @@
       "preload.js",
       "local-db.js",
       "sync-bridge.js",
+      "db-backup.js",
+      "updater.js",
+      "app-update.yml",
       "node_modules/**/*",
-      "../frontend/dist/**/*"
+      "frontend-dist/**/*"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "../assets/icon.ico"
+      "target": "dir",
+      "sign": null
     },
     "mac": {
       "target": "dmg",
@@ -46,10 +51,16 @@
       "target": "AppImage",
       "icon": "../assets/icon.png"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "SahanPramuditha-Dev",
+        "repo": "I-Store-Website"
+      }
+    ],
     "extraMetadata": {
       "main": "main.js"
-    },
-    "nativeRebuilder": "sequential"
+    }
   },
   "comments": {
     "storage": "sql.js uses pure WebAssembly SQLite - no native compilation required. Works on all Node/Electron versions.",

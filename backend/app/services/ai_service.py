@@ -6,8 +6,11 @@ from typing import Dict, Any, List, Generator
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+import warnings
 try:
-    import google.generativeai as genai
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
+        import google.generativeai as genai
     GENAI_AVAILABLE = True
 except ImportError:
     genai = None
@@ -183,3 +186,167 @@ Guidelines:
     except Exception as e:
         logger.error(f"Error calling Gemini API: {e}", exc_info=True)
         yield f"\n[AI Error: {str(e)}]"
+
+def _generate_single_prompt(prompt: str) -> str:
+    """Helper to run a prompt through the model fallback chain synchronously."""
+    if not init_gemini():
+        raise Exception("Gemini API is not configured or initialized.")
+        
+    configured_model = settings.gemini_model or MODEL_FALLBACK_CHAIN[0]
+    chain = [configured_model] + [m for m in MODEL_FALLBACK_CHAIN if m != configured_model]
+    
+    contents = [{"role": "user", "parts": [prompt]}]
+    last_err = None
+    
+    for model_name in chain:
+        try:
+            model = genai.GenerativeModel(model_name)
+            res = model.generate_content(contents, stream=False)
+            if res and res.text:
+                return res.text
+        except Exception as e:
+            last_err = e
+            if _is_quota_error(e) or _is_model_error(e):
+                continue
+            raise e
+            
+    raise Exception(f"All models failed. Last error: {last_err}")
+
+def diagnose_repair_ticket(device_brand: str, device_model: str, issue_description: str, db: Session) -> Dict[str, Any]:
+    """Uses AI to diagnose device issues, recommend parts from inventory, and estimate labor cost."""
+    # Fetch available parts from inventory for context
+    parts = db.query(InventoryItem).filter(
+        InventoryItem.is_deleted == False,
+        InventoryItem.quantity > 0
+    ).limit(50).all()
+    
+    parts_list = [f"- {p.name} (SKU: {p.sku}, Stock: {p.quantity}, Price: ${p.selling_price})" for p in parts]
+    parts_str = "\n".join(parts_list) if parts_list else "No active inventory loaded."
+    
+    prompt = f"""
+You are an expert electronics repair technician at 'I Store'.
+Diagnose the following repair ticket and output ONLY valid JSON without markdown codeblock wrappers.
+
+DEVICE: {device_brand} {device_model}
+ISSUE REPORTED: {issue_description}
+
+AVAILABLE IN-STORE PARTS INVENTORY:
+{parts_str}
+
+REQUIRED JSON OUTPUT FORMAT:
+{{
+  "probable_cause": "Detailed explanation of the likely fault",
+  "suggested_action": "Recommended repair procedure",
+  "estimated_labor_hours": 1.5,
+  "estimated_cost": 85.00,
+  "recommended_parts": ["Part name from inventory if applicable"],
+  "urgency": "High | Medium | Low"
+}}
+"""
+    raw_response = _generate_single_prompt(prompt)
+    clean_json = raw_response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        return json.loads(clean_json)
+    except Exception:
+        return {
+            "probable_cause": raw_response,
+            "suggested_action": "Manual inspection required",
+            "estimated_labor_hours": 1.0,
+            "estimated_cost": 50.00,
+            "recommended_parts": [],
+            "urgency": "Medium"
+        }
+
+def forecast_inventory_restock(db: Session) -> Dict[str, Any]:
+    """Analyzes low stock items and generates an AI restock strategy."""
+    low_stock = db.query(InventoryItem).filter(
+        InventoryItem.is_deleted == False,
+        InventoryItem.quantity <= InventoryItem.low_stock_threshold
+    ).all()
+    
+    items_data = [
+        {
+            "name": item.name,
+            "sku": item.sku,
+            "current_stock": item.quantity,
+            "threshold": item.low_stock_threshold,
+            "cost": float(item.cost_price or 0),
+            "supplier": item.supplier or "Unknown"
+        }
+        for item in low_stock
+    ]
+    
+    prompt = f"""
+You are the inventory optimization AI for 'I Store'.
+Review these low stock inventory items and create an actionable restock plan.
+Return ONLY valid JSON without markdown formatting.
+
+ITEMS BELOW THRESHOLD:
+{json.dumps(items_data, indent=2)}
+
+REQUIRED JSON OUTPUT FORMAT:
+{{
+  "summary": "Brief executive summary of inventory status",
+  "total_estimated_restock_cost": 450.00,
+  "action_items": [
+    {{
+      "item_name": "Name",
+      "sku": "SKU",
+      "suggested_order_qty": 10,
+      "estimated_cost": 150.00,
+      "priority": "Critical | High | Medium",
+      "reason": "Explanation for suggestion"
+    }}
+  ]
+}}
+"""
+    raw_response = _generate_single_prompt(prompt)
+    clean_json = raw_response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        return json.loads(clean_json)
+    except Exception:
+        return {
+            "summary": "Low stock items detected requiring reorder.",
+            "total_estimated_restock_cost": sum(item["cost"] * 10 for item in items_data),
+            "action_items": [
+                {
+                    "item_name": item["name"],
+                    "sku": item["sku"],
+                    "suggested_order_qty": max(5, item["threshold"] * 2 - item["current_stock"]),
+                    "estimated_cost": item["cost"] * 10,
+                    "priority": "High" if item["current_stock"] == 0 else "Medium",
+                    "reason": "Stock below safety threshold"
+                }
+                for item in items_data
+            ]
+        }
+
+def draft_customer_message(message_type: str, customer_name: str, details: Dict[str, Any]) -> Dict[str, str]:
+    """Generates customer-facing SMS/WhatsApp message drafts."""
+    prompt = f"""
+You are a customer relationship assistant for 'I Store'.
+Draft a professional, polite, and clear customer message.
+
+MESSAGE TYPE: {message_type} (e.g., repair_ready, payment_reminder, invoice_receipt)
+CUSTOMER NAME: {customer_name}
+CONTEXT DETAILS:
+{json.dumps(details, indent=2)}
+
+Guidelines:
+- Include 'I Store' branding.
+- Keep SMS short, clear, and action-oriented.
+- Return ONLY JSON format:
+{{
+  "sms_draft": "Short SMS version under 160 chars",
+  "whatsapp_draft": "Formatted WhatsApp/Email version with emojis and line breaks"
+}}
+"""
+    raw_response = _generate_single_prompt(prompt)
+    clean_json = raw_response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        return json.loads(clean_json)
+    except Exception:
+        return {
+            "sms_draft": f"Hello {customer_name}, update regarding your service at I Store. Please contact us for details.",
+            "whatsapp_draft": f"Hello {customer_name},\n\nThis is a notification from I Store regarding your account/service.\n\nThank you for choosing I Store!"
+        }

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { useCachedQuery } from "../hooks/useCachedQuery";
 import { apiService } from "../lib/apiService";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, KpiCard, Loading, PageHeader, Select, StatusBadge } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, ErrorState, KpiCard, Loading, PageHeader, Select, StatusBadge } from "../components/UI";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppModal from "../components/layout/AppModal";
 import { downloadCsv, downloadPdf, paginateRows } from "../lib/tableUtils";
@@ -27,6 +27,7 @@ import {
   ShieldCheck,
   Trash2,
   Wand2,
+  Sparkles,
 } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 
@@ -58,20 +59,67 @@ export default function Inventory() {
   const [supplierFilter, setSupplierFilter] = useState("All");
   const [productTypeFilter, setProductTypeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("updated");
+  const [showAIRestockModal, setShowAIRestockModal] = useState(false);
+  const [aiRestockPlan, setAiRestockPlan] = useState(null);
+  const [loadingAIRestock, setLoadingAIRestock] = useState(false);
+
+  const fetchAIRestockPlan = async () => {
+    setLoadingAIRestock(true);
+    setShowAIRestockModal(true);
+    try {
+      const res = await api.get("/api/ai/inventory-forecast");
+      setAiRestockPlan(res.data);
+    } catch (err) {
+      toast("Failed to generate AI restock plan", "error");
+    } finally {
+      setLoadingAIRestock(false);
+    }
+  };
+
   const [viewMode, setViewMode] = useState("list");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const searchRef = useRef(null);
 
-  const { data: inventoryData, loading, error, refetch, setData: setCacheData } = useCachedQuery(
-    ["inventory", page, pageSize, query, categoryFilter, supplierFilter],
-    () => apiService.inventory.list({
-      page,
-      pageSize,
-      search: query,
-      category: categoryFilter,
-      supplierId: supplierFilter
-    })
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchInventory = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const q = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      if (query.trim()) q.append("search", query.trim());
+      if (categoryFilter && categoryFilter !== "All") q.append("category", categoryFilter);
+      if (supplierFilter && supplierFilter !== "All") q.append("supplier_id", supplierFilter);
+
+      const res = await api.get(`/inventory?${q.toString()}`, { timeout: 10000, __retryCount: 2 });
+      setInventoryItems(res.data || []);
+      setTotalCount(parseInt(res.headers["x-total-count"] || res.headers["X-Total-Count"] || "0", 10));
+    } catch (err) {
+      setError(err.userMessage || err.message || "Failed to load inventory");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, query, categoryFilter, supplierFilter]);
+
+  useEffect(() => {
+    fetchInventory();
+  }, [fetchInventory]);
+
+  const { data: masterProductsData } = useCachedQuery(
+    "catalog-master-products",
+    () => api.get("/catalog/products").then((res) => res.data || [])
+  );
+
+  const { data: productTypesData } = useCachedQuery(
+    "catalog-product-types",
+    () => api.get("/catalog/product-types").then((res) => res.data || [])
   );
 
   const { data: categoriesData } = useCachedQuery(
@@ -84,14 +132,21 @@ export default function Inventory() {
     () => api.get("/inventory/brands").then((res) => res.data || [])
   );
 
-const fetchSuppliersList = () => apiService.inventory.getSuppliers().then((res) => res.data);
-const fetchMovementsList = () => apiService.inventory.getMovements().then((res) => res.data);
+  const { data: suppliersData } = useCachedQuery(
+    "inventory-suppliers",
+    () => api.get("/inventory/suppliers").then((res) => res.data || [])
+  );
 
-  const suppliersQuery = useCachedQuery("suppliers", fetchSuppliersList);
-  const movementQuery = useCachedQuery("movements", fetchMovementsList);
+  const { data: movementsData } = useCachedQuery(
+    "inventory-movements",
+    () => api.get("/inventory/movements?limit=100").then((res) => res.data || [])
+  );
 
-  const suppliers = suppliersQuery.data || [];
-  const movements = movementQuery.data || [];
+  const masterProductsList = masterProductsData || [];
+  const productTypesList = productTypesData || [];
+
+  const suppliers = suppliersData || [];
+  const movements = movementsData || [];
   const categoryOptions = useMemo(() => {
     const names = (categoriesData || [])
       .map((row) => String(row?.name || "").trim())
@@ -106,19 +161,13 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
       .sort((a, b) => a.localeCompare(b));
     return Array.from(new Set(names));
   }, [brandsData]);
-  const data = inventoryData?.items || [];
+  const inventoryData = useMemo(() => ({ items: inventoryItems, total: totalCount }), [inventoryItems, totalCount]);
+  const data = inventoryItems;
 
-  const setData = (updater) => {
-    setCacheData((prev) => {
-      const currentItems = prev?.items || [];
-      const newItems = typeof updater === "function" ? updater(currentItems) : (updater?.items ?? updater);
-      return {
-        ...prev,
-        items: newItems,
-        total: prev?.total ?? newItems.length
-      };
-    });
+  const setCacheData = (updater) => {
+    setInventoryItems((prev) => (typeof updater === "function" ? updater(prev) : (updater?.items ?? updater)));
   };
+  const setData = setCacheData;
 
   const [editingProductId, setEditingProductId] = useState(null);
   const [detailsDrawer, setDetailsDrawer] = useState(false);
@@ -130,6 +179,8 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
   const [serialModal, setSerialModal] = useState(null);
 
   const [form, setForm] = useState({
+    master_product_id: "",
+    selected_variant_id: "",
     name: "",
     category: "",
     brand: "",
@@ -137,14 +188,19 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
     storage: "",
     color: "",
     condition: "New",
-    product_type: "Retail",
+    product_type: "",
     location: "",
     image_url: "",
     warranty_days: 0,
+    shop_warranty_days: 0,
+    supplier_warranty_days: 0,
     sku: "",
-    quantity: 1,
+    quantity: 0,
     cost_price: 0,
     sale_price: 0,
+    wholesale_price: 0,
+    min_allowed_price: 0,
+    low_stock_threshold: 5,
     barcode: "",
     supplier_id: "",
     has_serials: false,
@@ -156,6 +212,8 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const emptyProductForm = {
+    master_product_id: "",
+    selected_variant_id: "",
     name: "",
     category: "",
     brand: "",
@@ -163,14 +221,19 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
     storage: "",
     color: "",
     condition: "New",
-    product_type: "Retail",
+    product_type: "",
     location: "",
     image_url: "",
     warranty_days: 0,
+    shop_warranty_days: 0,
+    supplier_warranty_days: 0,
     sku: "",
-    quantity: 1,
+    quantity: 0,
     cost_price: 0,
     sale_price: 0,
+    wholesale_price: 0,
+    min_allowed_price: 0,
+    low_stock_threshold: 5,
     barcode: "",
     supplier_id: "",
     has_serials: false,
@@ -384,7 +447,9 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
 
   const saveProduct = async () => {
     try {
-      const payload = { ...form, supplier_id: form.supplier_id ? Number(form.supplier_id) : null };
+      // Strip UI-only fields before sending to API
+      const { selected_variant_id, ...formData } = form;
+      const payload = { ...formData, supplier_id: form.supplier_id ? Number(form.supplier_id) : null };
       if (editingProductId) {
         const r = await api.put(`/inventory/${editingProductId}`, payload);
         setData((data || []).map((row) => (row.id === editingProductId ? r.data : row)));
@@ -396,8 +461,10 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
       }
       setShowAddModal(false);
       resetProductForm();
-    } catch {
-      toast(editingProductId ? "Failed to update product" : "Failed to add product", "error");
+    } catch (err) {
+      const serverMsg = err?.response?.data?.detail || err?.response?.data?.message;
+      toast(serverMsg || (editingProductId ? "Failed to update product" : "Failed to add product"), "error");
+      console.error(err?.response?.data || err);
     }
   };
 
@@ -494,6 +561,22 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
     });
   };
 
+  const generateSku = () => {
+    const brandCode = (form.brand || "IST").substring(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, "X");
+    const modelCode = (form.model || "PRD").substring(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, "X");
+    const storageCode = (form.storage || "").replace(/\s+/g, "").toUpperCase();
+    const colorCode = (form.color || "").substring(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    
+    let parts = [brandCode, modelCode];
+    if (storageCode) parts.push(storageCode);
+    if (colorCode) parts.push(colorCode);
+    parts.push(randomSuffix);
+
+    const generated = parts.join("-");
+    setForm((prev) => ({ ...prev, sku: generated }));
+  };
+
   const generateBarcode = () => {
     const seed = `${form.sku || "IST"}${Date.now().toString().slice(-6)}`.toUpperCase().replace(/\s+/g, "");
     setForm((prev) => ({ ...prev, barcode: seed }));
@@ -523,8 +606,16 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
     }
   };
 
-  if (loading) return <Loading text="Loading inventory..." />;
-  if (error) return <div className="rounded border border-red-500/30 bg-red-500/10 p-4 text-red-300">{error}</div>;
+  if (loading && inventoryItems.length === 0) return <Loading text="Loading inventory..." />;
+  if (error && inventoryItems.length === 0) {
+    return (
+      <ErrorState
+        title="Inventory unavailable"
+        text={error}
+        action={<Button onClick={fetchInventory}>Retry</Button>}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-0 min-w-0 max-w-full flex-col gap-4 overflow-x-clip overflow-y-auto pb-2 xl:h-full xl:overflow-y-hidden">
@@ -623,6 +714,10 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
                 >
                   Export PDF
                 </button>
+                <button onClick={fetchAIRestockPlan} className="px-3 h-9 rounded-lg bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border border-purple-500/40 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 text-[11px] font-bold transition flex items-center gap-1.5 shadow-lg shadow-purple-500/10">
+                  <Sparkles size={14} className="text-purple-300 animate-pulse" />
+                  AI Restock Plan
+                </button>
                 <button onClick={bulkRestock} className="px-3 h-9 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-200 text-[11px] font-bold transition">Bulk Restock</button>
                 <button onClick={bulkMarkOutOfStock} className="px-3 h-9 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 text-[11px] font-bold transition">Bulk Out Of Stock</button>
                 <Select className="repair-select h-9 min-w-[150px] max-w-[220px] !w-auto bg-[#0f172a] border-white/10 text-xs" onChange={(e) => assignSupplierBulk(e.target.value)}>
@@ -661,6 +756,7 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
                 <InventoryTable
                   rows={filtered}
                   suppliers={suppliers}
+                  masterProductsList={masterProductsList}
                   getProductType={getProductType}
                   getItemThreshold={getItemThreshold}
                   getStockStatus={getStockStatus}
@@ -669,21 +765,28 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
                   onEdit={(item) => {
                     setEditingProductId(item.id);
                     setForm({
+                      master_product_id: item.master_product_id ? String(item.master_product_id) : "",
+                      selected_variant_id: item.variant_id ? String(item.variant_id) : "",
                       name: item.name,
-                      category: item.category,
+                      category: item.category || "",
                       brand: item.brand || "",
                       model: item.model || "",
                       storage: item.storage || "",
                       color: item.color || "",
                       condition: item.condition || "New",
-                      product_type: item.product_type || "Retail",
+                      product_type: item.product_type || "",
                       location: item.location || "",
                       image_url: item.image_url || "",
                       warranty_days: Number(item.warranty_days || 0),
+                      shop_warranty_days: Number(item.shop_warranty_days || item.warranty_days || 0),
+                      supplier_warranty_days: Number(item.supplier_warranty_days || 0),
                       sku: item.sku,
                       quantity: item.quantity,
-                      cost_price: item.cost_price,
-                      sale_price: item.sale_price,
+                      cost_price: item.cost_price || 0,
+                      sale_price: item.sale_price || 0,
+                      wholesale_price: item.wholesale_price || 0,
+                      min_allowed_price: item.min_allowed_price || 0,
+                      low_stock_threshold: item.low_stock_threshold || 5,
                       barcode: item.barcode || "",
                       supplier_id: item.supplier_id ? String(item.supplier_id) : "",
                       has_serials: Boolean(item.has_serials),
@@ -778,45 +881,199 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
       </AppDrawer>
 
       {showAddModal && (
-        <Modal title={editingProductId ? "Edit Product" : "Add Product"} onClose={() => { setShowAddModal(false); resetProductForm(); }}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <FieldInput label="Product Name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
-            <FieldSelect label="Category" value={form.category} onChange={(value) => setForm({ ...form, category: value })} options={categoryFieldOptions} />
-            <FieldSelect label="Brand" value={form.brand} onChange={(value) => setForm({ ...form, brand: value })} options={brandFieldOptions} />
-            <FieldInput label="Model" value={form.model} onChange={(value) => setForm({ ...form, model: value })} />
-            <FieldInput label="Storage" value={form.storage} onChange={(value) => setForm({ ...form, storage: value })} placeholder="128GB" />
-            <FieldInput label="Color" value={form.color} onChange={(value) => setForm({ ...form, color: value })} />
-            <FieldSelect label="Condition" value={form.condition} onChange={(value) => setForm({ ...form, condition: value })} options={["New", "Used", "Refurbished"]} />
-            <FieldSelect label="Product Type" value={form.product_type} onChange={(value) => setForm({ ...form, product_type: value })} options={["Retail", "Spare Parts", "Service"]} />
-            <FieldInput label="Location" value={form.location} onChange={(value) => setForm({ ...form, location: value })} placeholder="Shelf A-02" />
-            <FieldInput label="Image URL" value={form.image_url} onChange={(value) => setForm({ ...form, image_url: value })} />
-            <div>
-              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Upload Image</label>
-              <div className="flex items-center gap-2">
-                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={(e) => uploadImage(e.target.files?.[0])} className="w-full rounded-xl border border-white/10 bg-black/40 p-2 text-xs text-slate-200" />
-                {uploadingImage && <span className="text-xs text-slate-400">Uploading...</span>}
+        <Modal
+          title={editingProductId ? "Edit Product (SKU)" : "Add Product (SKU)"}
+          panelClassName="max-w-3xl"
+          onClose={() => { setShowAddModal(false); resetProductForm(); }}
+        >
+          <div className="space-y-4">
+            {/* Step 1: Master Product & Variant Preset Selection Banner */}
+            <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/40 p-3.5 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-indigo-300">
+                  1. Master Product Family (Optional Link)
+                </label>
+                <Select
+                  value={form.master_product_id}
+                  placeholder="-- No Master Product (Standalone SKU) --"
+                  onChange={(e) => {
+                    const mpId = e.target.value;
+                    const selectedMp = masterProductsList.find((mp) => String(mp.id) === String(mpId));
+                    if (selectedMp) {
+                      setForm((prev) => ({
+                        ...prev,
+                        master_product_id: mpId,
+                        selected_variant_id: "",
+                        name: selectedMp.name,
+                        brand: selectedMp.brand || prev.brand,
+                        category: selectedMp.category || prev.category,
+                        storage: "",
+                        color: "",
+                        image_url: selectedMp.master_image_url || prev.image_url || "",
+                      }));
+                    } else {
+                      setForm((prev) => ({ ...prev, master_product_id: "", selected_variant_id: "", storage: "", color: "" }));
+                    }
+                  }}
+                  className="w-full"
+                >
+                  {masterProductsList.map((mp) => (
+                    <option key={mp.id} value={mp.id}>
+                      {mp.name} {mp.brand ? `(${mp.brand})` : ""}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              {Boolean(form.master_product_id) && (() => {
+                const selectedMp = masterProductsList.find((mp) => String(mp.id) === String(form.master_product_id));
+                const mpVariants = selectedMp?.variants || [];
+                if (mpVariants.length === 0) return null;
+                return (
+                  <div className="pt-2.5 border-t border-indigo-500/20">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                      2. Pick Variant Preset SKU
+                    </label>
+                    <Select
+                      value={form.selected_variant_id}
+                      placeholder="-- Select Variant Preset --"
+                      onChange={(e) => {
+                        const varId = e.target.value;
+                        const v = mpVariants.find((varItem) => String(varItem.id) === String(varId));
+                        if (v) {
+                          const attrs = v.attributes || {};
+                          const attrStr = Object.entries(attrs).map(([k, val]) => `${k}: ${val}`).join(" | ");
+                          setForm((prev) => ({
+                            ...prev,
+                            selected_variant_id: varId,
+                            name: v.display_name || prev.name,
+                            storage: attrs.Storage || attrs.Length || attrs["Case Size"] || prev.storage,
+                            color: attrs.Color || attrs["Band Color"] || prev.color,
+                            sku: v.sku || prev.sku,
+                            barcode: v.barcode || prev.barcode,
+                            cost_price: v.default_cost_price ?? prev.cost_price,
+                            sale_price: v.default_selling_price ?? prev.sale_price,
+                          }));
+                          toast(`Loaded variant: ${v.display_name || v.sku} ${attrStr ? `(${attrStr})` : ""}`, "info");
+                        } else {
+                          setForm((prev) => ({ ...prev, selected_variant_id: "" }));
+                        }
+                      }}
+                      className="w-full font-mono text-amber-200"
+                    >
+                      {mpVariants.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.display_name || v.sku} (SKU: {v.sku} | Price: Rs. {v.default_selling_price})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Smart Specification Banner if Master Product Selected */}
+            {Boolean(form.master_product_id) && (
+              <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-indigo-200">
+                  <Sparkles size={16} className="text-indigo-400" />
+                  <span>
+                    Linked to Master Family: <strong className="text-white">{form.name}</strong>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {form.category && <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-[10px] font-bold text-slate-300">{form.category}</span>}
+                  {form.brand && <span className="rounded-full bg-indigo-500/20 px-2.5 py-0.5 text-[10px] font-bold text-indigo-300 border border-indigo-500/30">{form.brand}</span>}
+                </div>
+              </div>
+            )}
+
+            {/* Form Fields: Smart Dynamic Layout */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Product Name (Always Shown) */}
+              <FieldInput label="Product Name / SKU Title" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
+              
+              {/* Category & Brand */}
+              <FieldSelect label="Category" value={form.category} onChange={(value) => setForm({ ...form, category: value })} options={categoryFieldOptions} />
+              <FieldSelect label="Brand" value={form.brand} onChange={(value) => setForm({ ...form, brand: value })} options={brandFieldOptions} />
+
+              {/* Show Custom Specifications Inputs ONLY if NOT linked to a Master Product */}
+              {!form.master_product_id && (
+                <>
+                  <FieldInput label="Model / Sub-Variant" value={form.model} onChange={(value) => setForm({ ...form, model: value })} placeholder="e.g. Pro, Slim, 2M" />
+                  <FieldInput label="Specification / Size" value={form.storage} onChange={(value) => setForm({ ...form, storage: value })} placeholder="e.g. 128GB, 2 Meter, 45mm" />
+                  <FieldInput label="Color / Finish" value={form.color} onChange={(value) => setForm({ ...form, color: value })} placeholder="e.g. Black, Silver" />
+                </>
+              )}
+
+              {/* System & Stock Behavior Fields */}
+              <FieldSelect label="Condition" value={form.condition} onChange={(value) => setForm({ ...form, condition: value })} options={["New", "Used", "Refurbished"]} />
+              <FieldSelect
+                label="Product Type"
+                value={form.product_type}
+                onChange={(value) => setForm({ ...form, product_type: value })}
+                options={productTypesList.length > 0 ? productTypesList.map((pt) => pt.name) : ["Mobile Phone", "Accessory", "Spare Part", "Service"]}
+              />
+              <FieldInput label="Shelf / Bin Location" value={form.location} onChange={(value) => setForm({ ...form, location: value })} placeholder="Shelf A-02" />
+
+              {/* Stock Quantities & Financial Prices */}
+              <FieldInput label="Initial Stock Qty" type="number" value={form.quantity} onChange={(value) => setForm({ ...form, quantity: Number(value) })} />
+              <FieldInput label="Cost Price (Rs.)" type="number" value={form.cost_price} onChange={(value) => setForm({ ...form, cost_price: Number(value) })} />
+              <FieldInput label="Retail Selling Price (Rs.)" type="number" value={form.sale_price} onChange={(value) => setForm({ ...form, sale_price: Number(value) })} />
+              <FieldInput label="Wholesale Price (Rs.)" type="number" value={form.wholesale_price} onChange={(value) => setForm({ ...form, wholesale_price: Number(value) })} placeholder="B2B Dealer Price" />
+              <FieldInput label="Min Allowed Price (Floor Guard)" type="number" value={form.min_allowed_price} onChange={(value) => setForm({ ...form, min_allowed_price: Number(value) })} placeholder="Minimum checkout price" />
+              <FieldInput label="Low Stock Threshold Alert" type="number" value={form.low_stock_threshold} onChange={(value) => setForm({ ...form, low_stock_threshold: Number(value) })} />
+
+              {/* Identifiers (SKU & Barcode) */}
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">SKU Code</label>
+                <div className="flex gap-2">
+                  <input className="w-full rounded-xl border border-white/10 bg-black/40 p-2.5 text-sm text-white font-mono placeholder-slate-600" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. APP-IP15-128-9842" />
+                  {!form.master_product_id && (
+                    <button type="button" onClick={generateSku} title="Auto-generate SKU" className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-600/20 px-3 text-xs font-semibold text-indigo-300 hover:bg-indigo-600/40">
+                      <Wand2 size={14} /> Auto
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Barcode</label>
+                <div className="flex gap-2">
+                  <input className="w-full rounded-xl border border-white/10 bg-black/40 p-2.5 text-sm text-white font-mono" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
+                  <button type="button" onClick={generateBarcode} title="Auto-generate Barcode" className="rounded-lg border border-white/10 bg-white/5 px-2.5 text-slate-100 hover:bg-white/10"><Barcode size={14} /></button>
+                </div>
+              </div>
+
+              {/* Supplier & Warranty Breakdown */}
+              <FieldSelect label="Supplier" value={form.supplier_id} onChange={(value) => setForm({ ...form, supplier_id: value })} options={["", ...suppliers.map((s) => String(s.id))]} optionLabels={["No Supplier", ...suppliers.map((s) => s.name)]} />
+              <FieldInput label="Shop Warranty (Days)" type="number" value={form.shop_warranty_days || form.warranty_days} onChange={(value) => setForm({ ...form, shop_warranty_days: Number(value), warranty_days: Number(value) })} />
+              <FieldInput label="Supplier / Brand Warranty (Days)" type="number" value={form.supplier_warranty_days} onChange={(value) => setForm({ ...form, supplier_warranty_days: Number(value) })} />
+
+              {/* Image Input */}
+              <div>
+                <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Upload Image</label>
+                <div className="flex items-center gap-2">
+                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={(e) => uploadImage(e.target.files?.[0])} className="w-full rounded-xl border border-white/10 bg-black/40 p-2 text-xs text-slate-200" />
+                  {uploadingImage && <span className="text-xs text-slate-400">Uploading...</span>}
+                </div>
               </div>
             </div>
-            <FieldInput label="Warranty Days" type="number" value={form.warranty_days} onChange={(value) => setForm({ ...form, warranty_days: Number(value) })} />
-            <FieldInput label="SKU" value={form.sku} onChange={(value) => setForm({ ...form, sku: value })} mono />
-            <div>
-              <label className="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-500">Barcode</label>
+
+            <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-slate-900 text-indigo-600 focus:ring-indigo-500/30" checked={form.has_serials} onChange={(e) => setForm({ ...form, has_serials: e.target.checked })} />
+                <span className="text-xs font-semibold text-slate-300">Track serial numbers / IMEI</span>
+              </label>
+
               <div className="flex gap-2">
-                <input className="w-full rounded-xl border border-white/10 bg-black/40 p-2.5 text-sm text-white font-mono" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
-                <button onClick={generateBarcode} className="rounded-lg border border-white/10 bg-white/5 px-2 text-slate-100"><Barcode size={14} /></button>
+                <button type="button" onClick={() => { setShowAddModal(false); resetProductForm(); }} className="rounded-xl border border-white/10 bg-slate-900 px-4 py-2 text-xs font-bold text-slate-400 hover:bg-white/5">
+                  Cancel
+                </button>
+                <button onClick={saveProduct} className="rounded-xl bg-indigo-600 px-6 py-2 text-xs font-bold text-white hover:bg-indigo-500">
+                  {editingProductId ? "Update Product SKU" : "Save Product Stock"}
+                </button>
               </div>
             </div>
-            <FieldSelect label="Supplier" value={form.supplier_id} onChange={(value) => setForm({ ...form, supplier_id: value })} options={["", ...suppliers.map((s) => String(s.id))]} optionLabels={["No Supplier", ...suppliers.map((s) => s.name)]} />
-            <FieldInput label="Initial Qty" type="number" value={form.quantity} onChange={(value) => setForm({ ...form, quantity: Number(value) })} />
-            <FieldInput label="Cost Price" type="number" value={form.cost_price} onChange={(value) => setForm({ ...form, cost_price: Number(value) })} />
-            <FieldInput label="Selling Price" type="number" value={form.sale_price} onChange={(value) => setForm({ ...form, sale_price: Number(value) })} />
-          </div>
-          <div className="mt-3 flex items-center gap-2">
-            <input type="checkbox" checked={form.has_serials} onChange={(e) => setForm({ ...form, has_serials: e.target.checked })} />
-            <span className="text-sm text-slate-300">Track serial numbers / IMEI</span>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button onClick={saveProduct} className="flex-1 rounded-xl bg-indigo-600 py-2 text-sm font-semibold text-white">{editingProductId ? "Update Product" : "Save Product"}</button>
           </div>
         </Modal>
       )}
@@ -835,11 +1092,62 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
           <button onClick={manageSerials} className="mt-3 w-full rounded-xl bg-cyan-600 py-2 text-sm font-semibold text-white">Save Serial</button>
         </Modal>
       )}
+
+      {showAIRestockModal && (
+        <Modal title="AI Inventory Restock Plan" onClose={() => setShowAIRestockModal(false)}>
+          {loadingAIRestock ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <Sparkles size={32} className="animate-spin text-purple-400" />
+              <p className="text-sm text-slate-300">Gemini AI is analyzing inventory sales trends and stock levels...</p>
+            </div>
+          ) : aiRestockPlan ? (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/10 text-xs text-purple-200">
+                <div className="flex items-center gap-2 font-bold mb-1">
+                  <Sparkles size={14} className="text-purple-400" />
+                  <span>Executive AI Summary</span>
+                </div>
+                <p>{aiRestockPlan.summary}</p>
+                {aiRestockPlan.total_estimated_restock_cost && (
+                  <p className="mt-2 text-xs font-semibold text-purple-300">
+                    Estimated Total Restock Cost: <span className="text-emerald-400 font-mono">${aiRestockPlan.total_estimated_restock_cost.toFixed(2)}</span>
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Recommended Action Items</p>
+                {aiRestockPlan.action_items?.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No low-stock items requiring restock currently.</p>
+                ) : (
+                  aiRestockPlan.action_items?.map((item, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border border-white/10 bg-slate-900/80 flex flex-col gap-1 text-xs">
+                      <div className="flex items-center justify-between font-bold text-slate-200">
+                        <span className="text-white">{item.item_name} <span className="text-slate-500 font-mono text-[10px]">({item.sku})</span></span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-extrabold ${item.priority === "Critical" ? "bg-red-500/20 text-red-300 border border-red-500/30" : item.priority === "High" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-slate-500/20 text-slate-300"}`}>
+                          {item.priority}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-400 mt-1">
+                        <span>Suggested Order: <strong className="text-emerald-300 font-mono">{item.suggested_order_qty} units</strong></span>
+                        {item.estimated_cost && <span>Est. Cost: <strong className="text-slate-200 font-mono">${Number(item.estimated_cost).toFixed(2)}</strong></span>}
+                      </div>
+                      <p className="text-[11px] text-slate-400 italic mt-0.5">{item.reason}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-red-400">Failed to load AI restock forecast.</p>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
 
-function InventoryTable({ rows, suppliers, getProductType, getItemThreshold, getStockStatus, selectedRows, setSelectedRows, onEdit, onAdjust, onView, onPrint, onDelete }) {
+function InventoryTable({ rows, suppliers, masterProductsList = [], getProductType, getItemThreshold, getStockStatus, selectedRows, setSelectedRows, onEdit, onAdjust, onView, onPrint, onDelete }) {
   const [sortBy, setSortBy] = useState("id");
   const [sortDir, setSortDir] = useState("desc");
   const [columnsMenuAnchor, setColumnsMenuAnchor] = useState(null);
@@ -1008,7 +1316,14 @@ function InventoryTable({ rows, suppliers, getProductType, getItemThreshold, get
                 {visibleColumns.name && <td className="px-3 py-3">
                   <div>
                     <div className="font-semibold text-slate-100">{item.name}</div>
-                    <div className="text-[11px] text-slate-500">{getProductType(item)}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] text-slate-400">{getProductType(item)}</span>
+                      {item.master_product_id && (
+                        <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-300 border border-indigo-500/20">
+                          {masterProductsList.find((mp) => mp.id === item.master_product_id)?.name || `Master #${item.master_product_id}`}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </td>}
                 {visibleColumns.sku && <td className="px-3 py-3"><span className="font-mono text-xs text-slate-300">{item.sku}</span></td>}
@@ -1046,7 +1361,7 @@ function InventoryTable({ rows, suppliers, getProductType, getItemThreshold, get
         anchorEl={columnsMenuAnchor}
         open={Boolean(columnsMenuAnchor)}
         onClose={() => setColumnsMenuAnchor(null)}
-        PaperProps={{ sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } }}
+        slotProps={{ paper: { sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } } }}
       >
         {Object.entries(visibleColumns).map(([key, value]) => (
           <MenuItem key={key} onClick={() => setVisibleColumns((prev) => ({ ...prev, [key]: !prev[key] }))} sx={{ gap: 1 }}>
@@ -1064,7 +1379,7 @@ function InventoryTable({ rows, suppliers, getProductType, getItemThreshold, get
         anchorEl={rowMenuAnchor}
         open={Boolean(rowMenuAnchor)}
         onClose={closeRowMenu}
-        PaperProps={{ sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } }}
+        slotProps={{ paper: { sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } } }}
       >
         <MenuItem onClick={() => { if (rowMenuItem) onView(rowMenuItem); closeRowMenu(); }}>View Details</MenuItem>
         <MenuItem onClick={() => { if (rowMenuItem) onEdit(rowMenuItem); closeRowMenu(); }}>Edit Product</MenuItem>
@@ -1144,13 +1459,13 @@ function InfoRow({ label, value, mono = false }) {
   );
 }
 
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, panelClassName = "max-w-xl" }) {
   return (
     <AppModal
       open
       onClose={onClose}
       title={title}
-      panelClassName="max-w-xl"
+      panelClassName={panelClassName}
     >
       <div className="p-4">{children}</div>
     </AppModal>
