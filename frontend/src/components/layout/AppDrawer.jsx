@@ -21,6 +21,9 @@ export default function AppDrawer({
   const panelRef = useRef(null);
   const titleId = useId();
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
@@ -28,12 +31,25 @@ export default function AppDrawer({
     const focusable = node?.querySelector(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
-    focusable?.focus?.();
+    if (!node?.contains(document.activeElement)) {
+      focusable?.focus?.();
+    }
+
+    return () => {
+      if (previous && typeof previous.focus === "function") {
+        previous.focus();
+      }
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const node = panelRef.current;
 
     const onKeyDown = (event) => {
       if (event.key === "Escape" && closeOnEscape) {
         event.preventDefault();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== "Tab" || !node) return;
@@ -55,9 +71,8 @@ export default function AppDrawer({
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      previous?.focus?.();
     };
-  }, [closeOnEscape, onClose, open]);
+  }, [closeOnEscape, open]);
 
   if (!open) return null;
 

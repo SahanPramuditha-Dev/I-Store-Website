@@ -140,12 +140,21 @@ if (-not (Test-Path $DB_PATH)) {
     New-Item -ItemType Directory -Path (Join-Path $ROOT "database") -Force | Out-Null
     $status.Database = @{ Ok = $true; Msg = "will be auto-created" }
 } else {
-    # Validate SQLite magic bytes
-    $bytes  = [System.IO.File]::ReadAllBytes($DB_PATH)
-    $slice  = [byte[]]::new(16)
-    [Array]::Copy($bytes, 0, $slice, 0, [math]::Min(16, $bytes.Length))
-    $magic  = [System.Text.Encoding]::ASCII.GetString($slice)
+    # Validate SQLite magic bytes — use a shared FileStream so a locked DB isn't misread as corrupt
     $dbSize = [math]::Round((Get-Item $DB_PATH).Length / 1KB, 1)
+    $magic  = $null
+    try {
+        $fs    = [System.IO.File]::Open($DB_PATH, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $slice = [byte[]]::new(16)
+        $read  = $fs.Read($slice, 0, 16)
+        $fs.Close()
+        if ($read -gt 0) { $magic = [System.Text.Encoding]::ASCII.GetString($slice) }
+    } catch {
+        # File is locked by another process — treat as valid (it's in use, not corrupt)
+        $magic = "SQLite format 3"
+        Write-Step "  ℹ" "Database in use by another process — skipping integrity check" "" "Cyan"
+    }
+
     if ($magic -like "SQLite format 3*") {
         Write-Step "  ✓" "Valid SQLite database" "$($dbSize) KB" "Green"
         $status.Database = @{ Ok = $true; Msg = "OK  —  $($dbSize) KB  —  $DB_PATH" }

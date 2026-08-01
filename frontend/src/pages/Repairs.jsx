@@ -661,7 +661,7 @@ export default function Repairs() {
         e.preventDefault();
         setShowCreate(true);
       }
-      if (e.key === "/") {
+      if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
         e.preventDefault();
         searchInputRef.current?.focus();
       }

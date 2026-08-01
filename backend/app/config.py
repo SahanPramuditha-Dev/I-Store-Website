@@ -4,6 +4,20 @@ import sys
 from pydantic import BaseModel
 from pathlib import Path
 
+try:
+    import certifi
+    os.environ["SSL_CERT_FILE"] = certifi.where()
+    os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+except ImportError:
+    pass
+
+try:
+    from dotenv import load_dotenv
+    root_dir = Path(__file__).resolve().parents[2]
+    load_dotenv(root_dir / ".env")
+except ImportError:
+    pass
+
 logger = logging.getLogger("istore.config")
 
 _ON_VERCEL: bool = bool(os.getenv("VERCEL"))
@@ -51,6 +65,8 @@ class Settings(BaseModel):
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 8)))
     sqlite_file: str = os.getenv("SQLITE_FILE", str(DB_FILE))
     database_url: str = os.getenv("DATABASE_URL", os.getenv("SQLITE_URL", f"sqlite:///{DB_FILE.as_posix()}"))
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
     @property
     def sqlite_url(self) -> str:

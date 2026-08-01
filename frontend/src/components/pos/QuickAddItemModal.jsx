@@ -1,15 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppModal from "../layout/AppModal";
 import { Input, Select } from "../UI";
 import { Package, Store, Clock, X, ChevronDown, ChevronUp, Save, ShoppingCart } from "lucide-react";
 import api from "../../lib/api";
 import { useFeedback } from "../FeedbackProvider";
+import { useCachedQuery } from "../../hooks/useCachedQuery";
 
 export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onAddSaved }) {
   const { toast } = useFeedback();
   const [loading, setLoading] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
   const nameInputRef = useRef(null);
+  const { data: categoriesData } = useCachedQuery("inventory-categories", () => api.get("/inventory/categories").then((res) => res.data || []));
+
+  const categoryOptions = useMemo(() => {
+    const names = (categoriesData || [])
+      .map((row) => String(row?.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(names));
+  }, [categoriesData]);
+  const defaultCategory = categoryOptions[0] || "";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -24,12 +35,17 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
     sale_price: "",
     quantity: "1",
     sku: "",
-    category: "Uncategorized",
+    category: "",
     description: "",
     cost_price: "",
     tax_rate: "",
     discount: "",
   });
+
+  useEffect(() => {
+    if (formData.category || !defaultCategory) return;
+    setFormData((prev) => ({ ...prev, category: defaultCategory }));
+  }, [defaultCategory, formData.category]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -92,7 +108,7 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
       sale_price: "",
       quantity: "1",
       sku: "",
-      category: "Uncategorized",
+    category: defaultCategory,
       description: "",
       cost_price: "",
       tax_rate: "",
@@ -141,12 +157,7 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
             name="category" 
             value={formData.category} 
             onChange={handleChange}
-            options={[
-              { value: "Uncategorized", label: "Uncategorized" },
-              { value: "Smartphones", label: "Smartphones" },
-              { value: "Accessories", label: "Accessories" },
-              { value: "Services", label: "Services" },
-            ]}
+            options={categoryOptions.map((category) => ({ value: category, label: category }))}
           />
         </div>
 

@@ -26,6 +26,8 @@ from app.routers.dashboard_router import router as dashboard_router
 from app.routers.repair_router import router as repair_router
 from app.routers.inventory_router import router as inventory_router
 from app.routers.pos_router import router as pos_router
+from app.routers.analytics_ai_router import router as analytics_ai_router
+from app.routers.ai_router import router as ai_router
 from app.routers.invoices_router import router as invoices_router
 from app.routers.payments_router import router as payments_router
 from app.routers.customer_router import router as customer_router
@@ -398,6 +400,7 @@ app.include_router(advance_router)
 app.include_router(access_router)
 app.include_router(print_center_router)
 app.include_router(analytics_ai_router)
+app.include_router(ai_router)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 
