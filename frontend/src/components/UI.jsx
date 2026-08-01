@@ -1,5 +1,6 @@
 import { Children, forwardRef, isValidElement } from "react";
 import { FormControl, MenuItem, Select as MuiSelect } from "@mui/material";
+import { isOwnerOrAdmin } from "../lib/rbac";
 
 export function PageTitle({ title, subtitle, action, className = "" }) {
   return <div className={cx("flex min-w-0 items-start justify-between gap-3", className)}>
@@ -26,15 +27,19 @@ export function PageHeader({
   return (
     <header
       className={cx(
-        "flex min-w-0 shrink-0 flex-wrap items-end justify-between gap-3",
+        "dashboard-hero flex min-w-0 shrink-0 flex-wrap items-end justify-between gap-3 rounded-xl border p-3.5",
         sticky ? "sticky top-0 z-20 rounded-2xl border border-white/10 bg-slate-950/85 p-3 backdrop-blur-xl" : "",
         className,
       )}
     >
       <div className="min-w-0">
-        {eyebrow ? <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">{eyebrow}</p> : null}
+        {eyebrow ? (
+          <div className="dashboard-hero-chip inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] mb-1">
+            {eyebrow}
+          </div>
+        ) : null}
         <h1 className={cx("truncate font-black tracking-tight text-white", compact ? "text-lg xl:text-xl" : "text-xl xl:text-2xl")}>{title}</h1>
-        {subtitle ? <p className={cx("mt-1 max-w-3xl text-slate-400", compact ? "text-xs" : "text-xs xl:text-sm")}>{subtitle}</p> : null}
+        {subtitle ? <p className={cx("mt-1 max-w-3xl text-slate-300", compact ? "text-xs" : "text-xs xl:text-sm")}>{subtitle}</p> : null}
         {meta ? <div className="mt-2 flex flex-wrap gap-2">{meta}</div> : null}
       </div>
       {headerAction ? <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{headerAction}</div> : null}
@@ -769,7 +774,11 @@ export function ErrorState({
   );
 }
 
-export function WorkstationNotice({ tone = "amber", title, text, right, className = "" }) {
+export function WorkstationNotice({ tone = "amber", title, text, right, className = "", forceShow = false }) {
+  if (!forceShow && isOwnerOrAdmin()) {
+    return null;
+  }
+
   const toneClass =
     tone === "green" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
     : tone === "red" ? "border-rose-400/30 bg-rose-500/10 text-rose-100"

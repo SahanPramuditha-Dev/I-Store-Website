@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFetch } from "../hooks/useFetch";
 import api from "../lib/api";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, Loading, SectionCard, Select, SensitiveActionIndicators, WorkstationNotice } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, Loading, PageHeader, SectionCard, Select, SensitiveActionIndicators, WorkstationNotice } from "../components/UI";
 import { AlertTriangle, Cloud, Database, Download, HardDrive, RefreshCw, RotateCcw, Server, ShieldCheck, ShieldAlert, Upload } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import usePermissionUI from "../hooks/usePermissionUI";
@@ -422,25 +422,24 @@ export default function Backup() {
 
   return (
     <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 xl:h-full xl:overflow-hidden">
-      <div className="flex flex-wrap justify-between items-end gap-3 shrink-0">
-        <div>
-          <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-3">
-            <Server className="text-emerald-400" /> Backup Center
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">Unified backup, restore, export, and retention controls for offline-first operations.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={async () => { await refreshBackups(); await loadSchedulerStatus(); await loadRestoreRequests(); }}>
-            <RefreshCw size={13} /> Refresh
-          </Button>
-          <Button size="sm" onClick={createBackup} disabled={createPermission.disabled} title={createPermission.reason || undefined}>
-            <HardDrive size={13} /> Generate Manual Snapshot
-          </Button>
-          <Button size="sm" onClick={saveBackupSettings} disabled={settingsPermission.disabled || settingsSaving || settingsLoading} title={settingsPermission.reason || undefined}>
-            <Database size={13} /> {settingsSaving ? "Saving..." : "Save Backup Policy"}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="System Security & Storage"
+        title="Backup Center"
+        subtitle="Unified backup, restore, export, and retention controls for offline-first operations."
+        action={
+          <>
+            <Button size="sm" variant="secondary" onClick={async () => { await refreshBackups(); await loadSchedulerStatus(); await loadRestoreRequests(); }}>
+              <RefreshCw size={13} /> Refresh
+            </Button>
+            <Button size="sm" onClick={createBackup} disabled={createPermission.disabled} title={createPermission.reason || undefined}>
+              <HardDrive size={13} /> Generate Manual Snapshot
+            </Button>
+            <Button size="sm" onClick={saveBackupSettings} disabled={settingsPermission.disabled || settingsSaving || settingsLoading} title={settingsPermission.reason || undefined}>
+              <Database size={13} /> {settingsSaving ? "Saving..." : "Save Backup Policy"}
+            </Button>
+          </>
+        }
+      />
 
       <WorkstationNotice
         tone={backupSettings?.auto_backup?.encrypt_backup_files ? "green" : "red"}

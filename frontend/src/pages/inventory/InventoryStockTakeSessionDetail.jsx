@@ -49,6 +49,37 @@ export default function InventoryStockTakeSessionDetail() {
   const rows = detail?.lines || [];
   const isClosed = String(session?.status || "").toLowerCase() === "closed";
 
+  const [scanImei, setScanImei] = useState("");
+  const [scanning, setScanning] = useState(false);
+
+  const handleImeiScan = async (e) => {
+    if (e.key !== "Enter") return;
+    const clean = scanImei.trim();
+    if (!clean || !sessionId) return;
+    setScanning(true);
+    try {
+      const lookup = await api.get(`/inventory/serials/lookup-imei/${clean}`);
+      if (lookup.data && lookup.data.item_name) {
+        // Find matching item by name or serial lookup
+        const matchedItem = (items || []).find((i) => i.name?.toLowerCase() === lookup.data.item_name?.toLowerCase());
+        if (matchedItem) {
+          const existingLine = rows.find((r) => Number(r.item_id) === Number(matchedItem.id));
+          const currentQty = existingLine ? Number(existingLine.physical_qty || 0) : 0;
+          await api.post(`/inventory/stock-takes/${sessionId}/lines`, {
+            item_id: Number(matchedItem.id),
+            physical_qty: currentQty + 1,
+          });
+          setScanImei("");
+          await load();
+        }
+      }
+    } catch (err) {
+      // quiet catch
+    } finally {
+      setScanning(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <AppCard title="Stock Take Session Detail">
@@ -79,35 +110,51 @@ export default function InventoryStockTakeSessionDetail() {
         <AppCard title="Net Variance"><p className="text-2xl font-black text-indigo-300">{Number(summary.net_variance_units || 0)}</p></AppCard>
       </div>
 
-      <AppCard title="Submit Line Count">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-          <Select
-            value={line.item_id}
-            onChange={(e) => setLine({ ...line, item_id: e.target.value })}
-            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100"
-            disabled={isClosed}
-          >
-            <option value="">Select product</option>
-            {(items || []).map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.sku}) - system {item.quantity}
-              </option>
-            ))}
-          </Select>
-          <input
-            type="number"
-            min="0"
-            value={line.physical_qty}
-            onChange={(e) => setLine({ ...line, physical_qty: e.target.value })}
-            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100"
-            placeholder="Physical qty"
-            disabled={isClosed}
-          />
-          <button onClick={submitLine} disabled={isClosed} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
-            Submit
-          </button>
-          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400">
-            One count per item per session is enforced.
+      <AppCard title="Submit Line Count & IMEI Scanner">
+        <div className="space-y-3">
+          {/* Direct IMEI Audit Scanner Box */}
+          <div className="flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3">
+            <span className="text-xs font-bold text-indigo-300 shrink-0">📱 Scan Physical IMEI Barcode:</span>
+            <input
+              value={scanImei}
+              onChange={(e) => setScanImei(e.target.value)}
+              onKeyDown={handleImeiScan}
+              placeholder="Scan 15-digit IMEI & press Enter to auto-count..."
+              className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white font-mono"
+              disabled={isClosed || scanning}
+            />
+            {scanning && <span className="text-xs text-indigo-400 font-semibold animate-pulse">Reconciling...</span>}
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+            <Select
+              value={line.item_id}
+              onChange={(e) => setLine({ ...line, item_id: e.target.value })}
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100"
+              disabled={isClosed}
+            >
+              <option value="">Select product</option>
+              {(items || []).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.sku}) - system {item.quantity}
+                </option>
+              ))}
+            </Select>
+            <input
+              type="number"
+              min="0"
+              value={line.physical_qty}
+              onChange={(e) => setLine({ ...line, physical_qty: e.target.value })}
+              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100"
+              placeholder="Physical qty"
+              disabled={isClosed}
+            />
+            <button onClick={submitLine} disabled={isClosed} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+              Submit Count
+            </button>
+            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400">
+              One count per item per session is enforced.
+            </div>
           </div>
         </div>
       </AppCard>

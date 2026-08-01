@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { CalendarRange, FileDown, Search } from "lucide-react";
 import { useFetch } from "../../hooks/useFetch";
 import { REPORT_SECTIONS } from "./reportsConfig";
+import { PageHeader } from "../../components/UI";
 
 function toIsoDate(date) {
   const value = new Date(date);
@@ -215,12 +216,11 @@ export default function ReportsModuleLayout() {
 
   return (
     <div className="app-page-shell gap-3">
-      <div className="panel p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-xl font-black text-white">Reports &amp; Analytics</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Complete reporting workspace with dedicated subpages and exports.</p>
-          </div>
+      <PageHeader
+        eyebrow="Analytics & Business Intelligence"
+        title="Reports & Analytics"
+        subtitle="Complete reporting workspace with dedicated subpages and exports."
+        action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex items-center gap-2 text-[11px] text-slate-300 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5">
               <CalendarRange size={14} />
@@ -234,7 +234,8 @@ export default function ReportsModuleLayout() {
               Export Center
             </NavLink>
           </div>
-        </div>
+        }
+      />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
           <div className="lg:col-span-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-2">
@@ -278,7 +279,6 @@ export default function ReportsModuleLayout() {
             />
           </div>
         </div>
-      </div>
 
       <div className="app-tab-strip rounded-2xl border border-white/10 bg-slate-900/60 p-2">
         {REPORT_SECTIONS.map((section) => (

@@ -1106,6 +1106,165 @@ def serial_detail(serial_id: int, db: Session = Depends(get_db), _=Depends(get_c
             for row in movement_rows
         ],
     }
+
+
+@router.get('/serials/lookup-imei/{imei_text}', dependencies=[Depends(require_permission("inventory.view"))])
+def lookup_imei_intelligence(imei_text: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    clean_imei = (imei_text or "").strip()
+    if not clean_imei:
+        raise HTTPException(status_code=400, detail="IMEI text is required")
+
+    from app.models import InventorySerial, RepairTicket, WarrantyRecord, Customer, SaleInvoice
+    from app.models.inventory import StolenDeviceBlacklist
+    from datetime import datetime, date
+
+    like_imei = f"%{clean_imei}%"
+
+    blacklist_rec = (
+        db.query(StolenDeviceBlacklist)
+        .filter((StolenDeviceBlacklist.imei == clean_imei) | (StolenDeviceBlacklist.imei.ilike(like_imei)))
+        .first()
+    )
+
+    serial_rec = (
+        db.query(InventorySerial)
+        .filter(
+            (InventorySerial.serial_number == clean_imei) |
+            (InventorySerial.serial_number.ilike(like_imei)) |
+            (getattr(InventorySerial, "imei", None) == clean_imei) |
+            (getattr(InventorySerial, "imei2", None) == clean_imei)
+        )
+        .first()
+    )
+
+    warranty_rec = (
+        db.query(WarrantyRecord)
+        .filter(
+            (WarrantyRecord.imei_or_serial == clean_imei) |
+            (WarrantyRecord.imei_or_serial.ilike(like_imei)) |
+            (getattr(WarrantyRecord, "imei", None) == clean_imei) |
+            (getattr(WarrantyRecord, "imei2", None) == clean_imei)
+        )
+        .order_by(WarrantyRecord.created_at.desc())
+        .first()
+    )
+
+    repairs = (
+        db.query(RepairTicket)
+        .filter(
+            (RepairTicket.imei == clean_imei) |
+            (RepairTicket.imei.ilike(like_imei)) |
+            (getattr(RepairTicket, "imei2", None) == clean_imei)
+        )
+        .order_by(RepairTicket.created_at.desc())
+        .all()
+    )
+
+    sale_info = None
+    if serial_rec and serial_rec.sale_id:
+        sale = db.query(SaleInvoice).filter(SaleInvoice.id == serial_rec.sale_id).first()
+        if sale:
+            cust = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
+            sale_info = {
+                "sale_id": sale.id,
+                "invoice_number": f"INV-{sale.id:05d}",
+                "customer_name": cust.name if cust else "Walk-in Customer",
+                "customer_phone": cust.phone if cust else None,
+                "sold_at": _iso(sale.created_at),
+            }
+    elif warranty_rec and warranty_rec.invoice_id:
+        sale = db.query(SaleInvoice).filter(SaleInvoice.id == warranty_rec.invoice_id).first()
+        if sale:
+            cust = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
+            sale_info = {
+                "sale_id": sale.id,
+                "invoice_number": f"INV-{sale.id:05d}",
+                "customer_name": cust.name if cust else "Walk-in Customer",
+                "customer_phone": cust.phone if cust else None,
+                "sold_at": _iso(sale.created_at),
+            }
+
+    w_info = None
+    if warranty_rec:
+        now = datetime.now()
+        is_active = warranty_rec.end_date and warranty_rec.end_date >= now.date() if isinstance(warranty_rec.end_date, date) else False
+        days_remaining = (warranty_rec.end_date - now.date()).days if is_active and isinstance(warranty_rec.end_date, date) else 0
+        w_info = {
+            "id": warranty_rec.id,
+            "status": warranty_rec.status,
+            "start_date": _iso(warranty_rec.start_date),
+            "end_date": _iso(warranty_rec.end_date),
+            "is_active": is_active,
+            "days_remaining": max(0, days_remaining),
+        }
+
+    return {
+        "imei": clean_imei,
+        "is_blacklisted": bool(blacklist_rec),
+        "blacklist_info": {
+            "reason": blacklist_rec.reason,
+            "reported_by": blacklist_rec.reported_by,
+            "reported_at": _iso(blacklist_rec.created_at),
+        } if blacklist_rec else None,
+        "item_name": serial_rec.item.name if serial_rec and serial_rec.item else (warranty_rec.item_name if warranty_rec else None),
+        "status": serial_rec.status if serial_rec else ("registered" if warranty_rec else "unknown"),
+        "sale": sale_info,
+        "warranty": w_info,
+        "repair_count": len(repairs),
+        "past_repairs": [
+            {
+                "id": r.id,
+                "ticket_number": f"REP-{r.id:05d}",
+                "status": r.status,
+                "problem": r.problem_description or r.device_model,
+                "created_at": _iso(r.created_at),
+            }
+            for r in repairs
+        ],
+    }
+
+
+@router.get('/serials/blacklists', dependencies=[Depends(require_permission("inventory.view"))])
+def list_blacklists(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.models.inventory import StolenDeviceBlacklist
+    rows = db.query(StolenDeviceBlacklist).order_by(StolenDeviceBlacklist.created_at.desc()).all()
+    return [
+        {
+            "id": r.id,
+            "imei": r.imei,
+            "device_model": r.device_model,
+            "reason": r.reason,
+            "reported_by": r.reported_by,
+            "created_at": _iso(r.created_at),
+        }
+        for r in rows
+    ]
+
+
+@router.post('/serials/blacklists', dependencies=[Depends(require_permission("inventory.serial_manage"))])
+def add_blacklist(payload: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    from app.models.inventory import StolenDeviceBlacklist
+    from datetime import datetime
+    imei = (payload.get("imei") or "").strip()
+    if not imei:
+        raise HTTPException(status_code=400, detail="IMEI is required")
+    existing = db.query(StolenDeviceBlacklist).filter(StolenDeviceBlacklist.imei == imei).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"IMEI {imei} is already blacklisted")
+    rec = StolenDeviceBlacklist(
+        imei=imei,
+        device_model=payload.get("device_model"),
+        reason=payload.get("reason", "Reported lost or stolen"),
+        reported_by=user.full_name or user.username,
+        created_at=datetime.utcnow(),
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return {"message": "IMEI added to blacklist successfully", "id": rec.id}
+
+
+
 @router.get('/{item_id}/serials', dependencies=[Depends(require_permission("inventory.serial_manage"))])
 def list_serials(item_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     from app.models import InventorySerial

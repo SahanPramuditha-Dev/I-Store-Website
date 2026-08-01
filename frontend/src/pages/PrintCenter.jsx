@@ -182,6 +182,15 @@ function formatDate(value = new Date()) {
   }
 }
 
+function formatLabel(value) {
+  if (!value) return "";
+  const str = String(value);
+  return str
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function loadHistory() {
   if (typeof window === "undefined") return [];
   try {
@@ -359,8 +368,8 @@ function buildReturnReceiptHtml(record, identity, paper) {
                     <tr>
                       <td>${escapeHtml(item.product_name || item.item_name || item.product_id || "-")}</td>
                       <td>${escapeHtml(item.quantity || 0)}</td>
-                      <td>${escapeHtml(item.item_condition || "-")}</td>
-                      <td>${escapeHtml(item.restock_action || "-")}</td>
+                      <td>${escapeHtml(formatLabel(item.item_condition) || "-")}</td>
+                      <td>${escapeHtml(formatLabel(item.restock_action) || "-")}</td>
                       <td>LKR ${Number(item.return_amount || item.unit_price || 0).toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                   `).join("")
@@ -614,7 +623,7 @@ export default function PrintCenter() {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 w-full">
+    <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pb-4 w-full">
       <PageHeader
         eyebrow="System"
         title="Print Center"

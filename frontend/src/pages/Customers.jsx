@@ -4,7 +4,7 @@ import { useCachedQuery } from "../hooks/useCachedQuery";
 import { apiService } from "../lib/apiService";
 import { isRepairCancelled, isRepairDelivered } from "../lib/repairStatus";
 import api from "../lib/api";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, KpiCard, Loading } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, KpiCard, Loading, PageHeader } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import {
   Menu,
@@ -361,26 +361,27 @@ export default function Customers() {
 
   return (
     <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 xl:h-full xl:overflow-hidden">
-      <div className="flex flex-wrap justify-between items-end gap-3 shrink-0">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-white">Customer Management</h1>
-          <p className="text-xs text-slate-400 mt-1">Manage customer profiles, history, and relationships</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowWalkInModal(true)}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-all flex items-center gap-2"
-          >
-            <UserCheck size={14} /> Walk-in Customer
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all flex items-center gap-2"
-          >
-            <Plus size={14} /> Add Customer
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="People & CRM"
+        title="Customer Management"
+        subtitle="Manage customer profiles, history, and relationships"
+        action={
+          <>
+            <button
+              onClick={() => setShowWalkInModal(true)}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/20 transition-all flex items-center gap-2"
+            >
+              <UserCheck size={14} /> Walk-in Customer
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all flex items-center gap-2"
+            >
+              <Plus size={14} /> Add Customer
+            </button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3 shrink-0">
         <KpiCard tone="sky" title="Total Customers" value={String(stats.total)} icon={<Users size={18} />} />

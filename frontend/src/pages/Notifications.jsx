@@ -14,7 +14,7 @@ import {
 import api from "../lib/api";
 import { useFetch } from "../hooks/useFetch";
 import { useFeedback } from "../components/FeedbackProvider";
-import { Badge, Button, ErrorState, Input, KpiCard, Loading, SectionCard, Select } from "../components/UI";
+import { Badge, Button, ErrorState, Input, KpiCard, Loading, PageHeader, SectionCard, Select } from "../components/UI";
 import PageContainer from "../components/layout/PageContainer";
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -130,27 +130,27 @@ export default function Notifications() {
 
   return (
     <PageContainer className="pb-4 pr-1">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Operations</p>
-          <h1 className="text-2xl font-black tracking-tight text-white">Notifications</h1>
-          <p className="mt-1 text-sm text-slate-400">Prioritized alerts for stock, repairs, warranties, payments, and system checks.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={refreshNotifications} disabled={busy === "refresh"}>
-            <RefreshCw size={13} /> {busy === "refresh" ? "Refreshing..." : "Refresh"}
-          </Button>
-          <Button size="sm" variant="secondary" onClick={markAllRead} disabled={!stats.unread || busy === "read-all"}>
-            <Check size={13} /> Mark Read
-          </Button>
-          <Button size="sm" onClick={acknowledgeAll} disabled={!stats.unacknowledged || busy === "ack-all"}>
-            <CheckCircle2 size={13} /> Acknowledge All
-          </Button>
-          <Button size="sm" variant="danger" onClick={clearAll} disabled={!rows.length || busy === "clear-all"}>
-            <Archive size={13} /> Clear
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Operations"
+        title="Notifications"
+        subtitle="Prioritized alerts for stock, repairs, warranties, payments, and system checks."
+        action={
+          <>
+            <Button size="sm" variant="secondary" onClick={refreshNotifications} disabled={busy === "refresh"}>
+              <RefreshCw size={13} /> {busy === "refresh" ? "Refreshing..." : "Refresh"}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={markAllRead} disabled={!stats.unread || busy === "read-all"}>
+              <Check size={13} /> Mark Read
+            </Button>
+            <Button size="sm" onClick={acknowledgeAll} disabled={!stats.unacknowledged || busy === "ack-all"}>
+              <CheckCircle2 size={13} /> Acknowledge All
+            </Button>
+            <Button size="sm" variant="danger" onClick={clearAll} disabled={!rows.length || busy === "clear-all"}>
+              <Archive size={13} /> Clear
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Critical" value={stats.critical.toLocaleString()} tone="red" icon={<ShieldAlert size={18} />} />

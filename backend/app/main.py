@@ -280,6 +280,30 @@ def _sqlite_table_exists(db, table_name: str) -> bool:
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_warranty_claims_decision_status ON warranty_claims (decision_status)"))
         db.execute(text("CREATE INDEX IF NOT EXISTS idx_warranty_claims_claim_number ON warranty_claims (claim_number)"))
 
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS stolen_device_blacklists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                imei VARCHAR UNIQUE NOT NULL,
+                device_model VARCHAR,
+                reason VARCHAR,
+                reported_by VARCHAR,
+                created_at DATETIME
+            )
+        """))
+        try:
+            db.execute(text("ALTER TABLE inventory_serials ADD COLUMN imei2 VARCHAR"))
+        except Exception:
+            pass
+        try:
+            db.execute(text("ALTER TABLE repair_tickets ADD COLUMN imei2 VARCHAR"))
+        except Exception:
+            pass
+        try:
+            db.execute(text("ALTER TABLE warranty_records ADD COLUMN imei2 VARCHAR"))
+        except Exception:
+            pass
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_inventory_serials_imei2 ON inventory_serials (imei2)"))
+
         db.commit()
 
 

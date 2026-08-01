@@ -37,8 +37,9 @@ export default function InventorySuppliers() {
     for (const row of grn) {
       const id = Number(row.supplier_id || 0);
       if (!id) continue;
-      if (!map[id]) map[id] = { count: 0, lastAt: null };
+      if (!map[id]) map[id] = { count: 0, defective: 0, lastAt: null };
       map[id].count += 1;
+      map[id].defective += Number(row.damaged_qty || 0);
       if (!map[id].lastAt || new Date(row.created_at) > new Date(map[id].lastAt)) map[id].lastAt = row.created_at;
     }
     return map;
@@ -187,8 +188,22 @@ export default function InventorySuppliers() {
             { key: "contact", label: "Contact", render: (s) => <span className="text-slate-400">{s.contact || "-"}</span> },
             { key: "email", label: "Email", render: (s) => <span className="text-slate-400">{s.email || "-"}</span> },
             { key: "products", label: "Products", align: "right", render: (s) => <span className="text-slate-300">{Number(productCountBySupplier[s.id] || 0)}</span> },
-            { key: "terms", label: "Terms", render: (s) => <span className="text-slate-500">{Number(s.payment_terms_days || 0)}d</span> },
-            { key: "opening", label: "Opening Bal", align: "right", render: (s) => <span className="text-slate-300">Rs. {Number(s.opening_balance || 0).toLocaleString()}</span> },
+            {
+              key: "reliability",
+              label: "Reliability Rating",
+              render: (s) => {
+                const info = grnBySupplier[s.id] || { count: 0, defective: 0 };
+                const total = Math.max(1, info.count * 10);
+                const score = Math.max(0, Math.min(100, Math.round(((total - info.defective) / total) * 100)));
+                const tone = score >= 95 ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" : score >= 85 ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/30" : "bg-amber-500/20 text-amber-300 border-amber-500/30";
+                return (
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-black ${tone}`}>
+                    <span>{score}%</span>
+                    <span className="text-[10px] opacity-80 font-normal">{score >= 95 ? "Excellent" : score >= 85 ? "Good" : "Needs Audit"}</span>
+                  </span>
+                );
+              },
+            },
             { key: "grn", label: "GRNs", render: (s) => <span className="text-slate-500">{Number(grnBySupplier[s.id]?.count || 0)}</span> },
             {
               key: "actions",

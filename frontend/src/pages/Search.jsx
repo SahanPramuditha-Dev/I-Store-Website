@@ -1,7 +1,7 @@
-﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import api from "../lib/api";
 import { isRepairDelivered, repairStatusLabel } from "../lib/repairStatus";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, SectionCard, Badge, Button } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, SectionCard, Badge, Button, PageHeader } from "../components/UI";
 import {
   Search as SearchIcon,
   User,
@@ -442,23 +442,11 @@ export default function Search() {
     <div className="min-h-0 pb-4">
       <div className="search-hub-shell mx-auto max-w-full space-y-4 px-2 pb-6 pt-2 animate-in fade-in sm:px-4">
       <div className="search-hub-header space-y-4">
-        <div className="search-hub-status-strip flex flex-wrap items-center gap-2">
-          <span className="search-hub-status-pill tone-green">SQLite: Connected</span>
-          <span className="search-hub-status-pill tone-blue">Offline Ready</span>
-          <span className="search-hub-status-pill tone-violet">Backup: Synced</span>
-        </div>
-
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-100">
-              Search <span className="text-indigo-300">Hub</span>
-            </h1>
-            <p className="mt-1 text-xs text-slate-400">Fast operational lookup across customers, repairs, stock, sales, and finance records.</p>
-          </div>
-          <Badge tone="indigo" className="px-3 py-1 text-[10px] font-black uppercase tracking-widest shadow-md shadow-indigo-500/20">
-            <Keyboard size={11} /> Ctrl/Cmd + K
-          </Badge>
-        </div>
+        <PageHeader
+          eyebrow="Global Search Engine"
+          title="Search Hub"
+          subtitle="Fast operational lookup across customers, repairs, stock, sales, and finance records."
+        />
 
         <div className="search-hub-query-row flex gap-3">
           <div className="search-hub-query-wrap relative flex-1">

@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { Badge, Button, KpiCard, SectionCard, Select, Table } from "../components/UI";
+import { Badge, Button, KpiCard, PageHeader, SectionCard, Select, Table } from "../components/UI";
 import { downloadCsv, downloadPdf, openPrintView, paginateRows } from "../lib/tableUtils";
 import { useFeedback } from "../components/FeedbackProvider";
 import api from "../lib/api";
@@ -412,18 +412,12 @@ export default function ActivityLog() {
   return (
     <div className="min-h-0 pb-3">
       <div className="space-y-3">
-        <section className="panel p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-black text-white flex items-center gap-2">
-                <History size={22} className="text-indigo-300" />
-                Audit Trail
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                Read-only accountability log across authentication, operations, security, and business control modules.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
+        <PageHeader
+          eyebrow="Compliance & Accountability"
+          title="Audit Trail"
+          subtitle="Read-only accountability log across authentication, operations, security, and business control modules."
+          action={
+            <>
               <Button size="sm" variant="secondary" onClick={() => setRefreshToken((v) => v + 1)}>
                 <RefreshCw size={14} /> Refresh
               </Button>
@@ -436,12 +430,9 @@ export default function ActivityLog() {
               <Button size="sm" variant="secondary" onClick={runPrint} disabled={rows.length === 0}>
                 <Printer size={14} /> Print
               </Button>
-            </div>
-          </div>
-          <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-slate-300">
-            <span className="font-bold text-indigo-200">Data Protection:</span> Logs are immutable and read-only. Entries can be archived but cannot be edited or permanently deleted.
-          </div>
-        </section>
+            </>
+          }
+        />
 
         <SectionCard title="Filters" right={<Filter size={16} className="text-slate-400" />}>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-2">

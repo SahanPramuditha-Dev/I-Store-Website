@@ -58,6 +58,19 @@ class InventorySerial(Base):
     item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=False)
     serial_number = Column(String, unique=True, index=True, nullable=False)
     imei = Column(String, nullable=True)
+    imei2 = Column(String, nullable=True, index=True)
     status = Column(String, default="in_stock")
     sale_id = Column(Integer, ForeignKey("sales.id"), nullable=True)
     created_at = Column(DateTime, nullable=True)
+
+
+class StolenDeviceBlacklist(Base):
+    __tablename__ = "stolen_device_blacklists"
+
+    id = Column(Integer, primary_key=True, index=True)
+    imei = Column(String, unique=True, index=True, nullable=False)
+    device_model = Column(String, nullable=True)
+    reason = Column(String, nullable=True)
+    reported_by = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=True)
+
