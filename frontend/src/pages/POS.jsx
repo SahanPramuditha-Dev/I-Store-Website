@@ -10,8 +10,6 @@ import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
 
-const CATEGORIES = ["All", "Smartphones", "Used Phones", "Chargers", "Earphones", "Power Banks", "Cases & Covers", "Tempered Glass", "Spare Parts", "Repair Services"];
-
 export default function POS() {
   const { toast, confirm, prompt } = useFeedback();
   const navigate = useNavigate();
@@ -26,6 +24,7 @@ export default function POS() {
   const longPressTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
   const inventoryFetch = useFetch('/inventory');
+  const categoriesFetch = useFetch('/inventory/categories');
   const suppliersFetch = useFetch('/inventory/suppliers');
   const customersFetch = useFetch('/customers');
   const salesFetch = useFetch('/pos/sales');
@@ -213,6 +212,24 @@ export default function POS() {
     const low = rows.filter((row) => Number(row.quantity || 0) > 0 && Number(row.quantity || 0) <= 5).slice(0, 8);
     return { out, low };
   }, [inventoryFetch.data]);
+
+  const categoryOptions = useMemo(() => {
+    const names = (categoriesFetch.data || [])
+      .filter((row) => row?.is_active !== false)
+      .map((row) => String(row?.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    return ["All", ...Array.from(new Set(names))];
+  }, [categoriesFetch.data]);
+
+  const quickAddCategoryOptions = useMemo(() => {
+    const names = (categoriesFetch.data || [])
+      .filter((row) => row?.is_active !== false)
+      .map((row) => String(row?.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    return ["Uncategorized", ...Array.from(new Set(names))];
+  }, [categoriesFetch.data]);
 
   const quickAddStats = useMemo(() => {
     const search = String(quickAddForm.name || "").trim().toLowerCase();
@@ -464,7 +481,7 @@ export default function POS() {
         if (showNewCustomerModal) { setShowNewCustomerModal(false); return; }
         return;
       }
-      if (e.key === "/") { e.preventDefault(); productSearchRef.current?.focus(); }
+      if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) { e.preventDefault(); productSearchRef.current?.focus(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") { e.preventDefault(); barcodeRef.current?.focus(); }
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); checkout(); }
       if (e.key === "Enter" && document.activeElement === productSearchRef.current) {
@@ -1232,7 +1249,7 @@ export default function POS() {
             
             {/* Category Pills */}
             <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 pt-1">
-              {CATEGORIES.map(cat => (
+              {categoryOptions.map(cat => (
                 <button 
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
@@ -1272,12 +1289,7 @@ export default function POS() {
                   name="category"
                   value={quickAddForm.category}
                   onChange={handleQuickAddChange}
-                  options={[
-                    { value: "Uncategorized", label: "Uncategorized" },
-                    { value: "Smartphones", label: "Smartphones" },
-                    { value: "Accessories", label: "Accessories" },
-                    { value: "Services", label: "Services" },
-                  ]}
+                  options={quickAddCategoryOptions.map((category) => ({ value: category, label: category }))}
                 />
               </div>
 

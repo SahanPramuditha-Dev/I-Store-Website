@@ -122,7 +122,6 @@ export default function InventoryOverview() {
         <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
           <h3 className="mb-2 text-sm font-extrabold tracking-wide text-white">Quick Actions</h3>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-            <QuickAction label="New Product" icon={<PackagePlus size={14} />} onClick={() => navigate("/inventory/products")} />
             <QuickAction label="Create GRN" icon={<ClipboardCheck size={14} />} onClick={() => navigate("/inventory/grn")} />
             <QuickAction label="Stock Adjustment" icon={<SlidersHorizontal size={14} />} onClick={() => navigate("/inventory/movements")} />
             <QuickAction label="Inventory Reports" icon={<FileBarChart2 size={14} />} onClick={() => navigate("/inventory/reports")} />

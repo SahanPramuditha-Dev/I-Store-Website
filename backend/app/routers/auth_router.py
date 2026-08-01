@@ -51,10 +51,6 @@ class SessionTerminateIn(BaseModel):
     session_id: str
 
 
-class SetPinIn(BaseModel):
-    pin: str
-
-
 class BootstrapOwnerIn(BaseModel):
     username: str
     full_name: str
@@ -426,6 +422,22 @@ def list_active_staff(db: Session = Depends(get_db), _: User = Depends(get_curre
         }
         for u in users
     ]
+
+
+class SetPinIn(BaseModel):
+    pin: str
+
+
+@router.post("/set-pin")
+def set_user_pin(payload: SetPinIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    pin_value = str(payload.pin or "").strip()
+    security = get_security_settings(db)
+    pin_len = int(security.get("pin_length", 4) or 4)
+    if not validate_pin(pin_value, pin_len):
+        raise HTTPException(status_code=400, detail=f"PIN must be numeric and {pin_len} digits")
+    current_user.pin_hash = hash_password(pin_value)
+    db.commit()
+    return {"ok": True, "message": "PIN updated successfully"}
 
 
 @router.get("/staff")

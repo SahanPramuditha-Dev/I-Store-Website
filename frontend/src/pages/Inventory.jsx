@@ -32,22 +32,6 @@ import { useFeedback } from "../components/FeedbackProvider";
 
 const LOW_STOCK_THRESHOLD = 3;
 const RECENT_DAYS = 30;
-const PRODUCT_CATEGORIES = [
-  "Smartphones",
-  "Used Phones",
-  "Chargers",
-  "Earphones",
-  "Power Banks",
-  "Cases & Covers",
-  "Tempered Glass",
-  "Displays",
-  "Batteries",
-  "Charging Ports",
-  "IC Components",
-  "Repair Tools",
-  "Repair Services",
-];
-
 const QUICK_FILTERS = ["Low Stock", "Out of Stock", "Spare Parts", "Fast Moving", "Recently Added"];
 
 const currency = (value) => `Rs. ${Number(value || 0).toLocaleString()}`;
@@ -90,6 +74,16 @@ export default function Inventory() {
     })
   );
 
+  const { data: categoriesData } = useCachedQuery(
+    "inventory-categories",
+    () => api.get("/inventory/categories").then((res) => res.data || [])
+  );
+
+  const { data: brandsData } = useCachedQuery(
+    "inventory-brands",
+    () => api.get("/inventory/brands").then((res) => res.data || [])
+  );
+
 const fetchSuppliersList = () => apiService.inventory.getSuppliers().then((res) => res.data);
 const fetchMovementsList = () => apiService.inventory.getMovements().then((res) => res.data);
 
@@ -98,6 +92,20 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
 
   const suppliers = suppliersQuery.data || [];
   const movements = movementQuery.data || [];
+  const categoryOptions = useMemo(() => {
+    const names = (categoriesData || [])
+      .map((row) => String(row?.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(names));
+  }, [categoriesData]);
+  const brandOptions = useMemo(() => {
+    const names = (brandsData || [])
+      .map((row) => String(row?.name || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(names));
+  }, [brandsData]);
   const data = inventoryData?.items || [];
 
   const setData = (updater) => {
@@ -123,7 +131,7 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
 
   const [form, setForm] = useState({
     name: "",
-    category: "Smartphones",
+    category: "",
     brand: "",
     model: "",
     storage: "",
@@ -149,7 +157,7 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
 
   const emptyProductForm = {
     name: "",
-    category: "Smartphones",
+    category: "",
     brand: "",
     model: "",
     storage: "",
@@ -174,12 +182,29 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
   };
 
   useEffect(() => {
+    if (!showAddModal) return;
+    if (!form.category) return;
+    if (categoryOptions.includes(form.category)) return;
+    setForm((prev) => ({ ...prev, category: "" }));
+  }, [categoryOptions, form.category, showAddModal]);
+
+  const categoryFieldOptions = useMemo(() => {
+    if (!form.category) return categoryOptions;
+    return categoryOptions.includes(form.category) ? categoryOptions : [form.category, ...categoryOptions];
+  }, [categoryOptions, form.category]);
+
+  const brandFieldOptions = useMemo(() => {
+    if (!form.brand) return brandOptions;
+    return brandOptions.includes(form.brand) ? brandOptions : [form.brand, ...brandOptions];
+  }, [brandOptions, form.brand]);
+
+  useEffect(() => {
     const onKeyDown = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         searchRef.current?.focus();
       }
-      if (event.key === "/" && document.activeElement !== searchRef.current) {
+      if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) {
         event.preventDefault();
         searchRef.current?.focus();
       }
@@ -209,6 +234,12 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
       setPage(1);
     }
   }, [location.search, location.state]);
+
+  useEffect(() => {
+    if (!location.state?.openAddProduct) return;
+    setShowAddModal(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, location.state, navigate]);
 
   const getItemThreshold = (item) => Number(item?.low_stock_threshold || LOW_STOCK_THRESHOLD);
 
@@ -497,23 +528,6 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
 
   return (
     <div className="flex min-h-0 min-w-0 max-w-full flex-col gap-4 overflow-x-clip overflow-y-auto pb-2 xl:h-full xl:overflow-y-hidden">
-      <PageHeader
-        eyebrow="Stock & Catalog Control"
-        title="Inventory Management"
-        subtitle="Manage product catalog, stock levels, valuations, serial tracking, and spare parts."
-        action={
-          <Button
-            size="sm"
-            onClick={() => {
-              resetProductForm();
-              setShowAddModal(true);
-            }}
-          >
-            <Plus size={14} /> New Product
-          </Button>
-        }
-      />
-
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Total Products" value={String(stats.totalProducts)} hint="Catalog count" tone="sky" icon={<Boxes size={18} />} />
         <KpiCard title="Low Stock Items" value={String(stats.low)} hint="Need replenishment" tone="amber" icon={<AlertTriangle size={18} />} />
@@ -554,7 +568,7 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
                 </Select>
                 <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[190px] !w-auto bg-[#0f172a] border-white/10 text-xs">
                   <option value="All">All Categories</option>
-                  {PRODUCT_CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                  {categoryOptions.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
                 </Select>
                 <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-[#0f172a] border-white/10 text-xs">
                   <option value="updated">Newest First</option>
@@ -767,8 +781,8 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
         <Modal title={editingProductId ? "Edit Product" : "Add Product"} onClose={() => { setShowAddModal(false); resetProductForm(); }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <FieldInput label="Product Name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
-            <FieldSelect label="Category" value={form.category} onChange={(value) => setForm({ ...form, category: value })} options={PRODUCT_CATEGORIES} />
-            <FieldInput label="Brand" value={form.brand} onChange={(value) => setForm({ ...form, brand: value })} />
+            <FieldSelect label="Category" value={form.category} onChange={(value) => setForm({ ...form, category: value })} options={categoryFieldOptions} />
+            <FieldSelect label="Brand" value={form.brand} onChange={(value) => setForm({ ...form, brand: value })} options={brandFieldOptions} />
             <FieldInput label="Model" value={form.model} onChange={(value) => setForm({ ...form, model: value })} />
             <FieldInput label="Storage" value={form.storage} onChange={(value) => setForm({ ...form, storage: value })} placeholder="128GB" />
             <FieldInput label="Color" value={form.color} onChange={(value) => setForm({ ...form, color: value })} />

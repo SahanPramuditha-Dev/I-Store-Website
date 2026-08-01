@@ -19,22 +19,41 @@ export default function AppModal({
   const panelRef = useRef(null);
   const titleId = useId();
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
     const node = panelRef.current;
     const content = node?.querySelector("[data-modal-content]");
-    const focusable = content?.querySelector(
-      '[data-modal-initial-focus], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    ) || node?.querySelector(
-      '[data-modal-initial-focus], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    focusable?.focus?.();
+    const focusable =
+      content?.querySelector(
+        '[data-modal-initial-focus], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      ) ||
+      node?.querySelector(
+        '[data-modal-initial-focus], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+
+    if (!node?.contains(document.activeElement)) {
+      focusable?.focus?.();
+    }
+
+    return () => {
+      if (previous && typeof previous.focus === "function") {
+        previous.focus();
+      }
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const node = panelRef.current;
 
     const onKeyDown = (event) => {
       if (event.key === "Escape" && closeOnEscape) {
         event.preventDefault();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== "Tab" || !node) return;
@@ -56,9 +75,8 @@ export default function AppModal({
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      previous?.focus?.();
     };
-  }, [closeOnEscape, onClose, open]);
+  }, [closeOnEscape, open]);
 
   if (!open) return null;
 

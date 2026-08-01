@@ -223,12 +223,31 @@ export default function Login() {
     return "Good evening";
   };
 
+  const [pinSetupModal, setPinSetupModal] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pendingLoginData, setPendingLoginData] = useState(null);
+
   const handlePinClick = (num) => {
     if (!submitting && pin.length < 4) setPin((prev) => prev + num);
   };
 
   const handlePinDelete = () => {
     if (!submitting) setPin((prev) => prev.slice(0, -1));
+  };
+
+  const completeLoginNavigation = (meRes, permissionRes, fallbackUsername) => {
+    setLoginSuccess(true);
+    setTimeout(() => {
+      const me = meRes?.data || {};
+      const permissions = savePermissions(permissionRes?.data?.permissions || []);
+
+      localStorage.setItem("username", me?.username || fallbackUsername);
+      localStorage.setItem("login_role", me?.role || "staff");
+      localStorage.setItem("login_role_label", roleToLabel(me?.role || "staff"));
+
+      navigate(pickLandingPath(permissions), { replace: true });
+    }, 1200);
   };
 
   const finishLogin = async (tokenRes, fallbackUsername) => {
@@ -243,18 +262,58 @@ export default function Login() {
       api.get("/auth/me/permissions").catch(() => ({ data: { permissions: [] } })),
     ]);
 
-    setLoginSuccess(true);
+    const me = meRes?.data || {};
 
-    setTimeout(() => {
-      const me = meRes?.data || {};
-      const permissions = savePermissions(permissionRes?.data?.permissions || []);
+    // Check if user needs to set a PIN for the first time
+    if (!me.pin_set && !me.pin_hash) {
+      setPendingLoginData({ meRes, permissionRes, fallbackUsername });
+      setPinSetupModal(true);
+      setSubmitting(false);
+      return;
+    }
 
-      localStorage.setItem("username", me?.username || fallbackUsername);
-      localStorage.setItem("login_role", me?.role || "staff");
-      localStorage.setItem("login_role_label", roleToLabel(me?.role || "staff"));
+    completeLoginNavigation(meRes, permissionRes, fallbackUsername);
+  };
 
-      navigate(pickLandingPath(permissions), { replace: true });
-    }, 1200);
+  const handleSaveInitialPin = async (e) => {
+    e?.preventDefault();
+    if (newPin.length !== 4) {
+      setError("PIN must be 4 digits");
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setError("PINs do not match");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+    try {
+      await api.post("/auth/set-pin", { pin: newPin });
+      setPinSetupModal(false);
+      if (pendingLoginData) {
+        completeLoginNavigation(
+          pendingLoginData.meRes,
+          pendingLoginData.permissionRes,
+          pendingLoginData.fallbackUsername
+        );
+      }
+    } catch (err) {
+      setSubmitting(false);
+      const detail = err?.response?.data?.detail;
+      setError(typeof detail === "string" ? detail : "Failed to set PIN.");
+    }
+  };
+
+  const handleSkipPinSetup = () => {
+    setPinSetupModal(false);
+    if (pendingLoginData) {
+      completeLoginNavigation(
+        pendingLoginData.meRes,
+        pendingLoginData.permissionRes,
+        pendingLoginData.fallbackUsername
+      );
+    }
   };
 
   const handlePinSubmit = async () => {
@@ -693,6 +752,72 @@ export default function Login() {
           </div>
         </div>
       </section>
+
+      {pinSetupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="text-center space-y-1">
+              <h3 className="text-xl font-bold text-slate-100">Set Quick-Access PIN</h3>
+              <p className="text-sm text-slate-400">
+                You haven't set a 4-digit PIN yet. Set one now for fast POS & staff login.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveInitialPin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  4-Digit PIN
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  pattern="\d{4}"
+                  placeholder="e.g. 1234"
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-center text-2xl tracking-[0.5em] font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Confirm 4-Digit PIN
+                </label>
+                <input
+                  type="password"
+                  maxLength={4}
+                  pattern="\d{4}"
+                  placeholder="e.g. 1234"
+                  value={confirmPin}
+                  onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-center text-2xl tracking-[0.5em] font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {error ? <div className="text-rose-400 text-sm text-center">{error}</div> : null}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleSkipPinSetup}
+                  disabled={submitting}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors text-sm font-medium"
+                >
+                  Skip for Now
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || newPin.length !== 4 || newPin !== confirmPin}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  {submitting ? <Loader2 size={16} className="animate-spin" /> : "Save PIN & Continue"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
