@@ -38,9 +38,10 @@ import api from "../lib/api";
 import { printHtmlDocument } from "../lib/printBridge";
 import { openPrintCenter } from "../lib/printCenter";
 import { useFeedback } from "../components/FeedbackProvider";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Button, KpiCard, Loading, SectionCard, Select, StatusBadge } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Button, FilterToolbar, KpiCard, Loading, PageHeader, SectionCard, Select, StatusBadge } from "../components/UI";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppModal from "../components/layout/AppModal";
+import { formatLabel } from "../lib/tableUtils";
 
 const CLAIM_STATUS_FLOW = [
   "Pending Inspection",
@@ -115,37 +116,15 @@ function normalizeIssueLabel(text) {
     .join(" ");
 }
 
-function OverviewKpiCard({ title, value, deltaLabel, tone = "sky", icon, sparkData = [] }) {
-  const toneMap = {
-    green: "from-emerald-500/20 to-emerald-300/10 border-emerald-400/30 text-emerald-200",
-    amber: "from-amber-500/20 to-amber-300/10 border-amber-400/30 text-amber-200",
-    red: "from-rose-500/20 to-rose-300/10 border-rose-400/30 text-rose-200",
-    violet: "from-violet-500/20 to-violet-300/10 border-violet-400/30 text-violet-200",
-    sky: "from-sky-500/20 to-sky-300/10 border-sky-400/30 text-sky-200",
-    cyan: "from-cyan-500/20 to-cyan-300/10 border-cyan-400/30 text-cyan-200",
-  };
-  const toneClasses = toneMap[tone] || toneMap.sky;
-  const trendData = (sparkData || []).map((value, index) => ({ i: index, value: Number(value || 0) }));
+function OverviewKpiCard({ title, value, deltaLabel, tone = "sky", icon }) {
   return (
-    <div className={`rounded-xl border bg-gradient-to-br px-3 py-2.5 ${toneClasses}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-300/85">{title}</p>
-          <p className="mt-1 text-lg font-black text-white leading-none truncate">{value}</p>
-          <p className="mt-1 text-[10px] text-slate-300/80">{deltaLabel}</p>
-        </div>
-        <div className="grid h-8 w-8 place-items-center rounded-lg border border-white/15 bg-black/20 text-white/90">
-          {icon}
-        </div>
-      </div>
-      <div className="mt-1.5 h-8">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={trendData}>
-            <Line type="monotone" dataKey="value" stroke="currentColor" strokeWidth={1.8} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+    <KpiCard
+      title={title}
+      value={value}
+      hint={deltaLabel}
+      tone={tone}
+      icon={icon}
+    />
   );
 }
 
@@ -1222,92 +1201,91 @@ export default function Warranty() {
   return (
     <div className="min-h-0 min-w-0 max-w-full overflow-x-clip overflow-y-auto pr-1 xl:h-full xl:overflow-y-hidden">
       <div className={`space-y-3 pb-3 ${isCompactHeight ? "warranty-compact" : ""}`}>
-        <section className="panel p-4 space-y-3">
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3">
-            <div className="xl:col-span-4 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="grid h-9 w-9 place-items-center rounded-lg border border-indigo-400/35 bg-indigo-500/15 text-indigo-200">
-                  <Shield size={16} />
-                </span>
-                <div className="min-w-0">
-                  <h2 className="text-xl font-black text-white leading-none">{tabMeta.title}</h2>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {tabMeta.subtitle}
-                  </p>
-                </div>
-              </div>
+        <PageHeader
+          eyebrow="Warranty & Claim Protection"
+          title={tabMeta.title}
+          subtitle={tabMeta.subtitle}
+          action={
+            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+              <Select
+                className="!text-xs"
+                minWidth={190}
+                maxWidth={220}
+                fullWidth={false}
+                value={datePreset}
+                onChange={(event) => applyDatePreset(event.target.value)}
+              >
+                <option value="last7">Last 7 Days</option>
+                <option value="last30">Last 30 Days</option>
+                <option value="thisMonth">This Month</option>
+                <option value="all">All Dates</option>
+                <option value="custom">Custom Range</option>
+              </Select>
+              {datePreset === "custom" && (
+                <>
+                  <input
+                    type="date"
+                    className="field !h-10 !py-2 !px-3 !text-xs min-w-[150px]"
+                    value={filters.date_from}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, date_from: event.target.value }))}
+                  />
+                  <input
+                    type="date"
+                    className="field !h-10 !py-2 !px-3 !text-xs min-w-[150px]"
+                    value={filters.date_to}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, date_to: event.target.value }))}
+                  />
+                </>
+              )}
+              {(isOverviewTab || isReportsContext) && (
+                <>
+                  <Button size="sm" className="!h-10 !px-3.5" variant="secondary" onClick={exportOverviewPdf}>
+                    <FileText size={13} /> Export PDF
+                  </Button>
+                  <Button size="sm" className="!h-10 !px-3.5" variant="secondary" onClick={exportOverviewCsv}>
+                    <Download size={13} /> Export CSV
+                  </Button>
+                </>
+              )}
+              {(isOverviewTab || isRecordsTab) && (
+                <Button size="sm" className="!h-10 !px-3.5" onClick={() => setShowCreateWarranty(true)}>
+                  <Plus size={13} /> Create Warranty
+                </Button>
+              )}
+              {(isOverviewTab || isClaimsTab) && (
+                <Button size="sm" className="!h-10 !px-3.5" variant="ghost" onClick={() => setActiveTab("claims")}>
+                  <ShieldAlert size={13} /> Quick Claim
+                </Button>
+              )}
+              {isReportDetailTab && (
+                <Button size="sm" className="!h-10 !px-3.5" variant="ghost" onClick={() => setActiveTab("reports")}>
+                  <LineChartIcon size={13} /> Back To Reports
+                </Button>
+              )}
+              <Button variant="secondary" className="!h-10 !px-3.5" size="sm" onClick={refreshAll} disabled={busy}>
+                Refresh
+              </Button>
             </div>
+          }
+        />
 
-            <div className="xl:col-span-8 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                <Select
-                  className="!text-xs"
-                  minWidth={190}
-                  maxWidth={220}
-                  fullWidth={false}
-                  value={datePreset}
-                  onChange={(event) => applyDatePreset(event.target.value)}
-                >
-                  <option value="last7">Last 7 Days</option>
-                  <option value="last30">Last 30 Days</option>
-                  <option value="thisMonth">This Month</option>
-                  <option value="all">All Dates</option>
-                  <option value="custom">Custom Range</option>
-                </Select>
-                {datePreset === "custom" && (
-                  <>
-                    <input
-                      type="date"
-                      className="field !h-10 !py-2 !px-3 !text-xs min-w-[150px]"
-                      value={filters.date_from}
-                      onChange={(event) => setFilters((prev) => ({ ...prev, date_from: event.target.value }))}
-                    />
-                    <input
-                      type="date"
-                      className="field !h-10 !py-2 !px-3 !text-xs min-w-[150px]"
-                      value={filters.date_to}
-                      onChange={(event) => setFilters((prev) => ({ ...prev, date_to: event.target.value }))}
-                    />
-                  </>
-                )}
-                {(isOverviewTab || isReportsContext) && (
-                  <>
-                    <Button size="sm" className="!h-10 !px-3.5" variant="secondary" onClick={exportOverviewPdf}>
-                      <FileText size={13} /> Export PDF
-                    </Button>
-                    <Button size="sm" className="!h-10 !px-3.5" variant="secondary" onClick={exportOverviewCsv}>
-                      <Download size={13} /> Export CSV
-                    </Button>
-                  </>
-                )}
-                {(isOverviewTab || isRecordsTab) && (
-                  <Button size="sm" className="!h-10 !px-3.5" onClick={() => setShowCreateWarranty(true)}>
-                    <Plus size={13} /> Create Warranty
-                  </Button>
-                )}
-                {(isOverviewTab || isClaimsTab) && (
-                  <Button size="sm" className="!h-10 !px-3.5" variant="ghost" onClick={() => setActiveTab("claims")}>
-                    <ShieldAlert size={13} /> Quick Claim
-                  </Button>
-                )}
-                {isReportDetailTab && (
-                  <Button size="sm" className="!h-10 !px-3.5" variant="ghost" onClick={() => setActiveTab("reports")}>
-                    <LineChartIcon size={13} /> Back To Reports
-                  </Button>
-                )}
-                <Button variant="secondary" className="!h-10 !px-3.5" size="sm" onClick={refreshAll} disabled={busy}>
-                  Refresh
+        {isOverviewTab && (
+          <FilterToolbar
+            right={
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={performLookup} disabled={busy}>
+                  Lookup
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setLookupRows([])}>
+                  Clear
                 </Button>
               </div>
-            </div>
-          </div>
-
-          {isOverviewTab && (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_120px_120px] gap-2 items-center">
-            <div className="relative min-w-0">
+            }
+          >
+            <div className="relative flex-1 min-w-[260px]">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
-                className="field !h-10 !py-2 !pl-9 !pr-20 !text-xs"
+                className="field !h-9 !py-1.5 !pl-9 !pr-16 !text-xs w-full"
                 placeholder="Search warranty, IMEI, serial, customer, claim ID..."
                 value={lookupQuery}
                 onChange={(event) => setLookupQuery(event.target.value)}
@@ -1322,72 +1300,58 @@ export default function Warranty() {
                 Ctrl + K
               </span>
             </div>
-            <Button size="sm" className="!h-10 !w-full !px-3" onClick={performLookup} disabled={busy}>
-              Lookup
-            </Button>
-            <Button size="sm" variant="ghost" className="!h-10 !w-full !px-3" onClick={() => setLookupRows([])}>
-              Clear
-            </Button>
-          </div>
-          )}
-          {isOverviewTab && lookupRows.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-slate-400">Lookup results:</span>
-              {lookupRows.slice(0, 4).map((row) => (
-                <button
-                  key={row.id}
-                  className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] text-indigo-200 hover:bg-indigo-500/20 transition"
-                  onClick={() => openWarrantyDrawer(row)}
-                >
-                  {row.warranty_id || row.warranty_number || `WRN-${row.id}`}
-                </button>
-              ))}
-              {lookupRows.length > 4 && (
-                <span className="text-[11px] text-slate-500">+{lookupRows.length - 4} more</span>
-              )}
-            </div>
-          )}
-        </section>
+            {lookupRows.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-slate-400">Lookup results:</span>
+                {lookupRows.slice(0, 4).map((row) => (
+                  <button
+                    key={row.id}
+                    className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] text-indigo-200 hover:bg-indigo-500/20 transition"
+                    onClick={() => openWarrantyDrawer(row)}
+                  >
+                    {row.warranty_id || row.warranty_number || `WRN-${row.id}`}
+                  </button>
+                ))}
+                {lookupRows.length > 4 && (
+                  <span className="text-[11px] text-slate-500">+{lookupRows.length - 4} more</span>
+                )}
+              </div>
+            )}
+          </FilterToolbar>
+        )}
 
         {(isOverviewTab || workspaceKpis.length > 0) && (
-        <section className="space-y-2">
-          {isOverviewTab ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8 gap-2">
-              {overviewKpis.map((row) => (
-                <OverviewKpiCard
-                  key={row.key}
-                  title={row.title}
-                  value={row.value}
-                  deltaLabel={row.delta}
-                  tone={row.tone}
-                  icon={row.icon}
-                  sparkData={row.spark}
-                />
-              ))}
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
+              {isOverviewTab
+                ? overviewKpis.map((row) => (
+                    <OverviewKpiCard
+                      key={row.key}
+                      title={row.title}
+                      value={row.value}
+                      deltaLabel={row.delta}
+                      tone={row.tone}
+                      icon={row.icon}
+                    />
+                  ))
+                : visibleWorkspaceKpis.map((row) => (
+                    <KpiCard
+                      key={row.key}
+                      title={row.title}
+                      value={Number(row.value || 0).toLocaleString()}
+                      icon={row.icon}
+                      tone={row.tone}
+                    />
+                  ))}
             </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                {visibleWorkspaceKpis.map((row) => (
-                  <KpiCard
-                    key={row.key}
-                    title={row.title}
-                    value={Number(row.value || 0).toLocaleString()}
-                    icon={row.icon}
-                    tone={row.tone}
-                  />
-                ))}
+            {!isOverviewTab && isCompactHeight && workspaceKpis.length > 4 && (
+              <div className="flex justify-end">
+                <Button size="sm" variant="ghost" onClick={() => setShowAllKpis((prev) => !prev)}>
+                  {showAllKpis ? "Show Fewer KPIs" : "Show All KPIs"}
+                </Button>
               </div>
-              {isCompactHeight && workspaceKpis.length > 4 && (
-                <div className="flex justify-end">
-                  <Button size="sm" variant="ghost" onClick={() => setShowAllKpis((prev) => !prev)}>
-                    {showAllKpis ? "Show Fewer KPIs" : "Show All KPIs"}
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </section>
+            )}
+          </div>
         )}
 
         {isRecordsTab && (
@@ -1639,7 +1603,7 @@ export default function Warranty() {
                                 onChange={(event) => updateClaimStatus(row.id, event.target.value)}
                               >
                                 {CLAIM_STATUS_FLOW.map((status) => (
-                                  <option key={`${row.id}-${status}`} value={status}>{status}</option>
+                                  <option key={`${row.id}-${status}`} value={status}>{formatLabel(status)}</option>
                                 ))}
                               </Select>
                             </td>

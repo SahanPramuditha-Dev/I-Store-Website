@@ -36,6 +36,7 @@ export function StickyTable({
   size = "small",
   containerSx = {},
   tableSx = {},
+  onRowClick = null,
 }) {
   return (
     <TableContainer
@@ -89,13 +90,20 @@ export function StickyTable({
             <TableRow
               key={typeof rowKey === "function" ? rowKey(row, idx) : row[rowKey] ?? idx}
               hover
+              onClick={(e) => {
+                if (e.target.closest("button, a, input, select, label")) return;
+                if (onRowClick) onRowClick(row, idx);
+              }}
               sx={{
+                cursor: onRowClick ? "pointer" : "default",
+                transition: "background-color 0.15s ease",
                 "& td": {
                   borderBottom: "1px solid rgba(255,255,255,0.04)",
                   color: "#cbd5e1",
                   py: 1.1,
                   px: 1.5,
                 },
+                "&:hover": onRowClick ? { backgroundColor: "rgba(99, 102, 241, 0.12) !important" } : {},
                 "&:nth-of-type(odd)": { backgroundColor: "rgba(255,255,255,0.01)" },
               }}
             >

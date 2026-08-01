@@ -8,9 +8,14 @@ import { PrintLabel } from "./PrintLabel";
 import { GenericPrintDocument } from "./GenericPrintDocument";
 import { BoxedDetailedInvoice } from "./BoxedDetailedInvoice";
 
-// A fallback legacy view if no modern template matches
 function LegacyFallback({ html }) {
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <iframe
+      srcDoc={html}
+      className="w-full h-full min-h-[480px] border-0 rounded-lg bg-white"
+      title="Print Preview"
+    />
+  );
 }
 
 export function PrintOrchestrator({ documentId, referenceId, format, templateId, onLoaded }) {

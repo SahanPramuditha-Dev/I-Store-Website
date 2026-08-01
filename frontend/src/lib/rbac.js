@@ -124,3 +124,20 @@ export const NAV_PERMISSION_MAP = {
   "/notifications": "notifications.view",
   "/permissions": "access.view",
 };
+
+export function isOwnerOrAdmin() {
+  try {
+    const role = String(getAuthValue("login_role") || getAuthValue("role") || "").toLowerCase();
+    const label = String(getAuthValue("login_role_label") || "").toLowerCase();
+    const username = String(getAuthValue("username") || "").toLowerCase();
+    const permissions = loadPermissions();
+
+    if (permissions.includes("*") || permissions.includes("settings.all")) return true;
+    if (role.includes("owner") || role.includes("admin") || role.includes("manager")) return true;
+    if (label.includes("owner") || label.includes("admin") || label.includes("manager")) return true;
+    if (username.includes("bandara") || username.includes("admin") || username.includes("owner")) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useFetch } from "../../hooks/useFetch";
-import { downloadCsv, downloadPdf, paginateRows } from "../../lib/tableUtils";
+import { downloadCsv, downloadPdf, formatLabel, paginateRows } from "../../lib/tableUtils";
 import { AppCard, StickyTable } from "../../components/MuiPrimitives";
 import { Select } from "../../components/UI";
 
@@ -29,7 +29,7 @@ export default function InventoryMovements() {
         <div className="flex items-center gap-2">
           <input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Search item, note, reference..." className="rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-slate-100" />
           <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }} className="rounded-lg border border-white/10 bg-black/30 px-3 py-1.5 text-xs text-slate-100">
-            {types.map((t) => <option key={t}>{t}</option>)}
+            {types.map((t) => <option key={t} value={t}>{formatLabel(t)}</option>)}
           </Select>
           <button
             onClick={() => downloadCsv("inventory-movements.csv", [
@@ -67,9 +67,9 @@ export default function InventoryMovements() {
         rows={pageRows}
         columns={[
           { key: "item_name", label: "Item", render: (r) => <span className="text-slate-200">{r.item_name}</span> },
-          { key: "movement_type", label: "Type", render: (r) => <span className="text-slate-300">{r.movement_type}</span> },
+          { key: "movement_type", label: "Type", render: (r) => <span className="text-slate-300">{formatLabel(r.movement_type)}</span> },
           { key: "quantity", label: "Qty", render: (r) => <span className={Number(r.quantity) >= 0 ? "text-emerald-300" : "text-rose-300"}>{Number(r.quantity) >= 0 ? "+" : ""}{r.quantity}</span> },
-          { key: "reference", label: "Reference", render: (r) => <span className="text-slate-400">{r.reference_type || "-"} {r.reference_id || ""}</span> },
+          { key: "reference", label: "Reference", render: (r) => <span className="text-slate-400">{formatLabel(r.reference_type) || "-"} {r.reference_id || ""}</span> },
           { key: "note", label: "Note", render: (r) => <span className="text-slate-500">{r.note || "-"}</span> },
           { key: "created_at", label: "Time", render: (r) => <span className="text-slate-500">{r.created_at ? new Date(r.created_at).toLocaleString() : "-"}</span> },
         ]}

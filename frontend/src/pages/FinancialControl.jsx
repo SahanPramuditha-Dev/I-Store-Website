@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import api from "../lib/api";
 import { useFeedback } from "../components/FeedbackProvider";
-import { Badge, Button, Input, KpiCard, SectionCard, Select, Table } from "../components/UI";
-import { downloadCsv, downloadPdf } from "../lib/tableUtils";
+import { Badge, Button, Input, KpiCard, PageHeader, SectionCard, Select, Table } from "../components/UI";
+import { downloadCsv, downloadPdf, formatLabel } from "../lib/tableUtils";
 import AppDrawer from "../components/layout/AppDrawer";
 
 const TABS = [
@@ -656,20 +656,17 @@ export default function FinancialControl() {
 
   return (
     <div className="flex flex-col h-full gap-4 pb-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 shrink-0">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-3">
-            <ShieldCheck className="text-rose-400" /> Financial Audit
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Real-time financial integrity layer for reconciliation, verification, and risk controls.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={onExportCsv} variant="secondary"><Download size={14} /> Export CSV</Button>
-          <Button onClick={onExportPdf}><FileText size={14} /> Export PDF</Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Financial Integrity & Risk Controls"
+        title="Financial Audit"
+        subtitle="Real-time financial integrity layer for reconciliation, verification, and risk controls."
+        action={
+          <>
+            <Button size="sm" onClick={onExportCsv} variant="secondary"><Download size={14} /> Export CSV</Button>
+            <Button size="sm" onClick={onExportPdf}><FileText size={14} /> Export PDF</Button>
+          </>
+        }
+      />
 
       <div className="sticky top-0 z-20 rounded-2xl border border-white/10 bg-slate-950/90 backdrop-blur p-3">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
@@ -695,7 +692,7 @@ export default function FinancialControl() {
             <Select value={filters.module} onChange={(event) => setFilters((prev) => ({ ...prev, module: event.target.value }))}>
               <option value="all">All Modules</option>
               {(stateData?.filters?.modules || []).map((row) => (
-                <option key={row} value={row}>{row}</option>
+                <option key={row} value={row}>{formatLabel(row)}</option>
               ))}
             </Select>
           </div>
@@ -703,7 +700,7 @@ export default function FinancialControl() {
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Flag Status</label>
             <Select value={filters.flag_status} onChange={(event) => setFilters((prev) => ({ ...prev, flag_status: event.target.value }))}>
               {(stateData?.filters?.flag_statuses || ["all", "Open", "Resolved"]).map((row) => (
-                <option key={row} value={row}>{row}</option>
+                <option key={row} value={row}>{formatLabel(row)}</option>
               ))}
             </Select>
           </div>

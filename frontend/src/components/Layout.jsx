@@ -38,45 +38,52 @@ import { Button, WorkstationNotice } from "./UI";
 
 const navGroups = [
   {
-    label: "Main",
+    label: "Core Workspace",
     items: [
       ["/dashboard", "Dashboard", LayoutDashboard],
+      ["/pos", "POS / Billing", ShoppingCart],
       ["/search", "Search Hub", SearchIcon],
     ],
   },
   {
-    label: "Operations",
+    label: "Store Operations",
     items: [
       ["/repairs", "Repair Management", Wrench],
-      ["/reservations", "Reservations", ClipboardList],
-      ["/warranty", "Warranty", Shield],
-      ["/returns", "Returns & Refunds", RotateCcw],
-      ["/advances", "Advance Payments", Wallet],
       ["/inventory/products", "Inventory", Boxes],
-      ["/purchase", "Purchasing", Truck],
-      ["/expenses", "Expenses", Wallet],
-      ["/pos", "POS / Billing", ShoppingCart],
+      ["/returns", "Returns & Refunds", RotateCcw],
+      ["/warranty", "Warranty", Shield],
+      ["/reservations", "Reservations", ClipboardList],
     ],
   },
   {
-    label: "People",
-    items: [["/customers", "Customers", Users]],
+    label: "Finance & Purchasing",
+    items: [
+      ["/purchase", "Purchasing", Truck],
+      ["/advances", "Advance Payments", Wallet],
+      ["/expenses", "Expenses", Wallet],
+      ["/financials", "Financial Audit", ShieldCheck],
+    ],
   },
   {
-    label: "Analytics",
+    label: "Customer Management",
+    items: [
+      ["/customers", "Customers", Users],
+    ],
+  },
+  {
+    label: "Tools & Reports",
     items: [
       ["/reports", "Reports", BarChart3],
-      ["/financials", "Financial Audit", ShieldCheck],
       ["/barcodes", "Labels", Barcode],
       ["/print-center", "Print Center", Printer],
     ],
   },
   {
-    label: "System",
+    label: "System Administration",
     items: [
       ["/permissions", "Permissions", Shield],
-      ["/notifications", "Notifications", Bell],
       ["/audit", "Audit Trail", History],
+      ["/notifications", "Notifications", Bell],
       ["/backup", "Backup", Database],
       ["/settings", "Settings", Settings],
     ],
@@ -587,7 +594,7 @@ export default function Layout() {
             />
           ) : null}
 
-          <div className="app-workspace-host min-h-0 min-w-0 flex-1 w-full max-w-none overflow-x-auto overflow-y-auto custom-scrollbar p-3 sm:p-4">
+          <div className="app-workspace-host min-h-0 min-w-0 flex-1 w-full max-w-none overflow-x-auto overflow-y-auto custom-scrollbar px-3 sm:px-4 pb-3 sm:pb-4 pt-2 sm:pt-2.5">
             <Outlet />
           </div>
         </main>

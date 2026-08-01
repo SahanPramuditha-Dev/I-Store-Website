@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, Plus, ReceiptText, Search, Trash2, Wallet, XCircle } from "lucide-react";
+import { CheckCircle2, Filter, Plus, ReceiptText, Search, Trash2, Wallet, XCircle } from "lucide-react";
 import { useFetch } from "../hooks/useFetch";
 import api from "../lib/api";
 import { runWithApproval } from "../lib/approvalFlow";
-import { Badge, Button, KpiCard, SectionCard, Select, SensitiveActionIndicators, Table, WorkstationNotice } from "../components/UI";
+import { Badge, Button, KpiCard, PageHeader, SectionCard, Select, SensitiveActionIndicators, Table, WorkstationNotice } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import { useFeedback } from "../components/FeedbackProvider";
 
@@ -150,18 +150,20 @@ export default function Expenses() {
 
   return (
     <div className="min-h-0 space-y-3 pb-3">
-      <SectionCard
+      <PageHeader
+        eyebrow="Finance & Accounting"
         title="Expenses Management"
         subtitle="Track rent, salaries, utilities, and operational spending."
-        right={
-          <div className="flex items-center gap-2">
+        action={
+          <>
             <Button variant="secondary" size="sm" onClick={refresh}>Refresh</Button>
             <Button size="sm" onClick={() => setShowCreate(true)}>
               <Plus size={14} /> Add Expense
             </Button>
-          </div>
+          </>
         }
-      >
+      />
+      <SectionCard title="Filters" right={<Filter size={16} className="text-slate-400" />}>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           <div className="relative md:col-span-2">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />

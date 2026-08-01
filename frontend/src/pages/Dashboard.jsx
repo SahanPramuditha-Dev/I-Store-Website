@@ -1,6 +1,6 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useFetch } from "../hooks/useFetch";
-import { ErrorState, KpiCard, Loading, SectionCard, Table, Badge, Button } from "../components/UI";
+import { ErrorState, KpiCard, Loading, PageHeader, SectionCard, Table, Badge, Button } from "../components/UI";
 import {
   BadgeDollarSign,
   Wrench,
@@ -230,26 +230,23 @@ export default function Dashboard() {
   return (
     <PageContainer className="dashboard-page pb-4 pr-1">
       <div className="space-y-2.5">
-        <div className="dashboard-hero flex flex-col gap-3 rounded-xl border p-3 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <div className="dashboard-hero-chip inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em]">
-              <Sparkles size={11} />
-              Live Business Summary
-            </div>
-            <h2 className="mt-1 text-xl font-extrabold tracking-tight text-white">Dashboard</h2>
-            <p className="mt-1 text-sm text-slate-300">Welcome back, {username}. Here&apos;s what&apos;s happening today.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="dashboard-date-pill inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200">
-              <CalendarDays size={13} />
-              {new Date().toLocaleDateString()}
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => navigate("/pos")}>
-              Open POS
-              <ArrowRight size={14} />
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          eyebrow="Live Business Summary"
+          title="Dashboard"
+          subtitle={`Welcome back, ${username}. Here's what's happening today.`}
+          action={
+            <>
+              <div className="dashboard-date-pill inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200">
+                <CalendarDays size={13} />
+                {new Date().toLocaleDateString()}
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => navigate("/pos")}>
+                Open POS
+                <ArrowRight size={14} />
+              </Button>
+            </>
+          }
+        />
 
         <div className="dashboard-health-card grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-slate-900/45 p-2 sm:grid-cols-2 xl:grid-cols-4">
           {health.map((h) => (

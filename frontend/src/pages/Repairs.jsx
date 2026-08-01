@@ -4,12 +4,12 @@ import { useCachedQuery } from "../hooks/useCachedQuery";
 import { apiService } from "../lib/apiService";
 import api from "../lib/api";
 import { openPrintCenter } from "../lib/printCenter";
-import { AppSelect, AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageTitle, Select, Table } from "../components/UI";
+import { useFeedback } from "../components/FeedbackProvider";
+import { AppSelect, AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageHeader, PageTitle, Select, Table } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import { Menu, MenuItem } from "@mui/material";
 import { CheckCircle2, ClipboardList, Loader2, Wrench, LayoutGrid, List, Search, Plus, Filter, Clock, MoreVertical, Bell, AlertTriangle, UserCheck, Phone, CheckCheck, X } from "lucide-react";
-import { useFeedback } from "../components/FeedbackProvider";
-import RepairKanban from "../components/RepairKanban";
+import { isValidLuhnIMEI } from "../lib/tableUtils";
 
 const REPAIR_STATUS_OPTIONS = [
   "pending",
@@ -138,6 +138,28 @@ export default function Repairs() {
     notes: '',
     priority: 'Normal'
   });
+  const [imeiIntelligence, setImeiIntelligence] = useState(null);
+  const [checkingImei, setCheckingImei] = useState(false);
+
+  useEffect(() => {
+    const clean = (form.imei || "").trim();
+    if (clean.length < 5) {
+      setImeiIntelligence(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setCheckingImei(true);
+      try {
+        const res = await api.get(`/inventory/serials/lookup-imei/${clean}`);
+        setImeiIntelligence(res.data);
+      } catch (e) {
+        setImeiIntelligence(null);
+      } finally {
+        setCheckingImei(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [form.imei]);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', address: '' });
   const [selectedRepair, setSelectedRepair] = useState(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
@@ -776,16 +798,20 @@ export default function Repairs() {
   return (
     <div className="min-h-0 pb-4 pr-1">
     <div className={`repairs-management-page min-h-0 flex flex-col gap-5 animate-in fade-in duration-700 ${isCompactHeight ? "is-compact-height" : ""}`}>
-      <div className="repairs-header flex flex-wrap items-start xl:items-center justify-between gap-4">
-        <PageTitle title="Repair Management" subtitle="Track repair jobs, technicians, parts, and customer updates." />
-        <div className="flex items-center gap-3">
-          <div className="flex items-center p-1 bg-white/5 rounded-xl border border-white/10">
-            <button onClick={() => setView("table")} className={`p-2 rounded-lg transition-all ${view === 'table' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List size={18} /></button>
-            <button onClick={() => setView("kanban")} className={`p-2 rounded-lg transition-all ${view === 'kanban' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><LayoutGrid size={18} /></button>
-          </div>
-          <Button onClick={() => setShowCreate(true)} className="repairs-primary-action flex items-center gap-2 px-6"><Plus size={18} /> Create Repair Job</Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Service & Repair Operations"
+        title="Repair Management"
+        subtitle="Track repair jobs, technicians, parts, and customer updates."
+        action={
+          <>
+            <div className="flex items-center p-1 bg-white/5 rounded-xl border border-white/10">
+              <button onClick={() => setView("table")} className={`p-2 rounded-lg transition-all ${view === 'table' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List size={18} /></button>
+              <button onClick={() => setView("kanban")} className={`p-2 rounded-lg transition-all ${view === 'kanban' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><LayoutGrid size={18} /></button>
+            </div>
+            <Button size="sm" onClick={() => setShowCreate(true)} className="repairs-primary-action flex items-center gap-2"><Plus size={16} /> Create Repair Job</Button>
+          </>
+        }
+      />
 
       {!isCompactHeight && (
         <div className="repairs-kpi-grid grid grid-cols-12 gap-3">
@@ -1434,8 +1460,68 @@ export default function Repairs() {
                 <Input placeholder="e.g. iPhone 15 Pro" value={form.device_model} onChange={e => setForm({...form, device_model: e.target.value})} />
               </div>
               <div className="space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">IMEI / Serial</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">IMEI / Serial</p>
+                  {form.imei && (
+                    <span className={`text-[10px] font-bold ${isValidLuhnIMEI(form.imei) ? "text-emerald-400" : "text-amber-400"}`}>
+                      {isValidLuhnIMEI(form.imei) ? "✓ Valid Luhn IMEI" : form.imei.length === 15 ? "⚠ Invalid Luhn Checksum" : `${form.imei.length}/15 digits`}
+                    </span>
+                  )}
+                </div>
                 <Input placeholder="15-digit IMEI or SN" value={form.imei} onChange={e => setForm({...form, imei: e.target.value})} />
+                
+                {checkingImei && (
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <Loader2 size={12} className="animate-spin text-indigo-400" />
+                    <span>Checking device history...</span>
+                  </div>
+                )}
+
+                {imeiIntelligence && (imeiIntelligence.is_blacklisted || imeiIntelligence.sale || imeiIntelligence.warranty || imeiIntelligence.repair_count > 0) && (
+                  <div className="rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-purple-950/20 to-black/40 p-3 text-xs space-y-1.5 shadow-inner">
+                    {imeiIntelligence.is_blacklisted && (
+                      <div className="rounded-lg border border-rose-500/50 bg-rose-950/80 p-2.5 text-rose-200 font-bold flex items-center gap-2 animate-pulse shadow-lg">
+                        <AlertTriangle className="text-rose-400 shrink-0" size={18} />
+                        <div>
+                          <div className="text-xs uppercase tracking-wider text-rose-100 font-black">⛔ STOLEN / BLACKLISTED DEVICE DETECTED</div>
+                          <div className="text-[11px] font-normal text-rose-300">
+                            Reason: {imeiIntelligence.blacklist_info?.reason || "Reported lost or stolen"} (By: {imeiIntelligence.blacklist_info?.reported_by || "System Admin"})
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between font-bold text-indigo-200">
+                      <span>📱 Device Intelligence</span>
+                      {imeiIntelligence.item_name && <span className="text-[11px] text-slate-300">{imeiIntelligence.item_name}</span>}
+                    </div>
+
+                    {imeiIntelligence.sale && (
+                      <div className="text-slate-300">
+                        🛒 Sold on <strong className="text-white">{imeiIntelligence.sale.sold_at?.slice(0, 10)}</strong> to <span className="text-indigo-300">{imeiIntelligence.sale.customer_name}</span> ({imeiIntelligence.sale.invoice_number})
+                      </div>
+                    )}
+
+                    {imeiIntelligence.warranty && (
+                      <div className="flex items-center gap-1.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${imeiIntelligence.warranty.is_active ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-rose-500/20 text-rose-300"}`}>
+                          {imeiIntelligence.warranty.is_active ? `✓ Warranty Active (${imeiIntelligence.warranty.days_remaining} days left)` : "Expired Warranty"}
+                        </span>
+                      </div>
+                    )}
+
+                    {imeiIntelligence.repair_count > 0 && (
+                      <div className="text-amber-300 font-medium">
+                        ⚠️ <strong>{imeiIntelligence.repair_count} Previous Repair(s)</strong> logged for this IMEI!
+                        {imeiIntelligence.past_repairs[0] && (
+                          <div className="text-[11px] text-slate-400 pl-3">
+                            • Last repair: {imeiIntelligence.past_repairs[0].ticket_number} ({imeiIntelligence.past_repairs[0].status}) - {imeiIntelligence.past_repairs[0].problem}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Technician</p>

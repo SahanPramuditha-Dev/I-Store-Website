@@ -440,7 +440,18 @@ export default function Login() {
               </div>
             ) : null}
 
-            {setupLoading ? (
+            {loginSuccess ? (
+              <div className="login-success-view">
+                <div className="login-success-badge-wrapper">
+                  <CheckCircle2 size={52} className="success-check-svg" />
+                </div>
+                <div className="login-success-headline">Access Granted!</div>
+                <div className="login-success-subtext">Welcome back, {username || "User"}! Launching store workspace...</div>
+                <div className="login-success-progress-track">
+                  <div className="login-success-progress-bar-inner" />
+                </div>
+              </div>
+            ) : setupLoading ? (
               <div className="exact-login-form animate-slide-up">
                 <div className="exact-login-checking"><Loader2 size={16} className="animate-spin" /> Checking system setup status...</div>
               </div>

@@ -127,6 +127,7 @@ def _invoice_detail(db: Session, sale: Sale) -> dict:
                 "warranty_rule_id": line.warranty_rule_id,
                 "warranty_record_id": line.warranty_record_id,
                 "serial_number": line.serial_number,
+                "imei2": (db.query(InventorySerial.imei2).filter(InventorySerial.serial_number == line.serial_number).scalar()) if line.serial_number else None,
             }
         )
 

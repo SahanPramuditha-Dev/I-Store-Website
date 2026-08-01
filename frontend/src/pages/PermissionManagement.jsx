@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import api from "../lib/api";
 import { useFeedback } from "../components/FeedbackProvider";
-import { AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, SectionCard, Select, SensitiveActionIndicators, Table, WorkstationNotice } from "../components/UI";
+import { AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageHeader, SectionCard, Select, SensitiveActionIndicators, Table, WorkstationNotice } from "../components/UI";
 import { savePermissions } from "../lib/rbac";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppModal from "../components/layout/AppModal";
@@ -499,24 +499,21 @@ export default function PermissionManagement() {
 
   return (
     <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-20 pr-1 xl:h-full xl:overflow-hidden">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">I Store / Settings / Permission Management</div>
-          <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-3">
-            <Shield className="text-indigo-300" />
-            Permission Management
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">Roles, permission matrix changes, user overrides, dry-run impact, and permission audit review.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={loadBase}>
-            <RefreshCw size={14} /> Refresh
-          </Button>
-          <Button onClick={openCreateRole}>
-            <Plus size={14} /> Add Role
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Access Control & Security"
+        title="Permission Management"
+        subtitle="Roles, permission matrix changes, user overrides, dry-run impact, and permission audit review."
+        action={
+          <>
+            <Button size="sm" variant="secondary" onClick={loadBase}>
+              <RefreshCw size={14} /> Refresh
+            </Button>
+            <Button size="sm" onClick={openCreateRole}>
+              <Plus size={14} /> Add Role
+            </Button>
+          </>
+        }
+      />
 
       <WorkstationNotice
         tone="sky"

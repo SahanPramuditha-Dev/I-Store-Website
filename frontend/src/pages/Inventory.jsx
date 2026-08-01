@@ -5,7 +5,7 @@ import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { useCachedQuery } from "../hooks/useCachedQuery";
 import { apiService } from "../lib/apiService";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, KpiCard, Loading, Select, StatusBadge } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, KpiCard, Loading, PageHeader, Select, StatusBadge } from "../components/UI";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppModal from "../components/layout/AppModal";
 import { downloadCsv, downloadPdf, paginateRows } from "../lib/tableUtils";
@@ -497,17 +497,22 @@ const fetchMovementsList = () => apiService.inventory.getMovements().then((res) 
 
   return (
     <div className="flex min-h-0 min-w-0 max-w-full flex-col gap-4 overflow-x-clip overflow-y-auto pb-2 xl:h-full xl:overflow-y-hidden">
-      <div className="flex justify-end">
-        <button
-          onClick={() => {
-            resetProductForm();
-            setShowAddModal(true);
-          }}
-          className="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-950/30 transition hover:bg-indigo-500"
-        >
-          + New Product
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Stock & Catalog Control"
+        title="Inventory Management"
+        subtitle="Manage product catalog, stock levels, valuations, serial tracking, and spare parts."
+        action={
+          <Button
+            size="sm"
+            onClick={() => {
+              resetProductForm();
+              setShowAddModal(true);
+            }}
+          >
+            <Plus size={14} /> New Product
+          </Button>
+        }
+      />
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Total Products" value={String(stats.totalProducts)} hint="Catalog count" tone="sky" icon={<Boxes size={18} />} />

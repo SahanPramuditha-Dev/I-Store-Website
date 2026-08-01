@@ -51,6 +51,10 @@ class SessionTerminateIn(BaseModel):
     session_id: str
 
 
+class SetPinIn(BaseModel):
+    pin: str
+
+
 class BootstrapOwnerIn(BaseModel):
     username: str
     full_name: str

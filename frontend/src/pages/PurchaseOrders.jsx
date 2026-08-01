@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useFetch } from "../hooks/useFetch";
 import api from "../lib/api";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Select, SensitiveActionIndicators, WorkstationNotice } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, PageHeader, Select, SensitiveActionIndicators, WorkstationNotice } from "../components/UI";
 import { Calendar, History, PackageCheck, Plus, Truck, X } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import AppModal from "../components/layout/AppModal";
@@ -197,15 +197,16 @@ export default function PurchaseOrders() {
 
   return (
     <div className="flex h-full flex-col gap-4 pb-4">
-      <div className="flex shrink-0 items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-white">Purchase Orders & GRN Reconciliation</h1>
-          <p className="mt-1 text-xs text-slate-400">Create POs, reconcile against received quantities, and track linked GRNs.</p>
-        </div>
-        <button onClick={() => setIsCreating(true)} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-900/20 transition-all hover:bg-indigo-500">
-          <Plus size={14} /> Draft Purchase Order
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Purchasing & Procurement"
+        title="Purchase Orders & GRN Reconciliation"
+        subtitle="Create POs, reconcile against received quantities, and track linked GRNs."
+        action={
+          <Button size="sm" onClick={() => setIsCreating(true)} className="flex items-center gap-2">
+            <Plus size={14} /> Draft Purchase Order
+          </Button>
+        }
+      />
 
       <WorkstationNotice
         tone="amber"

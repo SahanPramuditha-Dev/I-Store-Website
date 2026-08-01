@@ -2,6 +2,56 @@ import api from "./api";
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 
+export function formatLabel(value) {
+  if (!value) return "";
+  const str = String(value);
+  return str
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function isValidLuhnIMEI(imei) {
+  const clean = String(imei || "").replace(/\D/g, "");
+  if (clean.length !== 15) return false;
+  let sum = 0;
+  for (let i = 0; i < 15; i++) {
+    let digit = parseInt(clean.charAt(i), 10);
+    if (i % 2 === 1) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+  }
+  return sum % 10 === 0;
+}
+
+export function formatIMEI(imei) {
+  const clean = String(imei || "").replace(/\D/g, "").slice(0, 15);
+  if (clean.length === 15) {
+    return `${clean.slice(0, 2)}-${clean.slice(2, 8)}-${clean.slice(8, 14)}-${clean.slice(14)}`;
+  }
+  return clean;
+}
+
+export function parseDualIMEI(input) {
+  const str = String(input || "").trim();
+  if (!str) return { imei1: "", imei2: "" };
+
+  const matches = str.match(/\b\d{15}\b/g) || [];
+  if (matches.length >= 2) {
+    return { imei1: matches[0], imei2: matches[1] };
+  } else if (matches.length === 1) {
+    return { imei1: matches[0], imei2: "" };
+  }
+
+  const parts = str.split(/[\/\,\s\:\;\-]+/).map((p) => p.replace(/\D/g, "")).filter((p) => p.length >= 10);
+  return {
+    imei1: parts[0] || str,
+    imei2: parts[1] || "",
+  };
+}
+
 function resolveValue(column, row) {
   return typeof column.value === "function" ? column.value(row) : row[column.value];
 }

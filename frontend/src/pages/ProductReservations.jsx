@@ -4,7 +4,7 @@ import { ClipboardList, Plus, ReceiptText, RefreshCw, X } from "lucide-react";
 import api from "../lib/api";
 import { openPrintCenter } from "../lib/printCenter";
 import { useFetch } from "../hooks/useFetch";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, Select } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageHeader, Select } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import { useFeedback } from "../components/FeedbackProvider";
 
@@ -237,20 +237,21 @@ export default function ProductReservations() {
 
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-black text-white">Product Reservations & Orders</h1>
-          <p className="text-xs text-slate-400 mt-1">Manage reservations, advances, and invoice conversion.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" onClick={() => reservationsFetch.refresh()} className="inline-flex items-center gap-2">
-            <RefreshCw size={14} /> Refresh
-          </Button>
-          <Button onClick={() => setShowCreateModal(true)} className="inline-flex items-center gap-2">
-            <Plus size={14} /> New Reservation
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Inventory & Sales Control"
+        title="Product Reservations & Orders"
+        subtitle="Manage reservations, advances, and invoice conversion."
+        action={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => reservationsFetch.refresh()} className="inline-flex items-center gap-2">
+              <RefreshCw size={14} /> Refresh
+            </Button>
+            <Button size="sm" onClick={() => setShowCreateModal(true)} className="inline-flex items-center gap-2">
+              <Plus size={14} /> New Reservation
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Reservations" value={summary.count} icon={<ClipboardList size={18} />} />

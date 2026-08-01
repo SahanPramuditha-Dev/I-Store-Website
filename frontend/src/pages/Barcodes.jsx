@@ -39,8 +39,8 @@ import {
 import api from "../lib/api";
 import { printHtmlDocument } from "../lib/printBridge";
 import { useFeedback } from "../components/FeedbackProvider";
-import { Badge, Button, KpiCard, SectionCard, Select, Table } from "../components/UI";
-import { downloadCsv, openPrintView } from "../lib/tableUtils";
+import { Badge, Button, KpiCard, PageHeader, SectionCard, Select, Table } from "../components/UI";
+import { downloadCsv, formatLabel, openPrintView } from "../lib/tableUtils";
 
 const TABS = [
   { key: "dashboard", label: "1. Labels Dashboard", icon: LayoutGrid },
@@ -1486,17 +1486,12 @@ export default function Barcodes() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 pb-3">
-      <section className="panel p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-              <Barcode className="text-sky-400" /> Labels &amp; Barcodes
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Offline label control center for products, repairs, spare parts, assets, queueing, scanning, and print history.
-            </p>
-          </div>
-          <div className="flex gap-2">
+      <PageHeader
+        eyebrow="Print & Label Automation"
+        title="Labels & Barcodes"
+        subtitle="Offline label control center for products, repairs, spare parts, assets, queueing, scanning, and print history."
+        action={
+          <>
             <Button size="sm" variant="secondary" onClick={refreshAll} disabled={busy}>
               <RefreshCw size={13} /> Refresh
             </Button>
@@ -1509,9 +1504,9 @@ export default function Barcodes() {
             <Button size="sm" onClick={printPreview} disabled={!previewTemplate}>
               <Printer size={13} /> Print
             </Button>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap gap-2">
         {TABS.map((tab) => (
@@ -1948,7 +1943,7 @@ export default function Barcodes() {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2">
                       <input className="field !py-2 !px-3 !text-xs xl:col-span-2" value={designerDraft.name || ""} onChange={(e) => setDesignerDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Template name" />
                       <Select className="field !py-2 !px-3 !text-xs" value={designerDraft.label_scope || "Product"} onChange={(e) => setDesignerDraft((d) => ({ ...d, label_scope: e.target.value }))}>
-                        {(meta?.label_scopes || []).map((scope) => <option key={scope} value={scope}>{scope}</option>)}
+                        {(meta?.label_scopes || []).map((scope) => <option key={scope} value={scope}>{formatLabel(scope)}</option>)}
                       </Select>
                       <input className="field !py-2 !px-3 !text-xs" type="number" min={10} value={designerDraft.width_mm || 50} onChange={(e) => setDesignerDraft((d) => ({ ...d, width_mm: Number(e.target.value || 50) }))} placeholder="Width (mm)" />
                       <input className="field !py-2 !px-3 !text-xs" type="number" min={10} value={designerDraft.height_mm || 30} onChange={(e) => setDesignerDraft((d) => ({ ...d, height_mm: Number(e.target.value || 30) }))} placeholder="Height (mm)" />
@@ -2065,11 +2060,11 @@ export default function Barcodes() {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2 mb-3">
                   <Select className="field !py-2 !px-3 !text-xs" value={queueFilters.status} onChange={(e) => setQueueFilters((p) => ({ ...p, status: e.target.value }))}>
                     <option value="all">Status</option>
-                    {(meta?.queue_statuses || []).map((row) => <option key={row} value={row}>{row}</option>)}
+                    {(meta?.queue_statuses || []).map((row) => <option key={row} value={row}>{formatLabel(row)}</option>)}
                   </Select>
                   <Select className="field !py-2 !px-3 !text-xs" value={queueFilters.label_type} onChange={(e) => setQueueFilters((p) => ({ ...p, label_type: e.target.value }))}>
                     <option value="all">Label Type</option>
-                    {(meta?.label_scopes || []).map((row) => <option key={row} value={row}>{row}</option>)}
+                    {(meta?.label_scopes || []).map((row) => <option key={row} value={row}>{formatLabel(row)}</option>)}
                   </Select>
                   <input className="field !py-2 !px-3 !text-xs xl:col-span-2" value={queueFilters.q} onChange={(e) => setQueueFilters((p) => ({ ...p, q: e.target.value }))} placeholder="Search queue..." />
                   <Button size="sm" variant="secondary" onClick={loadQueue}><Filter size={13} /> Apply</Button>
@@ -2292,11 +2287,11 @@ export default function Barcodes() {
                   <input className="field !py-2 !px-3 !text-xs" type="date" value={historyFilters.date_to} onChange={(e) => setHistoryFilters((p) => ({ ...p, date_to: e.target.value }))} />
                   <Select className="field !py-2 !px-3 !text-xs" value={historyFilters.label_type} onChange={(e) => setHistoryFilters((p) => ({ ...p, label_type: e.target.value }))}>
                     <option value="all">Label Type</option>
-                    {(meta?.label_scopes || []).map((row) => <option key={row} value={row}>{row}</option>)}
+                    {(meta?.label_scopes || []).map((row) => <option key={row} value={row}>{formatLabel(row)}</option>)}
                   </Select>
                   <Select className="field !py-2 !px-3 !text-xs" value={historyFilters.status} onChange={(e) => setHistoryFilters((p) => ({ ...p, status: e.target.value }))}>
                     <option value="all">Status</option>
-                    {(meta?.queue_statuses || []).map((row) => <option key={row} value={row}>{row}</option>)}
+                    {(meta?.queue_statuses || []).map((row) => <option key={row} value={row}>{formatLabel(row)}</option>)}
                   </Select>
                   <label className="inline-flex items-center gap-2 text-xs text-slate-300">
                     <input type="checkbox" checked={historyFilters.reprint_only} onChange={(e) => setHistoryFilters((p) => ({ ...p, reprint_only: e.target.checked }))} />

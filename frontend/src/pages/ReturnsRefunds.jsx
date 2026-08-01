@@ -16,7 +16,7 @@ import {
 import api from "../lib/api";
 import { openPrintCenter } from "../lib/printCenter";
 import { useFeedback } from "../components/FeedbackProvider";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, Loading, SectionCard, Select, SensitiveActionIndicators, StatusBadge, WorkstationNotice } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, Loading, PageHeader, SectionCard, Select, SensitiveActionIndicators, StatusBadge, WorkstationNotice } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 
 const TABS = [
@@ -43,6 +43,15 @@ function tabButtonClass(active) {
   return active
     ? "rounded-lg px-3 py-1.5 text-xs font-bold bg-indigo-500/25 border border-indigo-500/40 text-indigo-100"
     : "rounded-lg px-3 py-1.5 text-xs font-bold bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10";
+}
+
+function formatLabel(value) {
+  if (!value) return "";
+  const str = String(value);
+  return str
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function MiniTable({ columns, rows, emptyLabel = "No records found." }) {
@@ -527,19 +536,16 @@ export default function ReturnsRefunds() {
   return (
     <div className="min-h-0 overflow-y-auto pb-5 xl:h-full xl:overflow-y-hidden">
       <div className="space-y-3">
-        <section className="panel p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black text-white">Returns &amp; Refunds Management</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                I Store workflow for returns, refunds, exchanges, warranty replacements, damaged stock, and store credits.
-              </p>
-            </div>
+        <PageHeader
+          eyebrow="Sales & Stock Policy"
+          title="Returns & Refunds Management"
+          subtitle="I Store workflow for returns, refunds, exchanges, warranty replacements, damaged stock, and store credits."
+          action={
             <Button size="sm" variant="secondary" onClick={loadAll} disabled={busy}>
               Refresh
             </Button>
-          </div>
-        </section>
+          }
+        />
 
         <section className="panel p-3">
           <div className="flex flex-wrap gap-2">
@@ -559,8 +565,8 @@ export default function ReturnsRefunds() {
         />
 
         {activeTab === "dashboard" && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
               <KpiCard title="Total Returns" value={kpis.totalReturns.toLocaleString()} icon={<RotateCcw size={18} />} />
               <KpiCard title="Pending Inspections" value={kpis.pending.toLocaleString()} icon={<ClipboardList size={18} />} tone="amber" />
               <KpiCard title="Approved Returns" value={kpis.approved.toLocaleString()} icon={<BadgeCheck size={18} />} tone="indigo" />
@@ -570,15 +576,94 @@ export default function ReturnsRefunds() {
               <KpiCard title="Damaged Records" value={kpis.damagedCount.toLocaleString()} icon={<ShieldAlert size={18} />} tone="amber" />
               <KpiCard title="Store Credit Issued" value={money(kpis.creditIssued)} icon={<Store size={18} />} tone="violet" />
             </div>
-            <SectionCard title="Summary Snapshot">
-              <div className="text-xs text-slate-300 space-y-1">
-                <p>Return Period: {meta?.rules?.return_period_days ?? 0} days</p>
-                <p>Refund Approval Threshold: {money(meta?.rules?.refund_approval_threshold || 0)}</p>
-                <p>Returns Without Invoice: {meta?.rules?.allow_returns_without_invoice ? "Allowed" : "Blocked"}</p>
-                <p>Require Inspection Before Refund: {meta?.rules?.require_inspection_before_refund ? "Yes" : "No"}</p>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="xl:col-span-2">
+                <SectionCard
+                  title="Recent Return Cases"
+                  subtitle="Latest return requests requiring inspection or refund handling"
+                  right={
+                    <Button size="sm" variant="ghost" onClick={() => setActiveTab("records")}>
+                      View All ({records.length})
+                    </Button>
+                  }
+                >
+                  <MiniTable
+                    columns={[
+                      { label: "Return No", value: "return_number" },
+                      { label: "Invoice", value: (row) => row.original_invoice_number || "-" },
+                      { label: "Customer", value: (row) => row.customer_name || "-" },
+                      { label: "Reason", value: "reason" },
+                      { label: "Amount", value: (row) => money(row.total_return_amount) },
+                      {
+                        label: "Decision",
+                        value: (row) => <StatusBadge status={row.decision_status} domain="return" label={row.decision_status || "-"} />,
+                      },
+                      {
+                        label: "Action",
+                        value: (row) => (
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => openRefundModal(row)}>
+                              Refund
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => printReturn(row)}>
+                              Print
+                            </Button>
+                          </div>
+                        ),
+                      },
+                    ]}
+                    rows={records.slice(0, 6)}
+                    emptyLabel="No return cases found. Click Create Return to add one."
+                  />
+                </SectionCard>
               </div>
-            </SectionCard>
-          </>
+
+              <div className="space-y-4">
+                <SectionCard title="Return Policy Rules" subtitle="System controls & security thresholds">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Return Window</p>
+                      <p className="mt-1 text-base font-extrabold text-white">{meta?.rules?.return_period_days ?? 7} Days</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Approval Limit</p>
+                      <p className="mt-1 text-base font-extrabold text-indigo-300">{money(meta?.rules?.refund_approval_threshold || 100000)}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">No-Invoice Returns</p>
+                      <p className="mt-1 text-sm font-bold text-slate-200">
+                        {meta?.rules?.allow_returns_without_invoice ? "Allowed" : "Blocked"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Inspection Policy</p>
+                      <p className="mt-1 text-sm font-bold text-emerald-300">
+                        {meta?.rules?.require_inspection_before_refund ? "Mandatory" : "Optional"}
+                      </p>
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="Quick Actions">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button size="sm" className="w-full" onClick={() => setActiveTab("create")}>
+                      <RotateCcw size={14} /> New Return
+                    </Button>
+                    <Button size="sm" variant="secondary" className="w-full" onClick={() => setActiveTab("refunds")}>
+                      <DollarSign size={14} /> Refund Desk
+                    </Button>
+                    <Button size="sm" variant="secondary" className="w-full" onClick={() => setActiveTab("exchanges")}>
+                      <ArrowLeftRight size={14} /> Exchanges
+                    </Button>
+                    <Button size="sm" variant="secondary" className="w-full" onClick={() => setActiveTab("credits")}>
+                      <Store size={14} /> Store Credits
+                    </Button>
+                  </div>
+                </SectionCard>
+              </div>
+            </div>
+          </div>
         )}
 
         {activeTab === "records" && (
@@ -598,7 +683,7 @@ export default function ReturnsRefunds() {
                 <option value="all">Decision: All</option>
                 {(meta.decision_statuses || []).map((status) => (
                   <option key={status} value={status}>
-                    {status}
+                    {formatLabel(status)}
                   </option>
                 ))}
               </Select>
@@ -610,7 +695,7 @@ export default function ReturnsRefunds() {
                 <option value="all">Type: All</option>
                 {(meta.return_types || []).map((type) => (
                   <option key={type} value={type}>
-                    {type}
+                    {formatLabel(type)}
                   </option>
                 ))}
               </Select>
@@ -637,15 +722,15 @@ export default function ReturnsRefunds() {
                 { label: "Return No", value: "return_number" },
                 { label: "Invoice No", value: (row) => row.original_invoice_number || "-" },
                 { label: "Customer", value: (row) => row.customer_name || "-" },
-                { label: "Type", value: "return_type" },
-                { label: "Reason", value: "reason" },
+                { label: "Type", value: (row) => formatLabel(row.return_type) },
+                { label: "Reason", value: (row) => formatLabel(row.reason) },
                 { label: "Amount", value: (row) => money(row.total_return_amount) },
-                { label: "Inspection", value: "inspection_status" },
+                { label: "Inspection", value: (row) => formatLabel(row.inspection_status) },
                 {
                   label: "Decision",
-                  value: (row) => <StatusBadge status={row.decision_status} domain="return" label={row.decision_status || "-"} />,
+                  value: (row) => <StatusBadge status={row.decision_status} domain="return" label={formatLabel(row.decision_status) || "-"} />,
                 },
-                { label: "Refund", value: (row) => `${row.refund_status} / ${money(row.refund_amount)}` },
+                { label: "Refund", value: (row) => `${formatLabel(row.refund_status)} / ${money(row.refund_amount)}` },
                 { label: "Created", value: (row) => toDateTime(row.created_at) },
                 {
                   label: "Actions",
@@ -768,29 +853,29 @@ export default function ReturnsRefunds() {
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
               <Select value={createForm.return_type} onChange={(e) => setCreateForm((prev) => ({ ...prev, return_type: e.target.value }))}>
                 {(meta.return_types || []).map((type) => (
-                  <option key={type} value={type}>{type}</option>
+                  <option key={type} value={type}>{formatLabel(type)}</option>
                 ))}
               </Select>
               <Select value={createForm.reason} onChange={(e) => setCreateForm((prev) => ({ ...prev, reason: e.target.value }))}>
                 {(meta.return_reasons || []).map((reason) => (
-                  <option key={reason} value={reason}>{reason}</option>
+                  <option key={reason} value={reason}>{formatLabel(reason)}</option>
                 ))}
               </Select>
               <Select value={createForm.item_condition} onChange={(e) => setCreateForm((prev) => ({ ...prev, item_condition: e.target.value }))}>
                 {(meta.item_conditions || []).map((condition) => (
-                  <option key={condition} value={condition}>{condition}</option>
+                  <option key={condition} value={condition}>{formatLabel(condition)}</option>
                 ))}
               </Select>
               <Select value={createForm.restock_action} onChange={(e) => setCreateForm((prev) => ({ ...prev, restock_action: e.target.value }))}>
                 {(meta.restock_actions || []).map((action) => (
-                  <option key={action} value={action}>{action}</option>
+                  <option key={action} value={action}>{formatLabel(action)}</option>
                 ))}
               </Select>
               <Select value={createForm.requested_resolution} onChange={(e) => setCreateForm((prev) => ({ ...prev, requested_resolution: e.target.value }))}>
-                <option value="refund">refund</option>
-                <option value="exchange">exchange</option>
-                <option value="store_credit">store_credit</option>
-                <option value="warranty_replacement">warranty_replacement</option>
+                <option value="refund">Refund</option>
+                <option value="exchange">Exchange</option>
+                <option value="store_credit">Store Credit</option>
+                <option value="warranty_replacement">Warranty Replacement</option>
               </Select>
               <Input
                 type="number"
@@ -968,7 +1053,7 @@ export default function ReturnsRefunds() {
             onChange={(e) => setRefundForm((prev) => ({ ...prev, refund_method: e.target.value }))}
           >
             {(meta.refund_methods || []).map((method) => (
-              <option key={method} value={method}>{method}</option>
+              <option key={method} value={method}>{formatLabel(method)}</option>
             ))}
           </Select>
           <Input
