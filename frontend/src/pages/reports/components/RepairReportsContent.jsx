@@ -25,6 +25,7 @@ import {
   YAxis,
 } from "recharts";
 import { Badge, Button, KpiCard, SectionCard, Table, Select } from "../../../components/UI";
+import { API_BASE_URL } from "../../../lib/api";
 
 const MONEY_LOCALE = "en-LK";
 const DAY_LABEL = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
@@ -38,8 +39,7 @@ const TAB_KEYS = [
   { key: "profit", label: "Profitability per Job" },
   { key: "advanced", label: "Advanced Reports" },
 ];
-const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-const API_BASE = import.meta.env.VITE_API_URL || (isLocalhost ? "http://127.0.0.1:8000" : "https://i-store-website-by6z.vercel.app");
+const API_BASE = API_BASE_URL;
 
 function money(value) {
   return `LKR ${Math.round(Number(value || 0)).toLocaleString(MONEY_LOCALE)}`;

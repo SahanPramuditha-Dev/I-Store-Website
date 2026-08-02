@@ -4,8 +4,8 @@ import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { printHtmlDocument } from "../lib/printBridge";
 import { useFetch } from "../hooks/useFetch";
-import { Badge, Input, Select, SensitiveActionIndicators } from "../components/UI";
-import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Zap, ChevronDown, ChevronUp } from "lucide-react";
+import { Input, Select } from "../components/UI";
+import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
@@ -63,6 +63,8 @@ export default function POS() {
   const [showSuspendPicker, setShowSuspendPicker] = useState(false);
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "", address: "" });
+  const [showSaleCompleteModal, setShowSaleCompleteModal] = useState(false);
+  const saleCompleteAutoCloseTimerRef = useRef(null);
   const [productDetail, setProductDetail] = useState(null);
   const [catalogRows, setCatalogRows] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -71,6 +73,7 @@ export default function POS() {
   const [availableCredits, setAvailableCredits] = useState([]);
   const [selectedCreditMap, setSelectedCreditMap] = useState({});
   const [showRecentSales, setShowRecentSales] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState("checkout");
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddLoading, setQuickAddLoading] = useState(false);
   const [quickAddOptional, setQuickAddOptional] = useState(false);
@@ -85,6 +88,14 @@ export default function POS() {
     tax_rate: "",
     discount: "",
   });
+  const [returnInvoiceLookup, setReturnInvoiceLookup] = useState("");
+  const [returnInvoicePayload, setReturnInvoicePayload] = useState(null);
+  const [selectedReturnItem, setSelectedReturnItem] = useState(null);
+  const [returnQuantity, setReturnQuantity] = useState(1);
+  const [returnAction, setReturnAction] = useState("refund");
+  const [returnNotes, setReturnNotes] = useState("");
+  const [returnBusy, setReturnBusy] = useState(false);
+  const [returnSearchBusy, setReturnSearchBusy] = useState(false);
 
   const subtotal = useMemo(() => cart.reduce((s, c) => s + c.quantity * c.price, 0), [cart]);
   
@@ -183,6 +194,17 @@ export default function POS() {
   const [pendingSync, setPendingSync] = useState(false);
   const autoSaveTimerRef = useRef(null);
   const searchDebounceRef = useRef(null);
+
+  useEffect(() => {
+    if (!showSaleCompleteModal) return;
+    if (saleCompleteAutoCloseTimerRef.current) {
+      window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
+    }
+    saleCompleteAutoCloseTimerRef.current = window.setTimeout(() => {
+      setShowSaleCompleteModal(false);
+    }, 5000);
+    return () => window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
+  }, [showSaleCompleteModal]);
   
   const netRemaining = useMemo(() => {
     if (paymentMethod !== "Mixed") return dueAfterCredits;
@@ -241,9 +263,15 @@ export default function POS() {
     });
   }, [cart, minSellingPrice]);
 
+  const checkoutDisabled = mode === "return" || cart.length === 0 || hasNegativeMargin;
+
   const cashierSummary = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const todaysSales = (salesFetch.data || []).filter((s) => String(s.created_at).slice(0, 10) === today && !s.is_return && !s.is_voided);
+    const dayKey = (value) => {
+      const date = new Date(value);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    };
+    const today = dayKey(new Date());
+    const todaysSales = (salesFetch.data || []).filter((s) => dayKey(s.created_at) === today && !s.is_return && !s.is_voided);
     const total = todaysSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
     return { count: todaysSales.length, total };
   }, [salesFetch.data]);
@@ -658,7 +686,7 @@ export default function POS() {
           name: i.name,
           quantity: 1,
           price: i.sale_price || 0,
-          warranty_days: 0,
+          warranty_days: Number(i.warranty_days || 0),
           is_labor: Boolean(i.is_labor),
           line_type: resolvedLineType,
           description: i.description || i.name,
@@ -979,6 +1007,10 @@ export default function POS() {
             ? `Reservation: ${reservationNo}`
             : ""
       };
+      if (mode === "return") {
+        toast("Return mode does not support standard checkout. Use the return workflow instead.", "warning");
+        return;
+      }
       const endpoint = mode === "repair" ? "/pos/checkout/repair" : mode === "reservation" ? "/pos/checkout/reservation" : "/pos/checkout";
       if (!navigator.onLine) {
         syncQueue.enqueue("sale_created", { endpoint, payload });
@@ -989,6 +1021,7 @@ export default function POS() {
       }
       const { data: r } = await api.post(endpoint, payload);
       setLastSale(r);
+      setShowSaleCompleteModal(true);
       toast("Sale completed successfully", "success");
       if (autoPrint) { directPrintReceipt(r); }
       clearCart();
@@ -1026,7 +1059,121 @@ export default function POS() {
       return;
     }
     const invoiceRef = sale?.invoice_no || saleId;
-    navigate(`/returns?invoice=${encodeURIComponent(invoiceRef)}`);
+    setMode("return");
+    setRightPanelTab("return");
+    setReturnInvoiceLookup(invoiceRef);
+    lookupReturnInvoice(invoiceRef);
+  };
+
+  const lookupReturnInvoice = async (invoice = null) => {
+    const query = String((invoice ?? returnInvoiceLookup) || "").trim();
+    if (!query) {
+      toast("Enter an invoice number, customer name, or phone", "warning");
+      return;
+    }
+    setReturnSearchBusy(true);
+    try {
+      const { data } = await api.get(`/returns/lookup-invoice/${encodeURIComponent(query)}`);
+      setReturnInvoicePayload(data);
+      setSelectedReturnItem(null);
+      setReturnQuantity(1);
+    } catch (err) {
+      setReturnInvoicePayload(null);
+      setSelectedReturnItem(null);
+      toast(err.response?.data?.detail || "Invoice lookup failed", "error");
+    } finally {
+      setReturnSearchBusy(false);
+    }
+  };
+
+  const processReturnAction = async () => {
+    if (!returnInvoicePayload?.selected_invoice) {
+      toast("Lookup an invoice before processing a return", "warning");
+      return;
+    }
+    if (!selectedReturnItem) {
+      toast("Select an item to return", "warning");
+      return;
+    }
+    const qty = Math.max(1, Number(returnQuantity || 0));
+    if (qty <= 0) {
+      toast("Return quantity must be at least 1", "warning");
+      return;
+    }
+    if (qty > Number(selectedReturnItem.returnable_qty || 0)) {
+      toast("Return quantity exceeds eligible quantity", "warning");
+      return;
+    }
+
+    if (returnAction === "refund") {
+      setReturnBusy(true);
+      try {
+        const payload = {
+          sale_id: Number(returnInvoicePayload.selected_invoice.invoice_id),
+          lines: [
+            {
+              item_id: Number(selectedReturnItem.product_id || selectedReturnItem.sale_item_id),
+              quantity: qty,
+              price: Number(selectedReturnItem.unit_price || 0),
+              note: returnNotes,
+            },
+          ],
+          note: returnNotes || `Return from invoice ${returnInvoicePayload.selected_invoice.invoice_no}`,
+        };
+        const { data } = await api.post("/pos/return", payload);
+        toast(`Refund created: ${data.invoice_no || data.return_sale_id}`, "success");
+        setLastSale({ id: data.return_sale_id, invoice_no: data.invoice_no });
+        setShowSaleCompleteModal(true);
+        setReturnInvoicePayload(null);
+        setSelectedReturnItem(null);
+        setReturnQuantity(1);
+        setReturnNotes("");
+        const refreshed = await api.get("/pos/sales");
+        salesFetch.setData(refreshed.data);
+        inventoryFetch.refresh();
+      } catch (err) {
+        toast(err.response?.data?.detail || err.response?.data?.message || "Return failed", "error");
+      } finally {
+        setReturnBusy(false);
+      }
+      return;
+    }
+
+    if (returnAction === "exchange" || returnAction === "store_credit") {
+      setReturnBusy(true);
+      try {
+        const payload = {
+          original_invoice_id: Number(returnInvoicePayload.selected_invoice.invoice_id),
+          customer_id: Number(returnInvoicePayload.selected_invoice.customer_id || 0) || null,
+          return_type: returnAction,
+          reason: returnNotes || "POS return/exchange",
+          notes: returnNotes || "Created from POS return tab",
+          items: [
+            {
+              original_invoice_item_id: Number(selectedReturnItem.sale_item_id),
+              product_id: Number(selectedReturnItem.product_id),
+              quantity: qty,
+              unit_price: Number(selectedReturnItem.unit_price || 0),
+              notes: returnNotes,
+            },
+          ],
+        };
+        const { data } = await api.post("/returns", payload);
+        toast(`Return case created: ${data.return_number || data.id}`, "success");
+        setReturnInvoicePayload(null);
+        setSelectedReturnItem(null);
+        setReturnQuantity(1);
+        setReturnNotes("");
+        navigate(`/returns?invoice=${encodeURIComponent(returnInvoicePayload.selected_invoice.invoice_no)}`);
+      } catch (err) {
+        toast(err.response?.data?.detail || err.response?.data?.message || "Return case creation failed", "error");
+      } finally {
+        setReturnBusy(false);
+      }
+      return;
+    }
+
+    toast("Unsupported return action", "warning");
   };
 
   const openSalePrint = useCallback(
@@ -1135,12 +1282,26 @@ export default function POS() {
 
   const sendReceiptWhatsApp = () => {
     if (!lastSale) return toast("No recent sale", "warning");
+    window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
     toast("WhatsApp send prepared (integrate customer phone mapping)", "info");
   };
 
   const sendReceiptEmail = () => {
     if (!lastSale) return toast("No recent sale", "warning");
+    window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
     toast("Email send prepared (connect SMTP/mail API)", "info");
+  };
+
+  const closeSaleCompleteModal = () => {
+    window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
+    setShowSaleCompleteModal(false);
+  };
+
+  const viewInvoice = () => {
+    if (!lastSale) return toast("No recent sale", "warning");
+    window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
+    setShowSaleCompleteModal(false);
+    navigate(`/invoice/${lastSale.id || lastSale.sale_id}`);
   };
 
   const getSupplierName = (item) => {
@@ -1223,15 +1384,16 @@ export default function POS() {
           >
             Reservation
           </button>
-          <a
-            href="/returns"
-            className="px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap text-rose-300 hover:text-white hover:bg-rose-500/20"
+          <button
+            type="button"
+            onClick={() => setMode("return")}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "return" ? "bg-rose-500/20 text-rose-100 shadow-md" : "text-slate-400 hover:text-white"}`}
           >
             Return / Exchange
-          </a>
+          </button>
         </div>
         
-        <div className="flex items-center shrink-0 gap-5 2xl:gap-8 px-4 2xl:px-6">
+        <div className="flex items-center shrink-0 gap-4 2xl:gap-6 px-3 2xl:px-5">
           <div className="flex flex-col items-end justify-center whitespace-nowrap">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">Subtotal</span>
             <span className="text-base font-black text-slate-200 leading-none">LKR {Math.round(subtotal).toLocaleString()}</span>
@@ -1244,15 +1406,15 @@ export default function POS() {
             <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest leading-none mb-1">Grand Total</span>
             <span className="text-base font-black text-indigo-400 leading-none">LKR {Math.round(grandTotal).toLocaleString()}</span>
           </div>
-          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+          {appliedAdvanceTotal > 0 && <div className="flex flex-col items-end justify-center whitespace-nowrap">
             <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest leading-none mb-1">Advance</span>
             <span className="text-base font-black text-emerald-300 leading-none">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
-          </div>
-          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+          </div>}
+          {appliedStoreCreditTotal > 0 && <div className="flex flex-col items-end justify-center whitespace-nowrap">
             <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest leading-none mb-1">Store Credit</span>
             <span className="text-base font-black text-cyan-300 leading-none">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
-          </div>
-          <div className="flex flex-col items-end justify-center whitespace-nowrap">
+          </div>}
+          <div className="flex flex-col items-end justify-center whitespace-nowrap rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-1.5">
             <span className="text-[10px] text-amber-400 font-bold uppercase tracking-widest leading-none mb-1">Due Now</span>
             <span className="text-base font-black text-amber-300 leading-none">LKR {Math.round(dueAfterCredits).toLocaleString()}</span>
           </div>
@@ -1385,8 +1547,9 @@ export default function POS() {
             {filteredInventory.map(i => {
               const margin = i.sale_price - i.cost_price;
               const marginPercent = i.cost_price > 0 ? ((margin / i.cost_price) * 100).toFixed(0) : 0;
-              const availableQty = Number(i.quantity || 0);
               const reservedQty = Number(i.reserved_stock || 0);
+              const cartReservedQty = cart.reduce((sum, item) => item.item_id === i.id && !item.is_labor ? sum + Number(item.quantity || 0) : sum, 0);
+              const availableQty = Math.max(0, Number(i.quantity || 0) - cartReservedQty);
               const stockLabel = availableQty <= 0 ? "Out of Stock" : availableQty <= 5 ? "Low Stock" : "Available";
               return (
               <div 
@@ -1518,6 +1681,29 @@ export default function POS() {
                </a>
             </div>
           )}
+          {mode === "return" && (
+            <div className="p-3 bg-rose-900/20 border-b border-rose-500/20 flex flex-wrap gap-2 items-center shrink-0">
+               <CornerUpLeft size={16} className="text-rose-400" />
+               <input
+                 className="min-w-[240px] bg-black/40 border border-rose-500/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 outline-none focus:border-rose-400 flex-1"
+                 placeholder="Invoice number, customer, or phone"
+                 value={returnInvoiceLookup}
+                 onChange={e => setReturnInvoiceLookup(e.target.value)}
+                 onKeyDown={e => {
+                   if (e.key === "Enter") {
+                     e.preventDefault();
+                     lookupReturnInvoice();
+                   }
+                 }}
+               />
+               <button onClick={() => lookupReturnInvoice()} className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-lg">
+                 Lookup Invoice
+               </button>
+               <button onClick={() => navigate("/returns") } className="bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-white/10">
+                 Open Returns Module
+               </button>
+            </div>
+          )}
 
           {/* Cart Table Area */}
           <div className="flex-1 overflow-auto custom-scrollbar p-0">
@@ -1608,10 +1794,17 @@ export default function POS() {
                </table>
              </div>
              {cart.length === 0 && (
-               <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-50 pb-10">
-                 <ShoppingBasket size={48} className="mb-4" />
-                 <p className="text-sm font-medium">Cart is empty</p>
-                 <p className="text-xs">Scan or click products to add</p>
+               <div className="h-full flex flex-col items-center justify-center px-6 pb-10 text-center">
+                 <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl border border-indigo-400/20 bg-indigo-500/10 text-indigo-300 shadow-lg shadow-indigo-950/30">
+                   <ShoppingBasket size={32} />
+                 </div>
+                 <p className="text-base font-bold text-slate-200">Your cart is ready</p>
+                 <p className="mt-1 text-xs text-slate-400">Scan a barcode, search the catalogue, or select a product card.</p>
+                 <div className="mt-4 flex flex-wrap justify-center gap-2 text-[10px] font-semibold text-slate-400">
+                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">F2 Search</span>
+                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">Enter Add item</span>
+                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">Ctrl + Enter Checkout</span>
+                 </div>
                </div>
              )}
           </div>
@@ -1877,324 +2070,541 @@ export default function POS() {
 
         {/* RIGHT PANEL: CHECKOUT RAIL + QUICK ACTIONS */}
         <div className="min-h-0 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
-          <div className="sticky top-0 z-20 shrink-0 rounded-2xl border border-indigo-400/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-md">
-            <div className="mb-3 flex items-start justify-between gap-2">
+          <div className="rounded-2xl border border-indigo-400/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-md">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-200">
-                  <Wallet size={13} /> Payment / Checkout
+                  <Wallet size={13} /> {rightPanelTab === "checkout" ? "Payment / Checkout" : "Return / Exchange"}
                 </h3>
-                <p className="mt-1 text-[10px] text-slate-500">Always visible on desktop workstations</p>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {rightPanelTab === "checkout"
+                    ? "Always visible on desktop workstations"
+                    : "Manage return and exchange items for the current sale"}
+                </p>
               </div>
-              <SensitiveActionIndicators items={["approval", "audit"]} />
-            </div>
-
-            <div className="mb-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-200/70">Due now</p>
-                  <p className="mt-1 text-2xl font-black leading-none text-amber-200">
-                    LKR {Math.round(dueAfterCredits).toLocaleString()}
-                  </p>
-                </div>
-                <div className="text-right text-[10px] text-slate-400">
-                  <div>Items: <span className="font-bold text-slate-200">{cart.length}</span></div>
-                  <div>Total: <span className="font-bold text-indigo-200">LKR {Math.round(grandTotal).toLocaleString()}</span></div>
-                </div>
-              </div>
-              {(appliedAdvanceTotal > 0 || appliedStoreCreditTotal > 0) && (
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
-                  <div className="rounded-lg bg-black/20 px-2 py-1 text-emerald-200">Advance: LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</div>
-                  <div className="rounded-lg bg-black/20 px-2 py-1 text-cyan-200">Credit: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="mb-3 space-y-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
-              <div className="flex items-center gap-2">
-                <User size={14} className="shrink-0 text-slate-500" />
-                <select
-                  ref={customerSelectRef}
-                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white outline-none focus:border-indigo-400"
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                >
-                  <option value="">Walk-in Customer</option>
-                  {(customersFetch.data || []).map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
-                </select>
-                <button onClick={() => setShowNewCustomerModal(true)} className="shrink-0 rounded-lg border border-white/10 bg-white/10 px-2.5 py-2 text-[10px] font-black text-slate-200 hover:bg-white/20">+New</button>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <Percent size={14} className="text-indigo-300" />
-                  <span className="text-xs font-semibold text-slate-200">Discount</span>
-                </div>
-                  <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 rounded-md bg-white/5 p-0.5">
-                    <button type="button" onClick={() => setDiscountMode('amount')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'amount' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
-                      LKR
-                    </button>
-                    <button type="button" onClick={() => setDiscountMode('percent')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'percent' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
-                      %
-                    </button>
-                  </div>
-                  <div>
-                    <input
-                      aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
-                      type="number"
-                      className="w-20 bg-transparent text-right text-sm font-bold outline-none"
-                      placeholder={discountMode === 'percent' ? 'Enter %' : 'Enter LKR'}
-                      value={discountValue}
-                      onChange={e => updateDiscountValue(e.target.value)}
-                    />
-                    <div className="text-[11px]">{discountError ? <span className="text-rose-400">{discountError}</span> : <span className="text-slate-500">{discountMode === 'percent' ? `Max ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max LKR ${Math.round(maxDiscountAllowed)}`}</span>}</div>
-                  </div>
-                </div>
-              </div>
-
-              {customerId && (
-                <div className="grid grid-cols-1 gap-2">
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-200/80">Advances</p>
-                      <span className="text-[10px] font-bold text-emerald-300">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
-                    </div>
-                    {availableAdvances.length === 0 && (
-                      <p className="mt-1 text-[10px] text-slate-500">No available advances.</p>
-                    )}
-                    {availableAdvances.length > 0 && (
-                      <div className="mt-2 max-h-24 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
-                        {availableAdvances.map((row) => (
-                          <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
-                            <div className="min-w-0">
-                              <div className="truncate text-[10px] font-bold text-emerald-200">{row.advance_number}</div>
-                              <div className="truncate text-[10px] text-slate-500">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
-                            </div>
-                            <input
-                              type="number"
-                              className="rounded border border-white/10 bg-black/40 px-2 py-1 text-right text-[11px]"
-                              min={0}
-                              max={Number(row.remaining_amount || 0)}
-                              value={selectedAdvanceMap[row.id] || ""}
-                              onChange={(e) => {
-                                const raw = Number(e.target.value || 0);
-                                const value = Math.max(0, Math.min(raw, Number(row.remaining_amount || 0)));
-                                setSelectedAdvanceMap((prev) => ({ ...prev, [row.id]: value || "" }));
-                              }}
-                            />
-                            <button
-                              className="rounded border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
-                              onClick={() => {
-                                const maxAmount = Number(row.remaining_amount || 0);
-                                setSelectedAdvanceMap((prev) => ({ ...prev, [row.id]: maxAmount }));
-                              }}
-                            >
-                              Full
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-cyan-200/80">Store Credits</p>
-                      <span className="text-[10px] font-bold text-cyan-300">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
-                    </div>
-                    {availableCredits.length === 0 && (
-                      <p className="mt-1 text-[10px] text-slate-500">No available store credits.</p>
-                    )}
-                    {availableCredits.length > 0 && (
-                      <div className="mt-2 max-h-24 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
-                        {availableCredits.map((row) => (
-                          <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
-                            <div className="min-w-0">
-                              <div className="truncate text-[10px] font-bold text-cyan-200">{row.credit_number}</div>
-                              <div className="truncate text-[10px] text-slate-500">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
-                            </div>
-                            <input
-                              type="number"
-                              className="rounded border border-cyan-500/20 bg-black/40 px-2 py-1 text-right text-[11px]"
-                              min={0}
-                              max={Number(row.remaining_amount || 0)}
-                              value={selectedCreditMap[row.id] || ""}
-                              onChange={(e) => {
-                                const raw = Number(e.target.value || 0);
-                                const value = Math.max(0, Math.min(raw, Number(row.remaining_amount || 0)));
-                                setSelectedCreditMap((prev) => ({ ...prev, [row.id]: value || "" }));
-                              }}
-                            />
-                            <button
-                              className="rounded border border-cyan-400/20 bg-cyan-500/10 py-1 text-[10px] font-bold text-cyan-200 hover:bg-cyan-500/20"
-                              onClick={() => {
-                                const maxAmount = Number(row.remaining_amount || 0);
-                                setSelectedCreditMap((prev) => ({ ...prev, [row.id]: maxAmount }));
-                              }}
-                            >
-                              Full
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-1.5">
-                {["Cash", "Card", "Bank Transfer", "Store Credit", "Mixed"].map(m => (
+              <div className="inline-flex rounded-full border border-white/10 bg-slate-900/70 p-1">
+                {[
+                  { key: "checkout", label: "Checkout" },
+                  { key: "return", label: "Return / Exchange" },
+                ].map((tab) => (
                   <button
-                    key={`rail-${m}`}
-                    onClick={() => setPaymentMethod(m)}
-                    className={`rounded-lg border px-2 py-1.5 text-[10px] font-black uppercase tracking-wider transition ${
-                      paymentMethod === m
-                        ? "border-indigo-400/60 bg-indigo-500/20 text-indigo-100"
-                        : "border-white/10 bg-black/20 text-slate-400 hover:border-white/20 hover:text-slate-200"
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setRightPanelTab(tab.key)}
+                    className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+                      rightPanelTab === tab.key
+                        ? "bg-indigo-500/20 text-indigo-100 border border-indigo-400/40"
+                        : "bg-transparent text-slate-400 hover:text-slate-200"
                     }`}
                   >
-                    {m === "Bank Transfer" ? "Bank" : m === "Store Credit" ? "Credit" : m}
+                    {tab.label}
                   </button>
                 ))}
               </div>
-              {paymentMethod === "Cash" && (
-                <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-400 flex items-center gap-2"><Banknote size={12} /> Cash Given</span>
-                    <input
-                      aria-label="Cash given amount"
-                      ref={cashInputRef}
-                      type="number"
-                      className="w-36 bg-transparent text-right text-sm font-black text-emerald-300 outline-none"
-                      placeholder="Enter amount or use quick buttons"
-                      value={cashReceived}
-                      onChange={e => setCashReceived(e.target.value)}
-                    />
+            </div>
+
+            {rightPanelTab === "checkout" ? (
+              <>
+                <div className="mb-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3">
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-200/70">Due now</p>
+                      <p className="mt-1 text-2xl font-black leading-none text-amber-200">
+                        LKR {Math.round(dueAfterCredits).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="text-right text-[10px] text-slate-400">
+                      <div>Items: <span className="font-bold text-slate-200">{cart.length}</span></div>
+                      <div>Total: <span className="font-bold text-indigo-200">LKR {Math.round(grandTotal).toLocaleString()}</span></div>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {[dueAfterCredits, 1000, 1500].map((amt, i) => (
+                  {(appliedAdvanceTotal > 0 || appliedStoreCreditTotal > 0) && (
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                      <div className="rounded-lg bg-black/20 px-2 py-1 text-emerald-200">Advance: LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</div>
+                      <div className="rounded-lg bg-black/20 px-2 py-1 text-cyan-200">Credit: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mb-3 space-y-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
+                  <div className="flex items-center gap-2">
+                    <User size={14} className="shrink-0 text-slate-500" />
+                    <select
+                      ref={customerSelectRef}
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white outline-none focus:border-indigo-400"
+                      value={customerId}
+                      onChange={(e) => setCustomerId(e.target.value)}
+                    >
+                      <option value="">Walk-in Customer</option>
+                      {(customersFetch.data || []).map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
+                    </select>
+                    <button onClick={() => setShowNewCustomerModal(true)} className="shrink-0 rounded-lg border border-white/10 bg-white/10 px-2.5 py-2 text-[10px] font-black text-slate-200 hover:bg-white/20">+New</button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Percent size={14} className="text-indigo-300" />
+                      <span className="text-xs font-semibold text-slate-200">Discount</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 rounded-md bg-white/5 p-0.5">
+                        <button type="button" onClick={() => setDiscountMode('amount')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'amount' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
+                          LKR
+                        </button>
+                        <button type="button" onClick={() => setDiscountMode('percent')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'percent' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
+                          %
+                        </button>
+                      </div>
+                      <div>
+                        <input
+                          aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
+                          type="number"
+                          className="w-20 bg-transparent text-right text-sm font-bold outline-none"
+                          placeholder={discountMode === 'percent' ? 'Enter %' : 'Enter LKR'}
+                          value={discountValue}
+                          onChange={e => updateDiscountValue(e.target.value)}
+                        />
+                        <div className="text-[11px]">{discountError ? <span className="text-rose-400">{discountError}</span> : <span className="text-slate-500">{discountMode === 'percent' ? `Max ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max LKR ${Math.round(maxDiscountAllowed)}`}</span>}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {customerId && (
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-200/80">Advances</p>
+                          <span className="text-[10px] font-bold text-emerald-300">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
+                        </div>
+                        {availableAdvances.length === 0 && (
+                          <p className="mt-1 text-[10px] text-slate-500">No available advances.</p>
+                        )}
+                        {availableAdvances.length > 0 && (
+                          <div className="mt-2 max-h-24 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
+                            {availableAdvances.map((row) => (
+                              <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
+                                <div className="min-w-0">
+                                  <div className="truncate text-[10px] font-bold text-emerald-200">{row.advance_number}</div>
+                                  <div className="truncate text-[10px] text-slate-500">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
+                                </div>
+                                <input
+                                  type="number"
+                                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-right text-[11px]"
+                                  min={0}
+                                  max={Number(row.remaining_amount || 0)}
+                                  value={selectedAdvanceMap[row.id] || ""}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value || 0);
+                                    const value = Math.max(0, Math.min(raw, Number(row.remaining_amount || 0)));
+                                    setSelectedAdvanceMap((prev) => ({ ...prev, [row.id]: value || "" }));
+                                  }}
+                                />
+                                <button
+                                  className="rounded border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
+                                  onClick={() => {
+                                    const maxAmount = Number(row.remaining_amount || 0);
+                                    setSelectedAdvanceMap((prev) => ({ ...prev, [row.id]: maxAmount }));
+                                  }}
+                                >
+                                  Full
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan-200/80">Store Credits</p>
+                          <span className="text-[10px] font-bold text-cyan-300">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
+                        </div>
+                        {availableCredits.length === 0 && (
+                          <p className="mt-1 text-[10px] text-slate-500">No available store credits.</p>
+                        )}
+                        {availableCredits.length > 0 && (
+                          <div className="mt-2 max-h-24 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
+                            {availableCredits.map((row) => (
+                              <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
+                                <div className="min-w-0">
+                                  <div className="truncate text-[10px] font-bold text-cyan-200">{row.credit_number}</div>
+                                  <div className="truncate text-[10px] text-slate-500">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
+                                </div>
+                                <input
+                                  type="number"
+                                  className="rounded border border-cyan-500/20 bg-black/40 px-2 py-1 text-right text-[11px]"
+                                  min={0}
+                                  max={Number(row.remaining_amount || 0)}
+                                  value={selectedCreditMap[row.id] || ""}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value || 0);
+                                    const value = Math.max(0, Math.min(raw, Number(row.remaining_amount || 0)));
+                                    setSelectedCreditMap((prev) => ({ ...prev, [row.id]: value || "" }));
+                                  }}
+                                />
+                                <button
+                                  className="rounded border border-cyan-400/20 bg-cyan-500/10 py-1 text-[10px] font-bold text-cyan-200 hover:bg-cyan-500/20"
+                                  onClick={() => {
+                                    const maxAmount = Number(row.remaining_amount || 0);
+                                    setSelectedCreditMap((prev) => ({ ...prev, [row.id]: maxAmount }));
+                                  }}
+                                >
+                                  Full
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {["Cash", "Card", "Bank Transfer", "Store Credit", "Mixed"].map(m => (
                       <button
-                        key={`rail-cash-${i}`}
-                        onClick={() => setCashReceived(i === 0 ? Math.round(dueAfterCredits) : Math.round(amt))}
-                        className="rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
+                        key={`rail-${m}`}
+                        onClick={() => setPaymentMethod(m)}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+                          paymentMethod === m
+                            ? "border-indigo-400/60 bg-indigo-500/20 text-indigo-100"
+                            : "border-white/10 bg-black/20 text-slate-400 hover:border-white/20 hover:text-slate-200"
+                        }`}
                       >
-                        {i === 0 ? "Exact" : `${amt}`}
+                        {m === "Cash" ? <Banknote size={12} /> : m === "Card" ? <CreditCard size={12} /> : m === "Store Credit" ? <Wallet size={12} /> : m === "Bank Transfer" ? <Banknote size={12} /> : <Wallet size={12} />}
+                        {m === "Bank Transfer" ? "Bank" : m === "Store Credit" ? "Credit" : m}
                       </button>
                     ))}
                   </div>
+                  {paymentMethod === "Cash" && (
+                    <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-slate-400 flex items-center gap-2"><Banknote size={12} /> Cash Given</span>
+                        <input
+                          aria-label="Cash given amount"
+                          ref={cashInputRef}
+                          type="number"
+                          className="w-36 bg-transparent text-right text-sm font-black text-emerald-300 outline-none"
+                          placeholder="Enter amount or use quick buttons"
+                          value={cashReceived}
+                          onChange={e => setCashReceived(e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[dueAfterCredits, 1000, 1500].map((amt, i) => (
+                          <button
+                            key={`rail-cash-${i}`}
+                            onClick={() => setCashReceived(i === 0 ? Math.round(dueAfterCredits) : Math.round(amt))}
+                            className="rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
+                          >
+                            {i === 0 ? "Exact" : `${amt}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {paymentMethod === "Mixed" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
+                        <span className="block text-[10px] text-slate-500">Cash</span>
+                        <input ref={cashInputRef} type="number" className="w-full bg-transparent text-sm font-bold text-emerald-300 outline-none" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
+                      </label>
+                      <label className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
+                        <span className="block text-[10px] text-slate-500">Card</span>
+                        <input type="number" className="w-full bg-transparent text-sm font-bold text-sky-300 outline-none" value={cardAmount} onChange={e => setCardAmount(e.target.value)} />
+                      </label>
+                      <div className={`col-span-2 text-right text-xs font-bold ${netRemaining <= 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                        Remaining: LKR {Math.round(Math.max(0, netRemaining)).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                  {(paymentMethod === "Card" || paymentMethod === "Bank Transfer" || paymentMethod === "Mixed") && (
+                    <label className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                      <span className="text-xs font-semibold text-slate-400">Ref No.</span>
+                      <input
+                        ref={paymentRefInputRef}
+                        type="text"
+                        className="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold text-sky-300 outline-none"
+                        placeholder="Card / Bank ref"
+                        value={paymentReference}
+                        onChange={(e) => setPaymentReference(e.target.value)}
+                      />
+                    </label>
+                  )}
+                  {paymentMethod === "Store Credit" && (
+                    <div className="text-right text-xs font-bold text-cyan-300">
+                      Credit Applied: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()} | Remaining Due: LKR {Math.round(dueAfterCredits).toLocaleString()}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <button onClick={clearCart} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-rose-500/10 text-rose-300 hover:bg-rose-500/20" title="Clear Cart">
+                      <Trash2 size={16} />
+                    </button>
+                    <button onClick={printReceipt} disabled={!lastSale} className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${lastSale ? "bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20" : "bg-white/5 text-slate-600 cursor-not-allowed"}`} title="Print last receipt">
+                      <Printer size={16} />
+                    </button>
+                    <button onClick={suspendCurrentCart} className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/5 text-slate-300 hover:bg-white/10" title="Suspend cart">
+                      <Save size={16} />
+                      {pendingSync && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-400" title="Auto-saving..." />}
+                    </button>
+                    <button onClick={() => setShowSuspendPicker(true)} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/5 text-slate-300 hover:bg-white/10" title="Resume cart">
+                      <FolderOpen size={16} />
+                    </button>
+                    <button
+                      onClick={checkout}
+                      disabled={checkoutDisabled}
+                      className={`min-h-10 flex-1 rounded-lg text-sm font-black uppercase tracking-wider shadow-lg transition active:scale-[0.98] ${
+                        checkoutDisabled
+                          ? "bg-slate-600/50 text-slate-400 cursor-not-allowed opacity-50"
+                          : "bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-950/40"
+                      }`}
+                      title={
+                        mode === "return"
+                          ? "Return mode does not support standard checkout"
+                          : hasNegativeMargin
+                            ? "Fix negative margins before checkout"
+                            : cart.length === 0
+                              ? "Add an item to the cart first"
+                              : "Complete Sale"
+                      }
+                    >
+                      {mode === "return" ? "Return mode active" : cart.length === 0 ? "Add items to begin" : "Complete Sale"}
+                    </button>
+                  </div>
+                  {paymentMethod === "Cash" && cashReceived !== "" && (
+                    signedChange >= 0 ? (
+                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-center">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/70">Change</div>
+                        <div className="text-base font-black text-emerald-300">LKR {change.toLocaleString()}</div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-amber-600/20 bg-amber-600/10 px-3 py-2 text-center">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/70">Balance Due</div>
+                        <div className="text-base font-black text-amber-300">LKR {Math.abs(signedChange).toLocaleString()}</div>
+                      </div>
+                    )
+                  )}
                 </div>
-              )}
-              {paymentMethod === "Mixed" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
-                    <span className="block text-[10px] text-slate-500">Cash</span>
-                    <input ref={cashInputRef} type="number" className="w-full bg-transparent text-sm font-bold text-emerald-300 outline-none" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
-                  </label>
-                  <label className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
-                    <span className="block text-[10px] text-slate-500">Card</span>
-                    <input type="number" className="w-full bg-transparent text-sm font-bold text-sky-300 outline-none" value={cardAmount} onChange={e => setCardAmount(e.target.value)} />
-                  </label>
-                  <div className={`col-span-2 text-right text-xs font-bold ${netRemaining <= 0 ? "text-emerald-300" : "text-amber-300"}`}>
-                    Remaining: LKR {Math.round(Math.max(0, netRemaining)).toLocaleString()}
+                <div className="text-center mt-2 text-[9px] text-slate-500/70 space-y-1">
+                  <div>F2: Product Search | F3: Customer | F4: Payment | Ctrl+R: Repair | Ctrl+I: Invoice | Ctrl+P: Print</div>
+                  <div>Enter: Add first result | Ctrl+Enter: Checkout | Ctrl+Backspace/Delete: Remove line | Esc: Close modal</div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-white/10 bg-slate-900/60 p-3 shadow-inner">
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-rose-300 flex items-center gap-1.5">
+                        <RotateCcw size={12} className="text-rose-400" /> Return / Exchange Module
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">Lookup invoice, select items, and process refunds or exchanges directly.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/returns")}
+                      className="rounded-lg bg-rose-500/15 border border-rose-500/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-rose-200 hover:bg-rose-500/25 transition shadow-sm shrink-0"
+                    >
+                      Open Full Returns Page
+                    </button>
                   </div>
                 </div>
-              )}
-              {(paymentMethod === "Card" || paymentMethod === "Bank Transfer" || paymentMethod === "Mixed") && (
-                <label className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                  <span className="text-xs font-semibold text-slate-400">Ref No.</span>
-                  <input
-                    ref={paymentRefInputRef}
-                    type="text"
-                    className="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold text-sky-300 outline-none"
-                    placeholder="Card / Bank ref"
-                    value={paymentReference}
-                    onChange={(e) => setPaymentReference(e.target.value)}
-                  />
-                </label>
-              )}
-              {paymentMethod === "Store Credit" && (
-                <div className="text-right text-xs font-bold text-cyan-300">
-                  Credit Applied: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()} | Remaining Due: LKR {Math.round(dueAfterCredits).toLocaleString()}
+
+                <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 pl-8 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-400/80 transition"
+                        placeholder="Invoice #, customer name, or phone"
+                        value={returnInvoiceLookup}
+                        onChange={(e) => setReturnInvoiceLookup(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            lookupReturnInvoice();
+                          }
+                        }}
+                      />
+                      <Search size={14} className="absolute left-2.5 top-3 text-slate-500" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => lookupReturnInvoice()}
+                      disabled={returnSearchBusy}
+                      className="rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-md transition disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {returnSearchBusy ? "Searching..." : "Lookup Invoice"}
+                    </button>
+                  </div>
                 </div>
-              )}
-              <div className="flex gap-1.5">
-                <button onClick={clearCart} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-rose-500/10 text-rose-300 hover:bg-rose-500/20" title="Clear Cart">
-                  <Trash2 size={16} />
-                </button>
-                <button onClick={printReceipt} disabled={!lastSale} className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${lastSale ? "bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20" : "bg-white/5 text-slate-600 cursor-not-allowed"}`} title="Print last receipt">
-                  <Printer size={16} />
-                </button>
-                <button onClick={suspendCurrentCart} className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/5 text-slate-300 hover:bg-white/10" title="Suspend cart">
-                  <Save size={16} />
-                  {pendingSync && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-400" title="Auto-saving..." />}
-                </button>
-                <button onClick={() => setShowSuspendPicker(true)} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/5 text-slate-300 hover:bg-white/10" title="Resume cart">
-                  <FolderOpen size={16} />
-                </button>
-                <button
-                  onClick={checkout}
-                  disabled={hasNegativeMargin}
-                  className={`min-h-10 flex-1 rounded-lg text-sm font-black uppercase tracking-wider shadow-lg transition active:scale-[0.98] ${
-                    hasNegativeMargin
-                      ? "bg-slate-600/50 text-slate-400 cursor-not-allowed opacity-50"
-                      : "bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-950/40"
-                  }`}
-                  title={hasNegativeMargin ? "Fix negative margins before checkout" : "Complete Sale"}
-                >
-                  Complete Sale
-                </button>
-              </div>
-              {paymentMethod === "Cash" && cashReceived !== "" && (
-                signedChange >= 0 ? (
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-center">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/70">Change</div>
-                    <div className="text-base font-black text-emerald-300">LKR {change.toLocaleString()}</div>
+
+                {returnInvoicePayload?.selected_invoice ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/30 p-3 text-xs text-slate-300 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-widest font-bold text-indigo-300">Invoice Ref</span>
+                          <p className="font-bold text-white text-sm">{returnInvoicePayload.selected_invoice.invoice_no}</p>
+                          <p className="text-slate-400 mt-0.5">{returnInvoicePayload.selected_invoice.customer_name || "Walk-in Customer"} • {returnInvoicePayload.selected_invoice.customer_phone || "—"}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase tracking-widest text-slate-400">Payment Method</p>
+                          <span className="inline-block mt-0.5 rounded-md bg-white/10 px-2 py-0.5 font-bold text-indigo-200 text-xs">
+                            {returnInvoicePayload.selected_invoice.payment_method || "Cash"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        <span className="flex items-center gap-1.5"><Tag size={12} className="text-indigo-400" /> Eligible Return Items</span>
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 font-bold text-slate-300">{(returnInvoicePayload.selected_invoice.items || []).filter((row) => Number(row.returnable_qty || 0) > 0).length} available</span>
+                      </div>
+                      {returnInvoicePayload.selected_invoice.items?.length ? (
+                        <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-0.5">
+                          {(returnInvoicePayload.selected_invoice.items || []).map((row) => {
+                            const isSelected = selectedReturnItem?.sale_item_id === row.sale_item_id;
+                            const isEligible = Number(row.returnable_qty || 0) > 0;
+                            return (
+                              <button
+                                key={row.sale_item_id}
+                                type="button"
+                                disabled={!isEligible}
+                                onClick={() => setSelectedReturnItem(row)}
+                                className={`w-full rounded-xl border p-3 text-left transition ${
+                                  isSelected
+                                    ? "border-indigo-400/80 bg-indigo-500/20 shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400/40"
+                                    : isEligible
+                                      ? "border-white/10 bg-slate-950/70 hover:border-indigo-400/40 hover:bg-slate-900"
+                                      : "border-white/5 bg-white/[0.02] opacity-50 cursor-not-allowed"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className={`font-bold text-xs truncate ${isSelected ? "text-white" : "text-slate-200"}`}>{row.product_name}</div>
+                                    <div className="text-[11px] font-semibold text-emerald-400 mt-0.5">Unit price: LKR {Math.round(Number(row.unit_price || 0)).toLocaleString()}</div>
+                                  </div>
+                                  <span className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider transition ${
+                                    isSelected
+                                      ? "bg-indigo-500 text-white shadow-sm"
+                                      : isEligible
+                                        ? "bg-white/10 text-slate-200 hover:bg-white/20"
+                                        : "bg-white/5 text-slate-500"
+                                  }`}>
+                                    {isSelected ? "Selected" : isEligible ? "Select" : "Returned"}
+                                  </span>
+                                </div>
+                                <div className="mt-2.5 grid grid-cols-3 gap-1.5 text-[10px] text-slate-400 border-t border-white/5 pt-2">
+                                  <div>Sold: <span className="font-bold text-slate-200">{row.sold_qty}</span></div>
+                                  <div>Returned: <span className="font-bold text-slate-200">{row.already_returned_qty}</span></div>
+                                  <div>Eligible: <span className={`font-extrabold ${isEligible ? "text-emerald-400" : "text-rose-400"}`}>{row.returnable_qty}</span></div>
+                                </div>
+                                {row.serial_number && (
+                                  <div className="mt-1.5 text-[10px] font-mono text-indigo-300/80 bg-indigo-500/10 rounded px-1.5 py-0.5 inline-block">
+                                    SN: {row.serial_number}
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-400 py-3 text-center bg-white/[0.02] rounded-lg">No eligible return items found for this invoice.</div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3 space-y-3">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                          Action
+                          <select
+                            value={returnAction}
+                            onChange={(e) => setReturnAction(e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold text-white outline-none focus:border-indigo-400"
+                          >
+                            <option value="refund">Refund Money</option>
+                            <option value="exchange">Exchange Product</option>
+                            <option value="store_credit">Issue Store Credit</option>
+                          </select>
+                        </label>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                          Quantity
+                          <input
+                            type="number"
+                            min="1"
+                            max={selectedReturnItem?.returnable_qty || 1}
+                            value={returnQuantity}
+                            onChange={(e) => setReturnQuantity(Number(e.target.value || 1))}
+                            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold text-white outline-none focus:border-indigo-400"
+                          />
+                        </label>
+                      </div>
+                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                        Notes / Reason
+                        <textarea
+                          value={returnNotes}
+                          onChange={(e) => setReturnNotes(e.target.value)}
+                          rows={2.5}
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-white outline-none resize-none focus:border-indigo-400"
+                          placeholder="Reason for return/exchange or internal note..."
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={processReturnAction}
+                        disabled={returnBusy || !selectedReturnItem}
+                        className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-950/40 px-4 py-3 text-xs font-black uppercase tracking-widest transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {returnBusy ? "Processing..." : returnAction === "refund" ? "Issue Refund" : returnAction === "exchange" ? "Create Exchange Case" : "Create Store Credit Case"}
+                      </button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-amber-600/20 bg-amber-600/10 px-3 py-2 text-center">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/70">Balance Due</div>
-                    <div className="text-base font-black text-amber-300">LKR {Math.abs(signedChange).toLocaleString()}</div>
+                  <div className="rounded-xl border border-dashed border-white/10 bg-slate-950/50 p-6 text-center text-xs text-slate-400">
+                    <p className="font-semibold text-slate-300">No Invoice Selected</p>
+                    <p className="mt-1 text-[11px] text-slate-500">Enter an invoice number or customer lookup above to inspect eligible items for return/exchange.</p>
                   </div>
-                )
-              )}
-            </div>
-          </div>
-          
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Wrench size={12}/> Repair Actions</h3>
-            <div className="grid grid-cols-1 gap-2">
-              <a href="/repairs" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">New Repair Ticket</a>
-              <button onClick={() => setMode("repair")} className="bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-indigo-300 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Process Repair Payment</button>
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          {mode === "repair" && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Wrench size={12}/> Repair Actions</h3>
+            <div className="grid grid-cols-1 gap-2">
+              <Link to="/repairs" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">New Repair Ticket</Link>
+              <button onClick={() => setMode("repair")} className="bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-indigo-300 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Process Repair Payment</button>
+            </div>
+          </div>}
+
+          {mode === "reservation" && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Clock size={12}/> Reservation Tools</h3>
             <div className="grid grid-cols-1 gap-2">
               <button onClick={() => setMode("reservation")} className="bg-white/5 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/30 text-cyan-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Reservation Settlement</button>
-              <a href="/reservations" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Open Reservations Module</a>
-              <a href="/returns" className="bg-white/5 hover:bg-rose-500/20 border border-white/5 hover:border-rose-500/30 text-rose-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Returns / Exchanges</a>
+              <Link to="/reservations" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Open Reservations Module</Link>
+              <Link to="/returns" className="bg-white/5 hover:bg-rose-500/20 border border-white/5 hover:border-rose-500/30 text-rose-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Returns / Exchanges</Link>
             </div>
-          </div>
+          </div>}
 
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          {mode !== "sale" && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><User size={12}/> Customer Actions</h3>
             <div className="grid grid-cols-1 gap-2">
-              <a href="/customers" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Add New Customer</a>
+              <Link to="/customers" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Add New Customer</Link>
               <button onClick={() => setShowNewCustomerModal(true)} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Quick Create Customer</button>
             </div>
-          </div>
+          </div>}
 
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          {lastSale && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Printer size={12}/> Receipt Actions</h3>
             <div className="grid grid-cols-1 gap-2">
               <button onClick={printReceipt} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Print Receipt</button>
               <button onClick={sendReceiptWhatsApp} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1"><MessageCircle size={12}/> WhatsApp</button>
               <button onClick={sendReceiptEmail} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1"><Mail size={12}/> Email</button>
             </div>
-          </div>
+          </div>}
 
           <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Wallet size={12}/> Shift Snapshot</h3>
@@ -2370,6 +2780,110 @@ export default function POS() {
                 </button>
               ))}
             </div>
+      </AppModal>
+
+      <AppModal
+        open={showSaleCompleteModal}
+        onClose={closeSaleCompleteModal}
+        title="Sale Completed"
+        panelClassName="max-w-md border-indigo-400/40 bg-slate-900"
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={closeSaleCompleteModal}
+              className="w-full rounded-xl bg-white/5 px-4 py-2 text-sm font-bold text-slate-200 hover:bg-white/10 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4 p-4">
+          <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-center">
+            <div className="mx-auto mb-2 h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-300 grid place-items-center">
+              <Check size={24} />
+            </div>
+            <p className="text-sm font-bold uppercase tracking-[0.24em] text-emerald-300">Payment Confirmed</p>
+            <p className="mt-2 text-lg font-black text-white">Sale completed successfully</p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
+            <div className="grid gap-2 text-sm text-slate-300">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Invoice No</span>
+                <span className="font-semibold text-white">{lastSale?.invoice_no || lastSale?.sale_id || lastSale?.id}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Customer</span>
+                <span className="font-semibold text-white">{lastSale?.customer_name || lastSale?.customer?.name || "Walk-in Customer"}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Total</span>
+                <span className="font-semibold text-white">LKR {Math.round(lastSale?.total || lastSale?.grand_total || 0).toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          {lastSale?.customer?.phone || lastSale?.customer_phone ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
+              <p className="font-semibold text-slate-200">Send invoice to:</p>
+              <p className="mt-1 text-sm text-white">{lastSale?.customer?.phone || lastSale?.customer_phone}</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
+              <p className="font-semibold text-slate-200">No customer contact available.</p>
+              <p className="mt-1 text-sm text-slate-400">You can print the bill or add the customer for later digital delivery.</p>
+            </div>
+          )}
+
+          <div className="grid gap-2">
+            {(lastSale?.customer?.phone || lastSale?.customer_phone) && (
+              <button
+                type="button"
+                onClick={sendReceiptWhatsApp}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-900 shadow-lg shadow-emerald-500/10 transition hover:bg-emerald-400"
+              >
+                <MessageCircle size={16} /> WhatsApp Invoice
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={printReceipt}
+              disabled={!lastSale}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Printer size={16} /> Print Invoice
+            </button>
+            <button
+              type="button"
+              onClick={sendReceiptEmail}
+              disabled={!lastSale}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-sky-500/10 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Mail size={16} /> Email Invoice
+            </button>
+            <button
+              type="button"
+              onClick={viewInvoice}
+              className="flex items-center justify-center gap-2 rounded-2xl bg-white/5 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-100 transition hover:bg-white/10"
+            >
+              <Eye size={16} /> View Invoice
+            </button>
+            {!lastSale?.customer?.phone && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewCustomerModal(true);
+                  closeSaleCompleteModal();
+                }}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-amber-500/10 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-amber-200 transition hover:bg-amber-500/20"
+              >
+                <Plus size={16} /> Add Customer
+              </button>
+            )}
+          </div>
+        </div>
       </AppModal>
 
       <AppModal

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Settings2, Server, Printer, ScanLine, MessageSquare, Mail, PlugZap, ShieldCheck, Bug, KeyRound, Send } from "lucide-react";
 import { Input, Select, SectionCard, Badge, Button, Table } from "../../components/UI";
 import SettingsSectionShell from "./SettingsSectionShell";
@@ -96,6 +96,21 @@ function Field({ label, value, onChange, type = "text", hint }) {
 }
 
 export default function SystemApisSettingsPanel({ sectionValue, onSectionChange, onSaveSection, saving, toast, confirm }) {
+  const [checkingForUpdate, setCheckingForUpdate] = useState(false);
+  const checkForUpdates = async () => {
+    if (!window.istore?.updater) {
+      toast("Updates are available only in the installed desktop app.", "info");
+      return;
+    }
+    setCheckingForUpdate(true);
+    try {
+      const result = await window.istore.updater.checkForUpdates();
+      if (result?.skipped) toast(result.reason, "info");
+      else if (result?.error) toast(`Update check failed: ${result.error}`, "error");
+    } finally {
+      setCheckingForUpdate(false);
+    }
+  };
   const kpis = useMemo(() => {
     const d = sectionValue || {};
     return [
@@ -283,6 +298,11 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
             <div className="flex items-end">
               <Button size="sm" variant="secondary" onClick={() => toast("Cache clear executed (simulation).", "warning")}>
                 Clear Cache
+              </Button>
+            </div>
+            <div className="flex items-end">
+              <Button size="sm" variant="secondary" onClick={checkForUpdates} disabled={checkingForUpdate}>
+                <Settings2 size={13} /> {checkingForUpdate ? "Checking…" : "Check for Updates"}
               </Button>
             </div>
           </div>

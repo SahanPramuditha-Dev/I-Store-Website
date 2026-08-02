@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import api from "../lib/api";
+import api, { API_BASE_URL } from "../lib/api";
 import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { useCachedQuery } from "../hooks/useCachedQuery";
@@ -585,7 +585,7 @@ export default function Inventory() {
   const getImageUrl = (value) => {
     if (!value) return "";
     if (String(value).startsWith("http://") || String(value).startsWith("https://")) return value;
-    return `${import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://i-store-website-by6z.vercel.app" : "http://127.0.0.1:8000")}${value}`;
+    return `${API_BASE_URL}${value}`;
   };
 
   const uploadImage = async (file) => {
@@ -1170,7 +1170,7 @@ function InventoryTable({ rows, suppliers, masterProductsList = [], getProductTy
   const getImageUrl = (value) => {
     if (!value) return "";
     if (String(value).startsWith("http://") || String(value).startsWith("https://")) return value;
-    return `${import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://i-store-website-by6z.vercel.app" : "http://127.0.0.1:8000")}${value}`;
+    return `${API_BASE_URL}${value}`;
   };
 
   useEffect(() => {
@@ -1394,7 +1394,7 @@ function InventoryGrid({ rows, getStockStatus, onView, onAdjust, onPrint }) {
   const getImageUrl = (value) => {
     if (!value) return "";
     if (String(value).startsWith("http://") || String(value).startsWith("https://")) return value;
-    return `${import.meta.env.VITE_API_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://i-store-website-by6z.vercel.app" : "http://127.0.0.1:8000")}${value}`;
+    return `${API_BASE_URL}${value}`;
   };
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">

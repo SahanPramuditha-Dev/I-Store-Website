@@ -18,12 +18,95 @@
 "use strict";
 
 const { app, BrowserWindow, shell } = require("electron");
+const { spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 const db   = require("./local-db");
 const syncBridge = require("./sync-bridge");
 const { initAutoUpdater } = require("./updater");
 
 const isDev = process.env.NODE_ENV === "development";
+let backendProcess = null;
+let backendLogHandle = null;
+
+// ── Local API service ─────────────────────────────────────────────────────
+// The renderer always talks to 127.0.0.1:8000 in Electron. During source
+// development use the repository virtual environment; release builds use the
+// backend executable staged by the release builder.
+function startBackend() {
+  const executable = app.isPackaged
+    ? path.join(process.resourcesPath, "backend", "IStoreBackend.exe")
+    : path.join(__dirname, "..", ".venv", "Scripts", "python.exe");
+  const args = app.isPackaged
+    ? []
+    : ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"];
+  const cwd = app.isPackaged ? path.dirname(executable) : path.join(__dirname, "..");
+  const dataDirectory = app.getPath("userData");
+  const databaseDirectory = path.join(dataDirectory, "database");
+  const uploadsDirectory = path.join(dataDirectory, "uploads");
+  const logsDirectory = path.join(dataDirectory, "logs");
+  const databaseFile = path.join(databaseDirectory, "istore.db").replace(/\\/g, "/");
+  const backendLogPath = path.join(dataDirectory, "backend.log");
+
+  // The installed application's resources live under Program Files and are
+  // read-only for standard users. Persist backend data outside that folder.
+  fs.mkdirSync(databaseDirectory, { recursive: true });
+  fs.mkdirSync(uploadsDirectory, { recursive: true });
+  fs.mkdirSync(logsDirectory, { recursive: true });
+
+  if (!fs.existsSync(executable)) {
+    console.error(`[main] Local backend executable was not found: ${executable}`);
+    fs.appendFileSync(backendLogPath, `[${new Date().toISOString()}] Backend executable not found: ${executable}\n`);
+    return;
+  }
+
+  try {
+    backendLogHandle = fs.openSync(backendLogPath, "a");
+    fs.writeSync(backendLogHandle, `\n[${new Date().toISOString()}] Starting backend: ${executable}\n`);
+  } catch (error) {
+    console.error("[main] Failed to open backend log:", error.message);
+  }
+
+  const backendEnv = {
+    ...process.env,
+    PYTHONPATH: app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "backend"),
+    ISTORE_API_HOST: "127.0.0.1",
+    ISTORE_API_PORT: "8000",
+    ISTORE_UPLOADS_DIR: uploadsDirectory,
+    ISTORE_BACKEND_LOG_FILE: path.join(logsDirectory, "backend-api.log"),
+    // The backend takes a backup before applying database migrations. The
+    // database remains in userData, outside the replaceable app bundle.
+    AUTO_MIGRATE_ENABLED: "true",
+    BACKUP_BEFORE_MIGRATE: "true",
+    ALLOW_RUNTIME_SCHEMA_SYNC: "false",
+  };
+  if (app.isPackaged) backendEnv.DATABASE_URL = `sqlite:///${databaseFile}`;
+
+  backendProcess = spawn(executable, args, {
+    cwd,
+    windowsHide: true,
+    env: backendEnv,
+    stdio: ["ignore", backendLogHandle || "ignore", backendLogHandle || "ignore"],
+  });
+  backendProcess.on("error", (error) => console.error("[main] Failed to start local backend:", error.message));
+  backendProcess.on("exit", (code) => {
+    if (!app.isQuitting && code !== 0) console.error(`[main] Local backend exited unexpectedly (${code}).`);
+    if (backendLogHandle) {
+      fs.closeSync(backendLogHandle);
+      backendLogHandle = null;
+    }
+    backendProcess = null;
+  });
+}
+
+function stopBackend() {
+  if (backendProcess && !backendProcess.killed) backendProcess.kill();
+  backendProcess = null;
+  if (backendLogHandle) {
+    fs.closeSync(backendLogHandle);
+    backendLogHandle = null;
+  }
+}
 
 // ── Prevent multiple instances ─────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -101,6 +184,7 @@ function createWindow() {
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  startBackend();
   await initDatabase();
   const win = createWindow();
   initAutoUpdater(win);
@@ -118,6 +202,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  app.isQuitting = true;
+  stopBackend();
   db.close();
 });
 

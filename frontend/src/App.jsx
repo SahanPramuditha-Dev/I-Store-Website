@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import UpdateNotification from "./components/UpdateNotification";
 import { bootstrapPermissions, canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions } from "./lib/rbac";
@@ -91,8 +91,12 @@ function Guard({ children }) {
 export default function App() {
   // NOTE: Auto-backups are handled by the backend scheduler (backup_scheduler.py).
   // Removed client-side backup trigger to prevent concurrent backup races under multi-user load.
+  // Electron loads the packaged frontend from file://. BrowserRouter treats an
+  // absolute route such as /dashboard as a filesystem path in that context
+  // (file:///C:/dashboard), so use URL hashes for the packaged application.
+  const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
-  return <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+  return <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
     <UpdateNotification />
     <Suspense fallback={<RouteFallback />}>
       <Routes>
@@ -163,5 +167,5 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard"/>} />
       </Routes>
     </Suspense>
-  </BrowserRouter>;
+  </Router>;
 }

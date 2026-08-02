@@ -1034,101 +1034,186 @@ export default function ReturnsRefunds() {
         )}
       </div>
 
+      {/* REFUND MODAL */}
       <AppModal
         open={refundModalOpen && !!selectedReturn}
         onClose={() => setRefundModalOpen(false)}
-        title="Create Refund"
-        panelClassName="max-w-lg"
+        title="Issue Refund"
+        panelClassName="max-w-md border-indigo-500/30 bg-slate-900"
       >
-        <div className="space-y-2 p-4">
-          <Input
-            type="number"
-            min="0"
-            placeholder="Refund Amount"
-            value={refundForm.refund_amount}
-            onChange={(e) => setRefundForm((prev) => ({ ...prev, refund_amount: e.target.value }))}
-          />
-          <Select
-            value={refundForm.refund_method}
-            onChange={(e) => setRefundForm((prev) => ({ ...prev, refund_method: e.target.value }))}
-          >
-            {(meta.refund_methods || []).map((method) => (
-              <option key={method} value={method}>{formatLabel(method)}</option>
-            ))}
-          </Select>
-          <Input
-            placeholder="Reason"
-            value={refundForm.reason}
-            onChange={(e) => setRefundForm((prev) => ({ ...prev, reason: e.target.value }))}
-          />
-          <Input
-            placeholder="Notes"
-            value={refundForm.notes}
-            onChange={(e) => setRefundForm((prev) => ({ ...prev, notes: e.target.value }))}
-          />
-          <div className="flex justify-end border-t border-white/10 pt-3">
-            <Button size="sm" onClick={createRefund} disabled={busy}>Create Refund</Button>
+        <div className="space-y-4 p-5">
+          {selectedReturn && (
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-950/40 p-3 text-xs text-slate-300">
+              <div className="flex justify-between font-bold text-white mb-1">
+                <span>Return #{selectedReturn.return_number}</span>
+                <span className="text-emerald-400 font-extrabold">{money(selectedReturn.total_amount || 0)}</span>
+              </div>
+              <p className="text-[11px] text-slate-400">Reason: {selectedReturn.reason || "N/A"}</p>
+            </div>
+          )}
+          <div className="space-y-3">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Refund Amount (LKR)
+              <Input
+                type="number"
+                min="0"
+                placeholder="e.g. 1500"
+                value={refundForm.refund_amount}
+                onChange={(e) => setRefundForm((prev) => ({ ...prev, refund_amount: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Refund Method
+              <Select
+                value={refundForm.refund_method}
+                onChange={(e) => setRefundForm((prev) => ({ ...prev, refund_method: e.target.value }))}
+                className="mt-1"
+              >
+                {(meta.refund_methods || []).map((method) => (
+                  <option key={method} value={method}>{formatLabel(method)}</option>
+                ))}
+              </Select>
+            </label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Reason
+              <Input
+                placeholder="Specific refund reason"
+                value={refundForm.reason}
+                onChange={(e) => setRefundForm((prev) => ({ ...prev, reason: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Internal Notes
+              <Input
+                placeholder="Optional notes or reference numbers"
+                value={refundForm.notes}
+                onChange={(e) => setRefundForm((prev) => ({ ...prev, notes: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+            <Button variant="ghost" size="sm" onClick={() => setRefundModalOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={createRefund} disabled={busy} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4">
+              {busy ? "Processing..." : "Confirm & Process Refund"}
+            </Button>
           </div>
         </div>
       </AppModal>
 
+      {/* EXCHANGE MODAL */}
       <AppModal
         open={exchangeModalOpen && !!selectedReturn}
         onClose={() => setExchangeModalOpen(false)}
-        title="Create Exchange"
-        panelClassName="max-w-lg"
+        title="Process Exchange Case"
+        panelClassName="max-w-md border-indigo-500/30 bg-slate-900"
       >
-        <div className="space-y-2 p-4">
-          <Input
-            type="number"
-            placeholder="Replacement Product ID"
-            value={exchangeForm.new_product_id}
-            onChange={(e) => setExchangeForm((prev) => ({ ...prev, new_product_id: e.target.value }))}
-          />
-          <Input
-            type="number"
-            min="1"
-            placeholder="Replacement Quantity"
-            value={exchangeForm.new_quantity}
-            onChange={(e) => setExchangeForm((prev) => ({ ...prev, new_quantity: Number(e.target.value || 1) }))}
-          />
-          <Input
-            placeholder="Notes"
-            value={exchangeForm.notes}
-            onChange={(e) => setExchangeForm((prev) => ({ ...prev, notes: e.target.value }))}
-          />
-          <div className="flex justify-end border-t border-white/10 pt-3">
-            <Button size="sm" onClick={createExchange} disabled={busy}>Create Exchange</Button>
+        <div className="space-y-4 p-5">
+          {selectedReturn && (
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-950/40 p-3 text-xs text-slate-300">
+              <div className="flex justify-between font-bold text-white mb-1">
+                <span>Return #{selectedReturn.return_number}</span>
+                <span className="text-cyan-400 font-extrabold">{money(selectedReturn.total_amount || 0)}</span>
+              </div>
+              <p className="text-[11px] text-slate-400">Resolution: {formatLabel(selectedReturn.requested_resolution)}</p>
+            </div>
+          )}
+          <div className="space-y-3">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Replacement Product ID
+              <Input
+                type="number"
+                placeholder="Enter Product ID to exchange with"
+                value={exchangeForm.new_product_id}
+                onChange={(e) => setExchangeForm((prev) => ({ ...prev, new_product_id: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Replacement Quantity
+              <Input
+                type="number"
+                min="1"
+                placeholder="1"
+                value={exchangeForm.new_quantity}
+                onChange={(e) => setExchangeForm((prev) => ({ ...prev, new_quantity: Number(e.target.value || 1) }))}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Notes
+              <Input
+                placeholder="Exchange condition notes or approval details"
+                value={exchangeForm.notes}
+                onChange={(e) => setExchangeForm((prev) => ({ ...prev, notes: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+            <Button variant="ghost" size="sm" onClick={() => setExchangeModalOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={createExchange} disabled={busy} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-4">
+              {busy ? "Processing..." : "Create Exchange"}
+            </Button>
           </div>
         </div>
       </AppModal>
 
+      {/* STORE CREDIT MODAL */}
       <AppModal
         open={creditModalOpen && !!selectedReturn}
         onClose={() => setCreditModalOpen(false)}
         title="Issue Store Credit"
-        panelClassName="max-w-lg"
+        panelClassName="max-w-md border-indigo-500/30 bg-slate-900"
       >
-        <div className="space-y-2 p-4">
-          <Input
-            type="number"
-            min="0"
-            placeholder="Credit Amount"
-            value={creditForm.amount}
-            onChange={(e) => setCreditForm((prev) => ({ ...prev, amount: e.target.value }))}
-          />
-          <Input
-            type="date"
-            value={creditForm.expiry_date}
-            onChange={(e) => setCreditForm((prev) => ({ ...prev, expiry_date: e.target.value }))}
-          />
-          <Input
-            placeholder="Notes"
-            value={creditForm.notes}
-            onChange={(e) => setCreditForm((prev) => ({ ...prev, notes: e.target.value }))}
-          />
-          <div className="flex justify-end border-t border-white/10 pt-3">
-            <Button size="sm" onClick={issueStoreCredit} disabled={busy}>Issue Credit</Button>
+        <div className="space-y-4 p-5">
+          {selectedReturn && (
+            <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/40 p-3 text-xs text-slate-300">
+              <div className="flex justify-between font-bold text-white mb-1">
+                <span>Return #{selectedReturn.return_number}</span>
+                <span className="text-cyan-300 font-extrabold">{money(selectedReturn.total_amount || 0)}</span>
+              </div>
+              <p className="text-[11px] text-slate-400">Customer: {selectedReturn.customer_name || "Walk-in"}</p>
+            </div>
+          )}
+          <div className="space-y-3">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Credit Amount (LKR)
+              <Input
+                type="number"
+                min="0"
+                placeholder="Credit Amount"
+                value={creditForm.amount}
+                onChange={(e) => setCreditForm((prev) => ({ ...prev, amount: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Expiry Date
+              <Input
+                type="date"
+                value={creditForm.expiry_date}
+                onChange={(e) => setCreditForm((prev) => ({ ...prev, expiry_date: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Notes
+              <Input
+                placeholder="Internal memo or authorization details"
+                value={creditForm.notes}
+                onChange={(e) => setCreditForm((prev) => ({ ...prev, notes: e.target.value }))}
+                className="mt-1"
+              />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+            <Button variant="ghost" size="sm" onClick={() => setCreditModalOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={issueStoreCredit} disabled={busy} className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4">
+              {busy ? "Processing..." : "Issue Store Credit"}
+            </Button>
           </div>
         </div>
       </AppModal>
