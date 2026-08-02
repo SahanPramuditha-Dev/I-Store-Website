@@ -7,7 +7,7 @@ import React, { useEffect, useState } from "react";
  * Listens to Electron auto-updater status & download progress events.
  */
 export default function UpdateNotification() {
-  const [status, setStatus] = useState(null); // 'checking' | 'available' | 'downloading' | 'downloaded' | 'ready-to-install' | 'error' | 'backup-failed'
+  const [status, setStatus] = useState(null); // 'checking' | 'available' | 'not-available' | 'downloading' | 'ready-to-install' | 'error' | 'backup-failed'
   const [progress, setProgress] = useState(0);
   const [versionInfo, setVersionInfo] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -21,9 +21,13 @@ export default function UpdateNotification() {
       console.log("[UpdateNotification] Status event:", data);
       setDismissed(false); // Re-open banner on new status event
 
-      if (data.status === "available") {
-        setStatus("downloading");
+      if (data.status === "checking") {
+        setStatus("checking");
+      } else if (data.status === "available") {
+        setStatus("available");
         if (data.version) setVersionInfo(data.version);
+      } else if (data.status === "not-available") {
+        setStatus("not-available");
       } else if (data.status === "downloaded" || data.status === "ready-to-install") {
         setStatus("ready-to-install");
         if (data.version) setVersionInfo(data.version);
@@ -34,9 +38,8 @@ export default function UpdateNotification() {
     });
 
     const unsubProgress = window.istore.updater.onProgress((data) => {
-      if (data.percent) {
-        setProgress(Math.round(data.percent));
-      }
+      setStatus("downloading");
+      setProgress(Math.round(data.percent || 0));
     });
 
     return () => {
@@ -76,6 +79,9 @@ export default function UpdateNotification() {
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "20px" }}>⚡</span>
           <h4 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#38bdf8" }}>
+            {status === "checking" && "Checking for updates"}
+            {status === "available" && `Update available ${versionInfo ? `v${versionInfo}` : ""}`}
+            {status === "not-available" && "You are up to date"}
             {status === "downloading" && `Downloading Update ${versionInfo ? `v${versionInfo}` : ""}`}
             {status === "ready-to-install" && `Update Ready ${versionInfo ? `v${versionInfo}` : ""}`}
             {status === "error" && "Update Issue Detected"}
@@ -96,6 +102,12 @@ export default function UpdateNotification() {
           ✕
         </button>
       </div>
+
+      {status === "checking" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>Contacting GitHub Releases…</p>}
+
+      {status === "available" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>Choose “Download now” in the update prompt to continue.</p>}
+
+      {status === "not-available" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>You already have the latest iStore OS release.</p>}
 
       {status === "downloading" && (
         <div style={{ marginTop: "12px" }}>

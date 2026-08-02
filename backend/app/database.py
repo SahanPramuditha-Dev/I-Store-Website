@@ -5,7 +5,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import sessionmaker, declarative_base
 import app.config
 
-UPLOADS_DIR = Path(__file__).resolve().parents[1] / "uploads"
+UPLOADS_DIR = Path(os.getenv("ISTORE_UPLOADS_DIR", str(Path(__file__).resolve().parents[1] / "uploads")))
 if os.getenv("VERCEL"):
     UPLOADS_DIR = Path("/tmp/uploads")
 try:

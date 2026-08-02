@@ -26,42 +26,42 @@ function pickLandingPath(permissions) {
 
 const slides = [
   {
-    image: "/login-sys-1.png",
+    image: `${import.meta.env.BASE_URL}login-sys-1.png`,
     title: "Enterprise POS / Billing",
     text: "Seamless checkout, thermal receipt generation, and intelligent inventory deduction in dark mode."
   },
   {
-    image: "/login-sys-2.png",
+    image: `${import.meta.env.BASE_URL}login-sys-2.png`,
     title: "Comprehensive Repair Tracking",
     text: "Interactive kanban board to monitor device repairs from diagnostic to delivery in real time."
   },
   {
-    image: "/login-sys-3.png",
+    image: `${import.meta.env.BASE_URL}login-sys-3.png`,
     title: "Advanced Inventory Control",
     text: "Effortlessly manage low stock alerts, product variants, and barcode scanning at your fingertips."
   },
   {
-    image: "/login-sys-4.png",
+    image: `${import.meta.env.BASE_URL}login-sys-4.png`,
     title: "Offline-First Reliability",
     text: "Fully functional without internet connection. Your store stays operational under any circumstances."
   },
   {
-    image: "/login-sys-5.png",
+    image: `${import.meta.env.BASE_URL}login-sys-5.png`,
     title: "Secure Cloud Backups",
     text: "Automated and encrypted metadata backups ensure your disaster recovery strategy is flawless."
   },
   {
-    image: "/login-sys-6.png",
+    image: `${import.meta.env.BASE_URL}login-sys-6.png`,
     title: "Role-Based Access Control",
     text: "Granular permission handling and audit trails keeping your sensitive store data absolutely secure."
   },
   {
-    image: "/login-sys-7.png",
+    image: `${import.meta.env.BASE_URL}login-sys-7.png`,
     title: "CRM & Customer Management",
     text: "Build loyalty with rich customer profiles, repair histories, and outstanding balance tracking."
   },
   {
-    image: "/login-sys-8.png",
+    image: `${import.meta.env.BASE_URL}login-sys-8.png`,
     title: "Deep Financial Analytics",
     text: "Generate instant profit/loss statements and performance reports for your entire business."
   }

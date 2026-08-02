@@ -76,7 +76,7 @@ except Exception:
 
 _log_handlers: list[logging.Handler] = [logging.StreamHandler()]
 if os.getenv("PYTEST_CURRENT_TEST") is None and not os.getenv("VERCEL"):
-    _log_handlers.append(logging.FileHandler("backend.log", encoding="utf-8", delay=True))
+    _log_handlers.append(logging.FileHandler(os.getenv("ISTORE_BACKEND_LOG_FILE", "backend.log"), encoding="utf-8", delay=True))
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

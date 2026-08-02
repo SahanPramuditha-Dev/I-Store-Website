@@ -61,7 +61,7 @@ from app.utils.time import utcnow
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads" / "inventory"
+UPLOAD_DIR = Path(os.getenv("ISTORE_UPLOADS_DIR", str(Path(__file__).resolve().parents[2] / "uploads"))) / "inventory"
 if os.getenv("VERCEL"):
     UPLOAD_DIR = Path("/tmp/uploads/inventory")
 
