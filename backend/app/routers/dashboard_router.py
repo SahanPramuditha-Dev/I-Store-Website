@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import timedelta
@@ -16,8 +16,21 @@ from app.utils.time import utcnow
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
+def _month_start(value):
+    return value.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _shift_month(value, offset):
+    month_index = value.month - 1 + offset
+    return value.replace(year=value.year + month_index // 12, month=month_index % 12 + 1)
+
+
 @router.get('', dependencies=[Depends(require_permission("dashboard.view"))])
-def dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def dashboard(
+    period: str = Query("12m", alias="range", pattern="^(7d|30d|12m)$"),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
     now = utcnow()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -56,42 +69,48 @@ def dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
         .all()
     )
 
-    # Monthly Revenue (Last 7 months)
-    import calendar
-    
-    six_months_ago = now - timedelta(days=6*30)
-    start_of_period = six_months_ago.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
-    sales_data = (
+    # Sales trend for the dashboard selector.  Build the buckets in Python so
+    # SQLite and production database date functions produce the same result.
+    if period == "12m":
+        period_start = _shift_month(_month_start(now), -11)
+        bucket_starts = [_shift_month(_month_start(now), -i) for i in range(11, -1, -1)]
+        trend_label = "Last 12 months"
+    else:
+        days = 7 if period == "7d" else 30
+        period_start = today_start - timedelta(days=days - 1)
+        bucket_starts = [period_start + timedelta(days=i) for i in range(days)]
+        trend_label = f"Last {days} days"
+
+    period_sales = (
         db.query(Sale.created_at, Sale.total)
-        .filter(*valid_sales_filter, Sale.created_at >= start_of_period)
+        .filter(*valid_sales_filter, Sale.created_at >= period_start)
         .all()
     )
 
-    monthly_rev = []
-    for i in range(6, -1, -1):
-        target_date = now - timedelta(days=i*30)
-        m_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if m_start.month == 12:
-            m_end = m_start.replace(year=m_start.year+1, month=1)
+    revenue_overview = []
+    for bucket_start in bucket_starts:
+        if period == "12m":
+            bucket_end = _shift_month(bucket_start, 1)
+            label = bucket_start.strftime("%b")
         else:
-            m_end = m_start.replace(month=m_start.month+1)
-        
-        m_label = m_start.strftime("%b")
-        val = sum(s.total for s in sales_data if m_start <= s.created_at < m_end and s.total)
-        monthly_rev.append({"name": m_label, "value": val})
+            bucket_end = bucket_start + timedelta(days=1)
+            label = bucket_start.strftime("%d %b")
+        value = sum(float(s.total or 0) for s in period_sales if bucket_start <= s.created_at < bucket_end)
+        revenue_overview.append({"name": label, "value": value})
+
+    period_sales_filter = [*valid_sales_filter, Sale.created_at >= period_start]
 
     product_revenue = (
         db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.price), 0))
         .join(Sale, Sale.id == SaleItem.sale_id)
-        .filter(*valid_sales_filter, SaleItem.line_type == "product")
+        .filter(*period_sales_filter, SaleItem.line_type == "product")
         .scalar()
         or 0
     )
     spare_part_revenue = (
         db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.price), 0))
         .join(Sale, Sale.id == SaleItem.sale_id)
-        .filter(*valid_sales_filter, SaleItem.line_type == "spare_part")
+        .filter(*period_sales_filter, SaleItem.line_type == "spare_part")
         .scalar()
         or 0
     )
@@ -99,7 +118,7 @@ def dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
         db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.price), 0))
         .join(Sale, Sale.id == SaleItem.sale_id)
         .filter(
-            *valid_sales_filter,
+            *period_sales_filter,
             (Sale.repair_ticket_id.isnot(None)) | (SaleItem.line_type.in_(["labor", "service"])),
         )
         .scalar()
@@ -169,6 +188,7 @@ def dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
 
     return {
         "daily_revenue": daily_revenue,
+        "sales_period_label": trend_label,
         "repair_stats": {"total": total_repairs, "completed": completed_repairs},
         "customers_count": customers_count,
         "low_stock_count": len(low_stock_items),
@@ -184,7 +204,7 @@ def dashboard(db: Session = Depends(get_db), _=Depends(get_current_user)):
         } for r in recent_repairs],
         "activity_feed": activity_feed,
         "charts": {
-            "revenue_overview": monthly_rev,
+            "revenue_overview": revenue_overview,
             "sales_breakdown": [
                 {"name": "Product Sales", "value": float(product_revenue or 0)},
                 {"name": "Spare Parts", "value": float(spare_part_revenue or 0)},

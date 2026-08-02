@@ -28,14 +28,13 @@ import PageContainer from "../components/layout/PageContainer";
 import { useSyncStatus } from "../hooks/useSyncStatus";
 import { X } from "lucide-react";
 
-function pctChange(curr, prev) {
-  if (!prev) return 0;
-  return ((curr - prev) / prev) * 100;
-}
-
-function fmtPct(v) {
-  const sign = v >= 0 ? "+" : "";
-  return `${sign}${v.toFixed(1)}%`;
+function ChartEmptyState({ message }) {
+  return (
+    <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700/70 bg-slate-950/20 px-4 text-center">
+      <BarChart3 size={22} className="text-slate-500" aria-hidden="true" />
+      <p className="text-xs text-slate-400">{message}</p>
+    </div>
+  );
 }
 
 function DashboardSkeleton() {
@@ -86,26 +85,30 @@ function DashboardSkeleton() {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [showLowStockModal, setShowLowStockModal] = useState(false);
-  const { data, loading, error } = useFetch("/dashboard");
+  const [salesRange, setSalesRange] = useState("12m");
+  const { data, loading, error } = useFetch(`/dashboard?range=${salesRange}`);
   const role = localStorage.getItem("login_role") || "admin";
   const username = localStorage.getItem("username") || "Admin";
 
   const revData = data?.charts?.revenue_overview || [];
   const salesData = data?.charts?.sales_breakdown || [];
+  const hasRevenueData = revData.some((entry) => Number(entry?.value) > 0);
+  const activeSalesData = salesData.filter((entry) => Number(entry?.value) > 0);
+  const hasSalesBreakdown = activeSalesData.length > 0;
+  const repairStatusData = data?.charts?.repair_status || [];
+  const activeRepairStatuses = repairStatusData.filter((entry) => Number(entry?.value) > 0);
+  const totalRepairStatuses = activeRepairStatuses.reduce((total, entry) => total + Number(entry.value || 0), 0);
   const repairs = data?.recent_repairs || [];
   const feed = data?.activity_feed || [];
   const tx = data?.recent_transactions || [];
-
-  const revCurrent = revData[revData.length - 1]?.value || 0;
-  const revPrev = revData[revData.length - 2]?.value || 0;
-  const revTrend = pctChange(revCurrent, revPrev);
 
   const pendingRepairs = Math.max(0, (data?.repair_stats?.total || 0) - (data?.repair_stats?.completed || 0));
   const completionRate = data?.repair_stats?.total
     ? ((data?.repair_stats?.completed || 0) / data.repair_stats.total) * 100
     : 0;
 
-  const totalSales = salesData.reduce((a, b) => a + (b.value || 0), 0);
+  const totalSales = activeSalesData.reduce((a, b) => a + Number(b.value || 0), 0);
+  const recentSalesValue = tx.reduce((total, sale) => total + Number(sale.total || 0), 0);
 
   const { pendingCount, isOnline } = useSyncStatus();
 
@@ -173,9 +176,9 @@ export default function Dashboard() {
 
   const kpis = [
     {
-      title: "Total Sales",
+      title: "Today's Sales",
       value: `LKR ${(data?.daily_revenue || 0).toLocaleString()}`,
-      hint: `${fmtPct(revTrend)} vs previous period`,
+      hint: "Completed invoices since midnight",
       tone: "sky",
       icon: <BadgeDollarSign size={18} />,
       to: "/reports",
@@ -189,9 +192,9 @@ export default function Dashboard() {
       to: "/repairs",
     },
     {
-      title: "Completed Today",
+      title: "Completed Repairs",
       value: String(data?.repair_stats?.completed || 0),
-      hint: "Ready for delivery",
+      hint: "Across all repair tickets",
       tone: "green",
       icon: <CheckCircle2 size={18} />,
       to: "/repairs",
@@ -215,7 +218,7 @@ export default function Dashboard() {
     {
       title: "Recent Sales",
       value: String(tx.length),
-      hint: `${totalSales.toLocaleString()} units across categories`,
+      hint: `LKR ${recentSalesValue.toLocaleString()} across recent invoices`,
       tone: "violet",
       icon: <Receipt size={18} />,
       to: "/pos",
@@ -278,18 +281,39 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-          <SectionCard title="Sales Overview" subtitle="Last 7 periods (Click bar to view reports)" className="dashboard-chart-card xl:col-span-7 h-[210px] md:h-[230px] 2xl:h-[260px] flex flex-col">
+          <SectionCard
+            title="Sales Overview"
+            subtitle={`${data?.sales_period_label || "Sales trend"} · Click a bar to view reports`}
+            className="dashboard-chart-card xl:col-span-7 h-[250px] md:h-[280px] flex flex-col"
+            bodyClassName="flex min-h-0 flex-1"
+            right={
+              <div className="dashboard-range-tabs" aria-label="Sales chart range">
+                {[{ value: "7d", label: "7D" }, { value: "30d", label: "30D" }, { value: "12m", label: "12M" }].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setSalesRange(option.value)}
+                    className={salesRange === option.value ? "is-active" : ""}
+                    aria-pressed={salesRange === option.value}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            }
+          >
             <div className="mt-4 min-h-0 flex-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={revData}>
+              {hasRevenueData ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="rgba(148,163,184,0.14)" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#9fb3d9", fontSize: 11 }} dy={8} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#9fb3d9", fontSize: 11 }} dy={8} interval={salesRange === "30d" ? 4 : 0} />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: "#9fb3d9", fontSize: 11 }}
                     width={65}
-                    tickFormatter={(v) => (v >= 1000000 ? `Rs.${(v / 1000000).toFixed(1)}M` : `Rs.${(v / 1000).toFixed(0)}k`)}
+                    tickFormatter={(v) => (v >= 1000000 ? `LKR ${(v / 1000000).toFixed(1)}M` : `LKR ${(v / 1000).toFixed(0)}k`)}
                   />
                   <Tooltip
                     cursor={{ fill: "rgba(139,92,246,0.12)" }}
@@ -306,7 +330,7 @@ export default function Dashboard() {
                     dataKey="value"
                     fill="#8b5cf6"
                     radius={[8, 8, 0, 0]}
-                    barSize={28}
+                    barSize={salesRange === "30d" ? 12 : 28}
                     onClick={() => navigate("/reports")}
                     style={{ cursor: "pointer" }}
                   >
@@ -314,59 +338,70 @@ export default function Dashboard() {
                       <Cell key={`rev-${index}`} fill={index === revData.length - 1 ? "#22d3ee" : "#7c3aed"} opacity={index === revData.length - 1 ? 1 : 0.78} />
                     ))}
                   </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <ChartEmptyState message="Sales will appear here once invoices are completed." />
+              )}
             </div>
           </SectionCard>
 
-          <SectionCard title="Sales Breakdown" subtitle="Category mix (Click slice to view inventory)" className="dashboard-chart-card xl:col-span-5 h-[210px] md:h-[230px] 2xl:h-[260px] flex flex-col">
+          <SectionCard
+            title="Sales Breakdown"
+            subtitle={`${data?.sales_period_label || "Selected period"} · Click a category to open inventory`}
+            className="dashboard-chart-card xl:col-span-5 h-[250px] md:h-[280px] flex flex-col"
+            bodyClassName="flex min-h-0 flex-1 flex-col"
+          >
             <div className="relative mt-2 min-h-[160px] flex-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+              {hasSalesBreakdown ? (
+                <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
                   <Pie
-                    data={salesData}
-                    innerRadius="62%"
-                    outerRadius="94%"
+                    data={activeSalesData}
+                    innerRadius="58%"
+                    outerRadius="82%"
                     paddingAngle={4}
                     dataKey="value"
                     stroke="none"
                     onClick={(entry) => navigate(`/inventory?q=${entry.name}`)}
                     style={{ cursor: "pointer" }}
                   >
-                    {salesData.map((entry, index) => (
+                    {activeSalesData.map((entry, index) => (
                       <Cell key={`mix-${index}`} fill={piePalette[index % piePalette.length]} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#0b1228",
-                      borderRadius: "12px",
-                      border: "1px solid rgba(129,140,248,0.36)",
-                      color: "#f8fafc",
-                      fontSize: "12px",
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-2 space-y-2">
-              {salesData.map((s, i) => (
-                <div key={s.name} className="flex items-center justify-between text-[11px]">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: piePalette[i % piePalette.length] }} />
-                    <span className="text-slate-400">{s.name}</span>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 grid place-items-center">
+                  <div className="rounded-xl border border-cyan-300/40 bg-slate-950/95 px-3.5 py-2 text-center shadow-xl shadow-cyan-950/50">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-cyan-300">Total sales</p>
+                    <p className="mt-0.5 text-base font-black tabular-nums text-white">LKR {totalSales.toLocaleString()}</p>
                   </div>
-                  <span className="font-bold text-slate-100">
-                    {Math.round(((s.value || 0) / (salesData.reduce((acc, curr) => acc + (curr.value || 0), 0) || 1)) * 100)}%
+                </div>
+                </>
+              ) : (
+                <ChartEmptyState message="Category sales will appear after your first sale." />
+              )}
+            </div>
+            {hasSalesBreakdown && <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {activeSalesData.map((s, i) => (
+                <div key={s.name} className="flex items-center justify-between rounded-md bg-slate-950/25 px-2 py-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full shadow-sm" style={{ backgroundColor: piePalette[i % piePalette.length] }} />
+                    <span className="font-medium text-slate-300">{s.name}</span>
+                  </div>
+                  <span className="font-bold tabular-nums text-slate-100">
+                    LKR {Number(s.value || 0).toLocaleString()} · {Math.round(((s.value || 0) / totalSales) * 100)}%
                   </span>
                 </div>
               ))}
-            </div>
+            </div>}
           </SectionCard>
 
           <SectionCard
-            title="Today's Repairs"
-            subtitle="Recent repair tickets"
+            title="Repair Overview"
+            subtitle="Recent repair tickets and workflow"
             className="dashboard-table-card xl:col-span-6 overflow-hidden"
             right={
               <Button variant="ghost" size="sm" onClick={() => navigate("/repairs")}>
@@ -387,7 +422,11 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {repairs.slice(0, 6).map((r) => (
+                  {repairs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-sm text-slate-400">No repair tickets yet today.</td>
+                    </tr>
+                  ) : repairs.slice(0, 6).map((r) => (
                     <tr key={r.id} className="cursor-pointer" onClick={() => navigate(`/repairs?id=${r.id}`)}>
                       <td className="font-mono text-xs text-cyan-300">#R-{String(r.id).padStart(4, "0")}</td>
                       <td className="font-bold text-slate-200">{r.customer}</td>
@@ -401,6 +440,35 @@ export default function Dashboard() {
                 </tbody>
               </Table>
             </div>
+            {totalRepairStatuses > 0 && (
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span>Repair pipeline</span>
+                  <span>{totalRepairStatuses} open &amp; completed</span>
+                </div>
+                <div className="flex h-2 overflow-hidden rounded-full bg-slate-800/80">
+                  {activeRepairStatuses.map((status, index) => (
+                    <div
+                      key={status.name}
+                      title={`${status.name}: ${status.value}`}
+                      className="transition-all"
+                      style={{
+                        width: `${(Number(status.value) / totalRepairStatuses) * 100}%`,
+                        backgroundColor: ["#38bdf8", "#818cf8", "#f59e0b", "#22c55e", "#a855f7", "#fb7185"][index % 6],
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  {activeRepairStatuses.map((status, index) => (
+                    <span key={status.name} className="inline-flex items-center gap-1.5 text-[10px] text-slate-400">
+                      <i className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ["#38bdf8", "#818cf8", "#f59e0b", "#22c55e", "#a855f7", "#fb7185"][index % 6] }} />
+                      {status.name} <b className="text-slate-200">{status.value}</b>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </SectionCard>
 
           <SectionCard
@@ -425,7 +493,11 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tx.slice(0, 6).map((t, idx) => (
+                  {tx.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-sm text-slate-400">No completed sales yet today.</td>
+                    </tr>
+                  ) : tx.slice(0, 6).map((t, idx) => (
                     <tr key={t.id || idx}>
                       <td className="font-mono text-xs text-slate-400">{t.invoice_no || `INV-${String(idx + 1).padStart(4, "0")}`}</td>
                       <td className="font-bold text-slate-200">{t.customer || "Walk-in"}</td>
@@ -443,7 +515,9 @@ export default function Dashboard() {
           </SectionCard>
 
           <SectionCard title="Recent Payments" subtitle="Settlement stream" className="dashboard-table-card xl:col-span-4">
-            <div className="space-y-2">
+            {tx.length === 0 ? (
+              <div className="dashboard-empty-copy">Payments will appear here as sales are settled.</div>
+            ) : <div className="space-y-2">
               {tx.slice(0, 6).map((t, idx) => (
                 <div key={`p-${t.id || idx}`} className="dashboard-list-row flex items-center justify-between rounded-xl border px-3 py-2">
                   <div>
@@ -453,7 +527,7 @@ export default function Dashboard() {
                   <p className="text-xs font-black text-emerald-300">LKR {(t.total || 0).toLocaleString()}</p>
                 </div>
               ))}
-            </div>
+            </div>}
           </SectionCard>
 
           <SectionCard
@@ -466,7 +540,9 @@ export default function Dashboard() {
               </Badge>
             }
           >
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {feed.length === 0 ? (
+              <div className="dashboard-empty-copy">Activity will appear here as your team works.</div>
+            ) : <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {feed.slice(0, 8).map((l, i) => (
                 <div key={l.id || i} className="dashboard-activity-row flex gap-3 rounded-xl border p-3">
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-black/20">
@@ -492,7 +568,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-            </div>
+            </div>}
           </SectionCard>
 
           <SectionCard title="Quick Actions" subtitle="Jump into common workflows" className="dashboard-actions-card xl:col-span-12">
