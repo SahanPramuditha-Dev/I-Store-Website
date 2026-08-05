@@ -30,7 +30,7 @@ def get_user_data_dir():
     if _ON_VERCEL:
         path = Path("/tmp/iStore")
     elif sys.platform == "win32":
-        root = Path(os.environ.get("APPDATA", "~")).expanduser()
+        root = Path(os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA", "~")).expanduser()
         path = root / "iStore"
     elif sys.platform == "darwin":
         root = Path("~/Library/Application Support").expanduser()
@@ -38,22 +38,27 @@ def get_user_data_dir():
     else:
         root = Path("~/.config").expanduser()
         path = root / "iStore"
-    
+
     try:
         path.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
     return path
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "database"
-DB_FILE = DATA_DIR / "istore.db"
-BACKUP_DIR = DATA_DIR / "backups"
-LOG_DIR = DATA_DIR / "logs"
+DATA_ROOT = Path(os.getenv("ISTORE_DATA_ROOT", str(get_user_data_dir())))
+DATABASE_DIR = DATA_ROOT / "database"
+DB_FILE = DATABASE_DIR / "istore.db"
+BACKUP_DIR = DATA_ROOT / "backups"
+LOG_DIR = DATA_ROOT / "logs"
+UPLOADS_DIR = DATA_ROOT / "uploads"
+DATA_DIR = DATABASE_DIR
 
 # Ensure folders exist
 try:
+    DATABASE_DIR.mkdir(parents=True, exist_ok=True)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 except Exception:
     pass
 
@@ -61,10 +66,21 @@ class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "i Store API")
     env: str = os.getenv("APP_ENV", "development")
     secret_key: str = os.getenv("SECRET_KEY", "change-this-secret")
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.env.lower() == "production" and self.secret_key in {"change-this-secret", "secret", "123456"}:
+            logger.warning("SECURITY ALERT: Default or insecure SECRET_KEY is being used in production mode!")
     algorithm: str = os.getenv("ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 8)))
     sqlite_file: str = os.getenv("SQLITE_FILE", str(DB_FILE))
-    database_url: str = os.getenv("DATABASE_URL", os.getenv("SQLITE_URL", f"sqlite:///{DB_FILE.as_posix()}"))
+    database_url: str = os.getenv(
+        "DATABASE_URL",
+        os.getenv(
+            "SQLITE_URL",
+            f"sqlite:///{Path(os.getenv('SQLITE_FILE', str(DB_FILE))).resolve().as_posix()}",
+        ),
+    )
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 

@@ -112,7 +112,7 @@ export default function Inventory() {
     fetchInventory();
   }, [fetchInventory]);
 
-  const { data: masterProductsData } = useCachedQuery(
+  const { data: masterProductsData, loading: loadingMasterProducts } = useCachedQuery(
     "catalog-master-products",
     () => api.get("/catalog/products").then((res) => res.data || [])
   );
@@ -618,7 +618,7 @@ export default function Inventory() {
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 max-w-full flex-col gap-4 overflow-x-clip overflow-y-auto pb-2 xl:h-full xl:overflow-y-hidden">
+    <div className="flex min-h-0 min-w-0 max-w-full flex-col gap-4 overflow-x-clip overflow-y-auto pb-2 xl:h-full">
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Total Products" value={String(stats.totalProducts)} hint="Catalog count" tone="sky" icon={<Boxes size={18} />} />
         <KpiCard title="Low Stock Items" value={String(stats.low)} hint="Need replenishment" tone="amber" icon={<AlertTriangle size={18} />} />
@@ -916,13 +916,17 @@ export default function Inventory() {
                     }
                   }}
                   className="w-full"
-                >
-                  {masterProductsList.map((mp) => (
-                    <option key={mp.id} value={mp.id}>
-                      {mp.name} {mp.brand ? `(${mp.brand})` : ""}
-                    </option>
-                  ))}
-                </Select>
+                  options={masterProductsList.map((mp) => ({
+                    value: String(mp.id),
+                    label: `${mp.name}${mp.brand ? ` (${mp.brand})` : ""}`,
+                  }))}
+                />
+                {(!masterProductsList.length && !loadingMasterProducts) && (
+                  <p className="mt-2 text-xs text-slate-400">No master products have been created yet.</p>
+                )}
+                {loadingMasterProducts && (
+                  <p className="mt-2 text-xs text-slate-400">Loading master products...</p>
+                )}
               </div>
 
               {Boolean(form.master_product_id) && (() => {
@@ -960,13 +964,11 @@ export default function Inventory() {
                         }
                       }}
                       className="w-full font-mono text-amber-200"
-                    >
-                      {mpVariants.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {v.display_name || v.sku} (SKU: {v.sku} | Price: Rs. {v.default_selling_price})
-                        </option>
-                      ))}
-                    </Select>
+                      options={mpVariants.map((v) => ({
+                        value: String(v.id),
+                        label: `${v.display_name || v.sku} (SKU: ${v.sku} | Price: Rs. ${v.default_selling_price})`,
+                      }))}
+                    />
                   </div>
                 );
               })()}

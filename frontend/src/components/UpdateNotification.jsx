@@ -48,6 +48,14 @@ export default function UpdateNotification() {
     };
   }, []);
 
+  const handleDownloadNow = async () => {
+    try {
+      await window.istore.updater.downloadUpdate();
+    } catch (err) {
+      console.error("Failed to trigger update download:", err);
+    }
+  };
+
   const handleInstallNow = async () => {
     try {
       await window.istore.updater.installUpdate();
@@ -105,7 +113,17 @@ export default function UpdateNotification() {
 
       {status === "checking" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>Contacting GitHub Releases…</p>}
 
-      {status === "available" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>Choose “Download now” in the update prompt to continue.</p>}
+      {status === "available" && (
+        <div style={{ marginTop: "12px" }}>
+          <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#cbd5e1" }}>A verified update is available. Download it now to keep the POS system protected.</p>
+          <button
+            onClick={handleDownloadNow}
+            style={{ width: "100%", padding: "8px 14px", backgroundColor: "#0f766e", color: "#ffffff", border: "none", borderRadius: "6px", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
+          >
+            Download Update
+          </button>
+        </div>
+      )}
 
       {status === "not-available" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>You already have the latest iStore OS release.</p>}
 

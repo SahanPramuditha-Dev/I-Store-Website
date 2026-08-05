@@ -107,7 +107,7 @@ export default function AdvancePayments() {
   if (loading) return <Loading text="Loading advance payments..." />;
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pb-2 text-slate-200 xl:h-full xl:overflow-hidden">
+    <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pb-2 text-slate-200 xl:h-full overflow-y-auto">
       <PageHeader
         eyebrow="Customers / Money Control"
         title="Advance Payments"

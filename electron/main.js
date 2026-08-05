@@ -29,6 +29,68 @@ const isDev = process.env.NODE_ENV === "development";
 let backendProcess = null;
 let backendLogHandle = null;
 
+function resolveDataRoot() {
+  try {
+    return path.join(app.getPath("localAppData"), "iStore");
+  } catch (_err) {
+    return path.join(app.getPath("userData"), "iStore");
+  }
+}
+
+function ensureDataRootMigration() {
+  const legacyUserData = app.getPath("userData");
+  const targetUserData = resolveDataRoot();
+  if (path.resolve(legacyUserData) === path.resolve(targetUserData)) return;
+
+  try {
+    fs.mkdirSync(targetUserData, { recursive: true });
+  } catch (_err) {
+    return;
+  }
+
+  const migrationMarker = path.join(targetUserData, "migration.json");
+  if (fs.existsSync(migrationMarker)) return;
+
+  const candidates = [
+    "database",
+    "uploads",
+    "logs",
+    "backups",
+    "istore-local.db",
+  ];
+
+  for (const item of candidates) {
+    const src = path.join(legacyUserData, item);
+    const dest = path.join(targetUserData, item);
+    if (!fs.existsSync(src) || fs.existsSync(dest)) continue;
+    try {
+      if (fs.statSync(src).isDirectory()) {
+        fs.cpSync(src, dest, { recursive: true, errorOnExist: false });
+      } else {
+        fs.copyFileSync(src, dest);
+      }
+    } catch (_err) {
+    }
+  }
+
+  try {
+    fs.writeFileSync(
+      migrationMarker,
+      JSON.stringify(
+        {
+          migrated_at: new Date().toISOString(),
+          from: legacyUserData,
+          to: targetUserData,
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+  } catch (_err) {
+  }
+}
+
 // ── Local API service ─────────────────────────────────────────────────────
 // The renderer always talks to 127.0.0.1:8000 in Electron. During source
 // development use the repository virtual environment; release builds use the
@@ -41,16 +103,17 @@ function startBackend() {
     ? []
     : ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"];
   const cwd = app.isPackaged ? path.dirname(executable) : path.join(__dirname, "..");
-  const dataDirectory = app.getPath("userData");
+  const dataDirectory = resolveDataRoot();
   const databaseDirectory = path.join(dataDirectory, "database");
+  const backupsDirectory = path.join(dataDirectory, "backups");
   const uploadsDirectory = path.join(dataDirectory, "uploads");
   const logsDirectory = path.join(dataDirectory, "logs");
-  const databaseFile = path.join(databaseDirectory, "istore.db").replace(/\\/g, "/");
   const backendLogPath = path.join(dataDirectory, "backend.log");
 
   // The installed application's resources live under Program Files and are
   // read-only for standard users. Persist backend data outside that folder.
   fs.mkdirSync(databaseDirectory, { recursive: true });
+  fs.mkdirSync(backupsDirectory, { recursive: true });
   fs.mkdirSync(uploadsDirectory, { recursive: true });
   fs.mkdirSync(logsDirectory, { recursive: true });
 
@@ -74,13 +137,20 @@ function startBackend() {
     ISTORE_API_PORT: "8000",
     ISTORE_UPLOADS_DIR: uploadsDirectory,
     ISTORE_BACKEND_LOG_FILE: path.join(logsDirectory, "backend-api.log"),
-    // The backend takes a backup before applying database migrations. The
-    // database remains in userData, outside the replaceable app bundle.
-    AUTO_MIGRATE_ENABLED: "true",
-    BACKUP_BEFORE_MIGRATE: "true",
+    // Explicitly set the data root so the backend EXE always uses the correct
+    // user data directory regardless of how LOCALAPPDATA or userData resolves.
+    ISTORE_DATA_ROOT: dataDirectory,
+    // Schema migration and recovery are deliberately disabled during normal
+    // desktop startup.  Running them while SQLite/WAL files are still being
+    // opened can select a legacy database and leave the API unusable.
+    AUTO_MIGRATE_ENABLED: "false",
+    BACKUP_BEFORE_MIGRATE: "false",
     ALLOW_RUNTIME_SCHEMA_SYNC: "false",
+    SQLITE_FILE: path.join(databaseDirectory, "istore.db"),
+    BACKUP_FOLDER: backupsDirectory,
+    // Do not set DATABASE_URL here. config.py derives it from SQLITE_FILE,
+    // preserving SQLite's Windows path handling in one place.
   };
-  if (app.isPackaged) backendEnv.DATABASE_URL = `sqlite:///${databaseFile}`;
 
   backendProcess = spawn(executable, args, {
     cwd,
@@ -179,11 +249,27 @@ function createWindow() {
     // IPC handlers auto-removed on window close
   });
 
+  // Auto-launch on Windows startup IPC handlers
+  ipcMain.handle("app:getAutoLaunch", () => {
+    return app.getLoginItemSettings().openAtLogin;
+  });
+
+  ipcMain.handle("app:setAutoLaunch", (_e, openAtLogin) => {
+    app.setLoginItemSettings({
+      openAtLogin: Boolean(openAtLogin),
+      path: app.getPath("exe"),
+    });
+    return app.getLoginItemSettings().openAtLogin;
+  });
+
   return win;
 }
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  ensureDataRootMigration();
+  const targetUserData = resolveDataRoot();
+  app.setPath("userData", targetUserData);
   startBackend();
   await initDatabase();
   const win = createWindow();

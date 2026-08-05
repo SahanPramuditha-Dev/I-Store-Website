@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import sqlite3
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -56,6 +57,137 @@ def _write_checksum(path: Path) -> str:
     checksum = _sha256(path)
     path.with_suffix(path.suffix + ".sha256").write_text(checksum, encoding="utf-8")
     return checksum
+
+
+def _checkpoint_sqlite_database(db_path: Path) -> None:
+    if not db_path.exists():
+        return
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.warning(f"SQLite checkpoint skipped for backup: {exc}")
+
+
+def perform_database_maintenance(db_path: Path | None = None) -> dict[str, Any]:
+    from app.config import DB_FILE
+    target = Path(db_path or DB_FILE)
+    if not target.exists():
+        return {"success": False, "message": "Database file not found"}
+    try:
+        conn = sqlite3.connect(str(target))
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            conn.execute("PRAGMA optimize;")
+            conn.execute("ANALYZE;")
+            conn.commit()
+        finally:
+            conn.close()
+        logger.info(f"Database maintenance completed successfully on {target.name}")
+        return {"success": True, "message": "Database WAL checkpoint and optimization completed"}
+    except Exception as exc:
+        logger.error(f"Database maintenance error: {exc}")
+        return {"success": False, "message": str(exc)}
+
+
+def _remove_sqlite_companion_files(db_path: Path) -> None:
+    for suffix in ("-wal", "-shm"):
+        candidate = db_path.with_name(db_path.name + suffix)
+        if candidate.exists():
+            candidate.unlink(missing_ok=True)
+
+
+def _is_sqlite_header(path: Path) -> bool:
+    if not path.exists():
+        return False
+    try:
+        with path.open("rb") as fh:
+            return fh.read(16) == b"SQLite format 3\x00"
+    except Exception:
+        return False
+
+
+def _is_valid_sqlite_database(path: Path) -> bool:
+    if not _is_sqlite_header(path):
+        return False
+    try:
+        conn = sqlite3.connect(str(path))
+        cur = conn.cursor()
+        cur.execute("PRAGMA integrity_check;")
+        result = cur.fetchone()
+        return result == ("ok",)
+    except Exception:
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _restore_backup_candidate(backup_path: Path, live_db: Path, backup_dir: Path) -> bool:
+    work_dir = Path(tempfile.mkdtemp(prefix="istore_repair_"))
+    try:
+        stage = work_dir / backup_path.name
+        stage.write_bytes(backup_path.read_bytes())
+
+        if _is_encrypted(stage):
+            passphrase = settings.backup_encryption_passphrase.strip()
+            if not passphrase:
+                return False
+            decrypted = work_dir / ("decrypted_payload.gz" if backup_path.name.lower().endswith(".gz.enc") else "decrypted_payload.sqlite")
+            _decrypt_file(stage, passphrase, decrypted)
+            stage = decrypted
+
+        sqlite_candidate = work_dir / "restored.sqlite"
+        if _is_gz(stage):
+            _decompress_file(stage, sqlite_candidate)
+        else:
+            shutil.copy2(stage, sqlite_candidate)
+
+        if not _is_valid_sqlite_database(sqlite_candidate):
+            return False
+
+        if live_db.exists():
+            pre_restore_name = f"pre_restore_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.sqlite"
+            pre_restore_path = backup_dir / pre_restore_name
+            shutil.copy2(live_db, pre_restore_path)
+            _write_checksum(pre_restore_path)
+
+        shutil.copy2(sqlite_candidate, live_db)
+        _remove_sqlite_companion_files(live_db)
+        return True
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def recover_database_from_latest_valid_backup() -> dict[str, Any] | None:
+    live_db = Path(settings.sqlite_file)
+    if live_db.exists() and _is_valid_sqlite_database(live_db):
+        return None
+
+    backup_dir = Path(settings.backup_folder)
+    files = _list_backup_files()
+    for candidate in files:
+        checksum_ok, _, _ = _verify_checksum(candidate)
+        if not checksum_ok:
+            continue
+        try:
+            if _restore_backup_candidate(candidate, live_db, backup_dir):
+                restored_at = _now_utc_iso()
+                return {
+                    "status": "recovered",
+                    "restored": candidate.name,
+                    "restored_at": restored_at,
+                    "live_db": str(live_db),
+                }
+        except Exception:
+            continue
+    return None
 
 
 def _verify_checksum(path: Path) -> tuple[bool, str | None, str]:
@@ -243,6 +375,7 @@ def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -
     artifact_name = _build_backup_filename(is_auto)
     artifact_path = backup_dir / artifact_name
 
+    _checkpoint_sqlite_database(db_path)
     with tempfile.NamedTemporaryFile(prefix="istore_snapshot_", suffix=".sqlite", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     shutil.copy2(db_path, tmp_path)
@@ -389,6 +522,7 @@ def restore_backup(db: Session, filename: str) -> dict[str, Any]:
         _write_checksum(pre_path)
 
         shutil.copy2(sqlite_candidate, live_db)
+        _remove_sqlite_companion_files(live_db)
         restored_at = _now_utc_iso()
         _upsert_setting(db, LAST_RESTORE_KEY, restored_at)
 

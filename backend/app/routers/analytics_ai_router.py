@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -116,3 +116,24 @@ def get_delayed_repairs_analytics(
         }
         for r in repairs
     ]
+
+
+@router.get("/peak-hours", response_model=List[Dict[str, Any]], dependencies=[Depends(require_permission("reports.view"))])
+def get_peak_hours_analytics(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """BI Endpoint: Distribution of sales and revenue by hour of the day."""
+    start_date = datetime.utcnow() - timedelta(days=days)
+    sales = db.query(Sale).filter(Sale.created_at >= start_date, Sale.is_voided == False).all()
+    
+    hourly_data = {h: {"hour": h, "sales_count": 0, "total_revenue": 0.0} for h in range(24)}
+    for s in sales:
+        if s.created_at:
+            h = s.created_at.hour
+            hourly_data[h]["sales_count"] += 1
+            hourly_data[h]["total_revenue"] += float(s.total or 0.0)
+            
+    return list(hourly_data.values())
+

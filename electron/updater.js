@@ -8,23 +8,52 @@
 "use strict";
 
 const { autoUpdater } = require("electron-updater");
-const { app, dialog, ipcMain } = require("electron");
+const { app, ipcMain } = require("electron");
 const db = require("./local-db");
 const { createBackup } = require("./db-backup");
 const fs = require("fs");
 const path = require("path");
 
+// GitHub's provider discovery can return the repository RSS feed on some
+// release configurations.  Electron-updater expects YAML metadata, so use
+// GitHub's stable release-asset URL instead.
+const UPDATE_METADATA_URL = "https://github.com/SahanPramuditha-Dev/I-Store-Website/releases/latest/download";
+// Only enable release checks after the release pipeline has published a
+// matching latest.yml and blockmap.  This keeps a missing/broken GitHub
+// release from disrupting normal desktop use.
+const UPDATE_CHECKS_ENABLED = process.env.ISTORE_ENABLE_AUTO_UPDATES === "true";
+
 let _mainWindow = null;
 let initialized = false;
 let checkInProgress = false;
+let operationsState = { active: false, reason: null, route: null };
+let stopBackendFn = null;
+let lastUpdateInfo = null;
 
-function initAutoUpdater(win) {
+function _logEvent(event, payload = {}) {
+  try {
+    const logsDir = path.join(app.getPath("userData"), "logs");
+    fs.mkdirSync(logsDir, { recursive: true });
+    const line = JSON.stringify({ at: new Date().toISOString(), event, ...payload });
+    fs.appendFileSync(path.join(logsDir, "update.log"), `${line}\n`, "utf-8");
+  } catch (_err) {
+  }
+}
+
+function initAutoUpdater(win, options = {}) {
   _mainWindow = win;
+  stopBackendFn = typeof options.stopBackend === "function" ? options.stopBackend : null;
   if (initialized) return;
   initialized = true;
 
   // Logging configuration
   autoUpdater.logger = console;
+  if (app.isPackaged && UPDATE_CHECKS_ENABLED) {
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: UPDATE_METADATA_URL,
+    });
+  }
   // Never trigger another installer without an explicit user action. This
   // avoids an update download being mistaken for a second setup prompt after
   // the initial installation.
@@ -34,37 +63,31 @@ function initAutoUpdater(win) {
   // ── Event Handlers ────────────────────────────────────────────────────────
   autoUpdater.on("checking-for-update", () => {
     console.log("[updater] Checking for update...");
+    _logEvent("checking_for_update");
     _sendToRenderer("updater:status", { status: "checking" });
   });
 
   autoUpdater.on("update-available", (info) => {
     console.log(`[updater] Update available: v${info.version}`);
+    lastUpdateInfo = info;
+    _logEvent("update_available", { version: info.version });
     _sendToRenderer("updater:status", {
       status: "available",
       version: info.version,
       releaseNotes: info.releaseNotes,
     });
-    dialog.showMessageBox(_mainWindow, {
-      type: "info",
-      title: "Update available",
-      message: `Version ${info.version} is available.`,
-      detail: "Would you like to download it now? You can continue using I-Store while it downloads.",
-      buttons: ["Download now", "Not now"],
-      defaultId: 0,
-      cancelId: 1,
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.downloadUpdate();
-      else _sendToRenderer("updater:status", { status: "deferred", version: info.version });
-    }).catch((error) => console.error("[updater] Update prompt failed:", error.message));
   });
 
   autoUpdater.on("update-not-available", () => {
     console.log("[updater] App is up to date.");
+    lastUpdateInfo = null;
+    _logEvent("update_not_available");
     _sendToRenderer("updater:status", { status: "not-available" });
   });
 
   autoUpdater.on("error", (err) => {
     console.error("[updater] Error during update:", err.message);
+    _logEvent("update_error", { error: err.message });
     // Don't toast error to UI if it's just missing publish metadata (e.g. app-update.yml)
     if (!err.message.includes("app-update.yml") && !err.message.includes("ENOENT")) {
       _sendToRenderer("updater:status", { status: "error", error: err.message });
@@ -72,6 +95,7 @@ function initAutoUpdater(win) {
   });
 
   autoUpdater.on("download-progress", (progress) => {
+    _logEvent("download_progress", { percent: progress.percent });
     _sendToRenderer("updater:progress", {
       percent: progress.percent,
       bytesPerSecond: progress.bytesPerSecond,
@@ -82,19 +106,15 @@ function initAutoUpdater(win) {
 
   autoUpdater.on("update-downloaded", async (info) => {
     console.log(`[updater] Update v${info.version} downloaded.`);
+    lastUpdateInfo = info;
+    _logEvent("update_downloaded", { version: info.version });
     _sendToRenderer("updater:status", { status: "downloaded", version: info.version });
     _sendToRenderer("updater:status", { status: "ready-to-install", version: info.version });
-    dialog.showMessageBox(_mainWindow, {
-      type: "info",
-      title: "Update ready",
-      message: `Version ${info.version} has been downloaded.`,
-      detail: "Restart when convenient to install it. Your POS data will be backed up immediately before the restart.",
-      buttons: ["Later"],
-    }).catch(() => {});
   });
 
   // ── Register IPC Handlers for Updater ────────────────────────────────────
   ipcMain.handle("updater:check", async () => {
+    if (!UPDATE_CHECKS_ENABLED) return { skipped: true, reason: "release-metadata-unavailable" };
     if (!app.isPackaged) return { skipped: true, reason: "Updates are available only in installed releases." };
     if (checkInProgress) return { checking: true };
     try {
@@ -107,38 +127,89 @@ function initAutoUpdater(win) {
     }
   });
 
+  ipcMain.handle("updater:download", async () => {
+    if (!app.isPackaged) return { skipped: true, reason: "Updates are available only in installed releases." };
+    if (operationsState.active) {
+      _sendToRenderer("updater:status", { status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
+      return { blocked: true, reason: operationsState.reason || "operations-active" };
+    }
+    try {
+      _logEvent("download_requested");
+      return await autoUpdater.downloadUpdate();
+    } catch (err) {
+      _logEvent("download_failed", { error: err.message });
+      _sendToRenderer("updater:status", { status: "error", error: err.message });
+      return { error: err.message };
+    }
+  });
+
   ipcMain.handle("updater:install", async () => {
-    const { response } = await dialog.showMessageBox(_mainWindow, {
-      type: "question",
-      title: "Install update",
-      message: "Restart and install the downloaded update?",
-      detail: "The current POS databases will be backed up before the application restarts.",
-      buttons: ["Restart and install", "Cancel"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (response !== 0) return { cancelled: true };
+    if (!app.isPackaged) return { skipped: true, reason: "Updates are available only in installed releases." };
+    if (operationsState.active) {
+      _logEvent("install_blocked", { reason: operationsState.reason || "operations-active", route: operationsState.route });
+      _sendToRenderer("updater:status", { status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
+      return { blocked: true, reason: operationsState.reason || "operations-active" };
+    }
 
     try {
+      const pending = typeof db.getPendingOutbox === "function" ? db.getPendingOutbox() : [];
+      if (Array.isArray(pending) && pending.length > 0) {
+        _logEvent("install_blocked", { reason: "pending-outbox", count: pending.length });
+        _sendToRenderer("updater:status", { status: "blocked", reason: "pending-outbox", count: pending.length });
+        return { blocked: true, reason: "pending-outbox", count: pending.length };
+      }
+
+      _logEvent("pre_install_backup_started");
+      const BACKUP_TIMEOUT_MS = 60000;
       const paths = [db.getPath(), path.join(app.getPath("userData"), "database", "istore.db")];
       for (const databasePath of new Set(paths)) {
-        if (databasePath && fs.existsSync(databasePath)) await createBackup(databasePath);
+        if (databasePath && fs.existsSync(databasePath)) {
+          await Promise.race([
+            createBackup(databasePath),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Pre-install backup timed out after 60s")), BACKUP_TIMEOUT_MS)
+            ),
+          ]);
+        }
       }
+      _logEvent("pre_install_backup_completed");
+
       db.close();
+      if (stopBackendFn) {
+        try {
+          await Promise.resolve(stopBackendFn());
+        } catch (_err) {
+        }
+      }
+      _logEvent("quit_and_install");
       autoUpdater.quitAndInstall(false, true);
       return { installing: true };
     } catch (error) {
       console.error("[updater] Backup failed before install:", error);
+      _logEvent("pre_install_failed", { error: error.message });
       _sendToRenderer("updater:status", { status: "backup-failed", error: error.message });
       return { error: error.message };
     }
   });
 
-  // Check for updates silently shortly after launch in production mode
-  if (process.env.NODE_ENV !== "development" && require("electron").app.isPackaged) {
+  ipcMain.handle("updater:getVersion", () => {
+    return { version: app.getVersion() };
+  });
+
+  ipcMain.handle("updater:setOperationsActive", (_e, active, detail = {}) => {
+    operationsState = {
+      active: Boolean(active),
+      reason: detail?.reason || null,
+      route: detail?.route || null,
+    };
+    _logEvent("operations_state", operationsState);
+    return operationsState;
+  });
+
+  if (UPDATE_CHECKS_ENABLED && process.env.NODE_ENV !== "development" && require("electron").app.isPackaged) {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch((err) => {
-        console.warn("[updater] Background update check failed:", err.message);
+        _logEvent("background_check_failed", { error: err.message });
       });
     }, 5_000);
   }
