@@ -1,7 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Sparkles, X, Send, Trash2, Bot } from "lucide-react";
+import { Sparkles, X, Send, Trash2, Bot, TrendingUp, AlertTriangle, Wrench, DollarSign } from "lucide-react";
 import { useAIChat } from "./useAIChat";
 import "./AIAssistant.css";
+
+const QUICK_PROMPTS = [
+  { label: "📊 Store Summary", prompt: "Give me a quick executive summary of today's sales, active repairs, and low stock status.", icon: TrendingUp },
+  { label: "⚠️ Low Stock Alert", prompt: "Which inventory items are currently at or below their low stock safety threshold?", icon: AlertTriangle },
+  { label: "🔧 Repair Status", prompt: "Summarize active repair tickets and what requires immediate attention.", icon: Wrench },
+  { label: "💰 Outstanding Balances", prompt: "What is the total unpaid customer balance and outstanding customer invoices?", icon: DollarSign },
+];
 
 export default function AIAssistant() {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,9 +22,9 @@ export default function AIAssistant() {
     }
   }, [messages, isOpen]);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-    const text = inputText;
+  const handleSend = (textToSend) => {
+    const text = textToSend || inputText;
+    if (!text.trim() || isLoading) return;
     setInputText("");
     sendMessage(text);
   };
@@ -85,6 +92,29 @@ export default function AIAssistant() {
                 )}
               </div>
             ))}
+
+            {/* Quick Action Chips when conversation is initial */}
+            {messages.length <= 1 && !isLoading && (
+              <div className="ai-quick-chips">
+                <div className="ai-quick-title">Suggested Quick Actions:</div>
+                <div className="ai-chips-grid">
+                  {QUICK_PROMPTS.map((qp, i) => {
+                    const IconComp = qp.icon;
+                    return (
+                      <button
+                        key={i}
+                        className="ai-chip-btn"
+                        onClick={() => handleSend(qp.prompt)}
+                      >
+                        <IconComp size={14} className="ai-chip-icon" />
+                        <span>{qp.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div ref={chatBottomRef} />
           </div>
 
@@ -101,7 +131,7 @@ export default function AIAssistant() {
             />
             <button
               className="ai-send-btn"
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={isLoading || !inputText.trim()}
             >
               <Send size={16} />
@@ -112,3 +142,4 @@ export default function AIAssistant() {
     </>
   );
 }
+

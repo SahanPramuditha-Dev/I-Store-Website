@@ -60,6 +60,8 @@ echo     OK - Copied.
 echo.
 
 echo [4/5] Building the local backend service...
+echo     Cleaning stale backend process and bundle...
+powershell -NoProfile -Command "if (Get-Process -Name IStoreBackend -ErrorAction SilentlyContinue) { Get-Process -Name IStoreBackend -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }; if (Test-Path '%ELECTRON%\\backend-dist\\IStoreBackend') { Remove-Item -LiteralPath '%ELECTRON%\\backend-dist\\IStoreBackend' -Recurse -Force -ErrorAction SilentlyContinue }; if (Test-Path '%ELECTRON%\\build-backend\\IStoreBackend') { Remove-Item -LiteralPath '%ELECTRON%\\build-backend\\IStoreBackend' -Recurse -Force -ErrorAction SilentlyContinue }"
 if not exist "%PYTHON%" (
     echo ERROR: Python virtual environment not found: %PYTHON%
     echo Run: .venv\Scripts\pip install -r backend\requirements.txt
@@ -67,7 +69,7 @@ if not exist "%PYTHON%" (
     exit /b 1
 )
 cd /d "%ROOT%"
-call "%PYTHON%" -m PyInstaller --noconfirm --clean --onedir --name IStoreBackend --distpath "%ELECTRON%\backend-dist" --workpath "%ELECTRON%\build-backend" --specpath "%ELECTRON%\build-backend" --paths "%ROOT%\backend" --collect-all certifi --collect-all passlib --collect-submodules app --collect-data app "%ROOT%\backend\desktop_server.py"
+call "%PYTHON%" -m PyInstaller --noconfirm --clean --onedir --name IStoreBackend --distpath "%ELECTRON%\backend-dist" --workpath "%ELECTRON%\build-backend" --specpath "%ELECTRON%\build-backend" --paths "%ROOT%\backend" --hidden-import app.main --collect-all certifi --collect-all passlib --collect-submodules app --collect-data app "%ROOT%\backend\desktop_server.py"
 if !errorlevel! neq 0 (
     echo ERROR: Backend packaging failed!
     pause
@@ -77,6 +79,10 @@ echo     OK - Local backend bundled.
 echo.
 
 echo [5/5] Packaging NSIS installer and update metadata...
+if exist "%DIST%\*.nsis.7z" (
+    echo     Removing stale NSIS archive artifacts...
+    del /q "%DIST%\*.nsis.7z"
+)
 cd /d "%ELECTRON%"
 call npx electron-builder --win nsis %PUBLISH_ARG%
 if !errorlevel! neq 0 (

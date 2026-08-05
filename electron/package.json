@@ -1,6 +1,6 @@
 {
   "name": "istore-electron",
-  "version": "1.1.15",
+  "version": "1.1.39",
   "description": "I-Store ERP – Electron Desktop Host (Offline Engine)",
   "main": "main.js",
   "private": true,
@@ -10,7 +10,9 @@
     "package": "electron-builder --win nsis --publish never",
     "dist": "electron-builder --win nsis --publish never",
     "release": "electron-builder --win nsis --publish always",
-    "setup:electron": "node scripts/extract-electron.js"
+    "release:ci": "electron-builder --win nsis --publish always",
+    "setup:electron": "node scripts/extract-electron.js",
+    "test:rollback": "node scripts/test-update-rollback.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -21,7 +23,8 @@
     "cross-env": "^7.0.3",
     "electron": "^31.7.7",
     "electron-builder": "^24.13.3",
-    "innosetup-compiler": "^6.3.1"
+    "innosetup-compiler": "^6.3.1",
+    "sqlite3": "^5.1.7"
   },
   "build": {
     "appId": "com.istore.erp",
@@ -44,20 +47,30 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "../assets/icon.ico",
-      "verifyUpdateCodeSignature": true
+      "verifyUpdateCodeSignature": false,
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
-      "packElevateHelper": true,
+      "perMachine": false,
+      "packElevateHelper": false,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "I-Store-ERP-Setup-${version}.${ext}"
+      "artifactName": "I-Store-ERP-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "installerIcon": "../assets/icon.ico",
+      "uninstallerIcon": "../assets/icon.ico",
+      "include": "installer.nsh"
     },
     "mac": {
       "target": "dmg",

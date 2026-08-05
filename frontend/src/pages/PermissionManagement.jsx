@@ -498,7 +498,7 @@ export default function PermissionManagement() {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-20 pr-1 xl:h-full xl:overflow-hidden">
+    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-20 pr-1 xl:h-full overflow-y-auto">
       <PageHeader
         eyebrow="Access Control & Security"
         title="Permission Management"

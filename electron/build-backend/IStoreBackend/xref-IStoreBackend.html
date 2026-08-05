@@ -271,6 +271,7 @@ imports:
  &#8226;   <a href="#sre_constants">sre_constants</a>
  &#8226;   <a href="#sre_parse">sre_parse</a>
  &#8226;   <a href="#stat">stat</a>
+ &#8226;   <a href="#sys">sys</a>
  &#8226;   <a href="#traceback">traceback</a>
  &#8226;   <a href="#types">types</a>
  &#8226;   <a href="#uvicorn">uvicorn</a>
@@ -7265,6 +7266,7 @@ imported by:
  &#8226;   <a href="#app.main">app.main</a>
  &#8226;   <a href="#app.migrations">app.migrations</a>
  &#8226;   <a href="#app.routers.backup_router">app.routers.backup_router</a>
+ &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.services.ai_service">app.services.ai_service</a>
  &#8226;   <a href="#app.services.backup_scheduler">app.services.backup_scheduler</a>
  &#8226;   <a href="#app.services.backup_service">app.services.backup_service</a>
@@ -7354,6 +7356,7 @@ imports:
 imported by:
     <a href="#app.auth">app.auth</a>
  &#8226;   <a href="#app.main">app.main</a>
+ &#8226;   <a href="#app.migrations">app.migrations</a>
  &#8226;   <a href="#app.models">app.models</a>
  &#8226;   <a href="#app.routers.access_router">app.routers.access_router</a>
  &#8226;   <a href="#app.routers.advance_router">app.routers.advance_router</a>
@@ -7479,6 +7482,8 @@ imports:
  &#8226;   <a href="#alembic.config">alembic.config</a>
  &#8226;   <a href="#app">app</a>
  &#8226;   <a href="#app.config">app.config</a>
+ &#8226;   <a href="#app.database">app.database</a>
+ &#8226;   <a href="#app.services.backup_service">app.services.backup_service</a>
  &#8226;   <a href="#pathlib">pathlib</a>
 
   </div>
@@ -8345,16 +8350,19 @@ imported by:
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
     <a href="#app.auth">app.auth</a>
+ &#8226;   <a href="#app.config">app.config</a>
  &#8226;   <a href="#app.database">app.database</a>
  &#8226;   <a href="#app.models">app.models</a>
  &#8226;   <a href="#app.routers">app.routers</a>
  &#8226;   <a href="#app.schemas">app.schemas</a>
+ &#8226;   <a href="#app.services.backup_service">app.services.backup_service</a>
  &#8226;   <a href="#app.services.security_service">app.services.security_service</a>
  &#8226;   <a href="#copy">copy</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#fastapi">fastapi</a>
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
  &#8226;   <a href="#typing">typing</a>
 
   </div>
@@ -8664,6 +8672,7 @@ imports:
  &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#shutil">shutil</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
+ &#8226;   <a href="#sqlite3">sqlite3</a>
  &#8226;   <a href="#tempfile">tempfile</a>
  &#8226;   <a href="#typing">typing</a>
  &#8226;   <a href="#uuid">uuid</a>
@@ -8672,7 +8681,9 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.main">app.main</a>
+ &#8226;   <a href="#app.migrations">app.migrations</a>
  &#8226;   <a href="#app.routers.backup_router">app.routers.backup_router</a>
+ &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.services.backup_scheduler">app.services.backup_scheduler</a>
 
   </div>
@@ -79439,7 +79450,9 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#sqlalchemy.dialects.sqlite.pysqlite">sqlalchemy.dialects.sqlite.pysqlite</a>
+    <a href="#app.routers.settings_router">app.routers.settings_router</a>
+ &#8226;   <a href="#app.services.backup_service">app.services.backup_service</a>
+ &#8226;   <a href="#sqlalchemy.dialects.sqlite.pysqlite">sqlalchemy.dialects.sqlite.pysqlite</a>
  &#8226;   <a href="#sqlite3">sqlite3</a>
  &#8226;   <a href="#sqlite3.__main__">sqlite3.__main__</a>
  &#8226;   <a href="#sqlite3.dbapi2">sqlite3.dbapi2</a>
@@ -80785,6 +80798,7 @@ imported by:
  &#8226;   <a href="#ctypes._layout">ctypes._layout</a>
  &#8226;   <a href="#dataclasses">dataclasses</a>
  &#8226;   <a href="#decimal">decimal</a>
+ &#8226;   <a href="#desktop_server.py">desktop_server.py</a>
  &#8226;   <a href="#dis">dis</a>
  &#8226;   <a href="#doctest">doctest</a>
  &#8226;   <a href="#dotenv.main">dotenv.main</a>

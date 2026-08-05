@@ -24,7 +24,7 @@ const ALLOWED_INVOKE = new Set([
   "db:cursor:get", "db:cursor:set",
   "db:auth:setToken",
   "db:sync:push", "db:sync:pull",
-  "updater:check", "updater:install",
+  "updater:check", "updater:download", "updater:install", "updater:setOperationsActive",
 ]);
 
 // ── Whitelist of valid "on" event channels ────────────────────────────────
@@ -70,7 +70,9 @@ contextBridge.exposeInMainWorld("istore", {
   // ── Auto Updater ─────────────────────────────────────────────────────
   updater: {
     checkForUpdates: () => safeInvoke("updater:check"),
+    downloadUpdate:  () => safeInvoke("updater:download"),
     installUpdate:   () => safeInvoke("updater:install"),
+    setOperationsActive: (active, detail) => safeInvoke("updater:setOperationsActive", active, detail),
     onStatus: (callback) => {
       const handler = (_e, data) => callback(data);
       ipcRenderer.on("updater:status", handler);
@@ -81,6 +83,12 @@ contextBridge.exposeInMainWorld("istore", {
       ipcRenderer.on("updater:progress", handler);
       return () => ipcRenderer.removeListener("updater:progress", handler);
     },
+  },
+
+  // ── Auto Launch ──────────────────────────────────────────────────────
+  autoLaunch: {
+    get: () => safeInvoke("app:getAutoLaunch"),
+    set: (openAtLogin) => safeInvoke("app:setAutoLaunch", openAtLogin),
   },
 
   // ── Cursors ──────────────────────────────────────────────────────────

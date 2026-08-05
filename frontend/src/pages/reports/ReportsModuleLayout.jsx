@@ -298,7 +298,7 @@ export default function ReportsModuleLayout() {
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <Outlet context={outletContext} />
       </div>
     </div>

@@ -17,7 +17,7 @@ except ImportError:
     GENAI_AVAILABLE = False
 
 from app.config import settings
-from app.models import Sale, InventoryItem, Customer, RepairTicket
+from app.models import Sale, InventoryItem, Customer, RepairTicket, Expense
 
 # Gemini AI Service - Live store integration with auto model fallback
 logger = logging.getLogger("istore.ai_service")
@@ -43,19 +43,30 @@ def get_store_context(db: Session) -> Dict[str, Any]:
         func.count(Sale.id).label("total_orders")
     ).filter(Sale.created_at >= today_start, Sale.is_voided == False).first()
     
-    # 2. Low stock count
-    low_stock_count = db.query(func.count(InventoryItem.id)).filter(
+    # 2. Low stock count and top critical items
+    low_stock_query = db.query(InventoryItem).filter(
         InventoryItem.is_deleted == False,
         InventoryItem.quantity <= InventoryItem.low_stock_threshold
-    ).scalar() or 0
+    ).order_by(InventoryItem.quantity.asc())
+    
+    low_stock_count = low_stock_query.count()
+    critical_items = low_stock_query.limit(5).all()
+    critical_items_summary = [
+        f"{item.name} (SKU: {item.sku}, Stock: {item.quantity}, Min: {item.low_stock_threshold})"
+        for item in critical_items
+    ]
 
-    # 3. Active / Pending repairs count
-    active_repairs_count = db.query(func.count(RepairTicket.id)).filter(
+    # 3. Active / Pending repairs breakdown
+    active_repairs = db.query(RepairTicket).filter(
         RepairTicket.is_deleted == False,
         RepairTicket.status.notin_(["completed", "delivered", "cancelled"])
-    ).scalar() or 0
+    ).all()
+    
+    active_repairs_count = len(active_repairs)
+    pending_repairs = sum(1 for r in active_repairs if r.status in ["received", "pending", "diagnosing"])
+    in_progress_repairs = sum(1 for r in active_repairs if r.status in ["in_progress", "awaiting_parts"])
 
-    # 4. Total Unpaid Customer Balances
+    # 4. Total Unpaid Customer Balances (Receivables)
     unpaid_sales = db.query(Sale).filter(
         Sale.is_voided == False,
         Sale.balance_due > 0,
@@ -63,21 +74,36 @@ def get_store_context(db: Session) -> Dict[str, Any]:
     ).all()
     total_unpaid = sum(float(s.balance_due) for s in unpaid_sales)
 
+    # 5. Expenses today
+    today_expenses = db.query(
+        func.coalesce(func.sum(Expense.amount), 0.0)
+    ).filter(
+        Expense.is_deleted == False,
+        Expense.date >= date.today()
+    ).scalar() or 0.0
+
     return {
         "date": date.today().isoformat(),
         "today_sales_amount": float(sales_query.total_sales or 0.0),
         "today_order_count": int(sales_query.total_orders or 0),
+        "today_expenses_amount": float(today_expenses),
         "low_stock_items_count": low_stock_count,
+        "critical_low_stock_items": critical_items_summary,
         "active_repairs_count": active_repairs_count,
+        "pending_repairs_count": pending_repairs,
+        "in_progress_repairs_count": in_progress_repairs,
         "total_unpaid_customer_balance": total_unpaid
     }
 
-# Ordered fallback chain — official stable models (from ai.google.dev/gemini-api/docs/models)
-# gemini-2.0-flash and gemini-2.0-flash-lite are SHUT DOWN per official docs
+# Ordered fallback chain — official stable models across Gemini generations
 MODEL_FALLBACK_CHAIN = [
-    "gemini-3.5-flash-lite",  # Stable ✓ - fastest/cheapest 3.5
-    "gemini-3.1-flash-lite",  # Stable ✓ - fallback
-    "gemini-3.6-flash",       # Stable ✓ - most capable fallback
+    "gemini-2.5-flash",       # Primary standard fast model
+    "gemini-1.5-flash",       # High reliability fallback
+    "gemini-2.0-flash",       # Next-gen fast model
+    "gemini-1.5-pro",         # Complex reasoning fallback
+    "gemini-2.5-pro",         # Advanced reasoning fallback
+    "gemini-3.5-flash-lite",  # Experimental 3.x lite
+    "gemini-3.6-flash",       # Experimental 3.x flash
 ]
 
 def _is_quota_error(e: Exception) -> bool:
@@ -124,19 +150,24 @@ def generate_ai_response_stream(messages: List[Dict[str, str]], db: Session) -> 
             return
 
         context = get_store_context(db)
+        critical_items_str = "\n".join([f"  • {item}" for item in context['critical_low_stock_items']]) or "  • None (Stock levels healthy)"
+
         system_instruction = f"""
 You are the AI Assistant for 'I Store', an electronics repair, retail, and inventory management POS system.
-Answer store managers concisely, professionally, and accurately.
+Answer store managers concisely, professionally, and accurately using live data.
 
 LIVE STORE SNAPSHOT ({context['date']}):
-- Today's Sales Revenue: ${context['today_sales_amount']:.2f} ({context['today_order_count']} orders)
+- Sales Revenue Today: ${context['today_sales_amount']:.2f} ({context['today_order_count']} orders)
+- Today's Store Expenses: ${context['today_expenses_amount']:.2f}
 - Low Stock Items Count: {context['low_stock_items_count']}
-- Active Repair Tickets: {context['active_repairs_count']}
-- Total Outstanding Unpaid Customer Balance: ${context['total_unpaid_customer_balance']:.2f}
+  Critical Items:
+{critical_items_str}
+- Active Repair Tickets: {context['active_repairs_count']} ({context['pending_repairs_count']} pending/diagnosing, {context['in_progress_repairs_count']} in-progress/parts)
+- Outstanding Customer Receivables: ${context['total_unpaid_customer_balance']:.2f}
 
 Guidelines:
-- Use bullet points and clear formatting.
-- Be direct and friendly.
+- Use bullet points, bold text, and clean structure.
+- Provide actionable business advice for stock, repairs, sales, and debt collection.
 - Highlight urgent issues if asked about store health (e.g. low stock, delayed repairs).
 """
         

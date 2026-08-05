@@ -19,7 +19,8 @@ from app.config import settings
 from app.database import Base
 import app.models  # Import all models to populate Base.metadata
 
-def sync_schema(db_path: Path):
+def sync_schema(db_path):
+    db_path = Path(db_path)
     if not db_path.exists():
         print(f"[ERROR] Database file not found at {db_path}")
         return

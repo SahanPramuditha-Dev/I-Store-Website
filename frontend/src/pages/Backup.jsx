@@ -421,7 +421,7 @@ export default function Backup() {
   if (loading) return <Loading text="Loading backup archives..." />;
 
   return (
-    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 xl:h-full xl:overflow-hidden">
+    <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pb-4 xl:h-full overflow-y-auto">
       <PageHeader
         eyebrow="System Security & Storage"
         title="Backup Center"

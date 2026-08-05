@@ -97,6 +97,7 @@ function Field({ label, value, onChange, type = "text", hint }) {
 
 export default function SystemApisSettingsPanel({ sectionValue, onSectionChange, onSaveSection, saving, toast, confirm }) {
   const [checkingForUpdate, setCheckingForUpdate] = useState(false);
+  const [updaterStatus, setUpdaterStatus] = useState("idle");
   const checkForUpdates = async () => {
     if (!window.istore?.updater) {
       toast("Updates are available only in the installed desktop app.", "info");
@@ -111,6 +112,22 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
       setCheckingForUpdate(false);
     }
   };
+  const handleDownloadUpdate = async () => {
+    if (!window.istore?.updater) {
+      toast("Update controls are unavailable outside the desktop app.", "info");
+      return;
+    }
+    setUpdaterStatus("downloading");
+    try {
+      const result = await window.istore.updater.downloadUpdate();
+      if (result?.blocked) toast("Updates are blocked while sales, repairs, or inventory operations are active.", "warning");
+      else if (result?.error) toast(`Update download failed: ${result.error}`, "error");
+      else setUpdaterStatus("ready");
+    } finally {
+      setTimeout(() => setUpdaterStatus("idle"), 1800);
+    }
+  };
+
   const kpis = useMemo(() => {
     const d = sectionValue || {};
     return [
@@ -300,11 +317,31 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
                 Clear Cache
               </Button>
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <Button size="sm" variant="secondary" onClick={checkForUpdates} disabled={checkingForUpdate}>
                 <Settings2 size={13} /> {checkingForUpdate ? "Checking…" : "Check for Updates"}
               </Button>
+              <Button size="sm" variant="secondary" onClick={handleDownloadUpdate} disabled={updaterStatus === "downloading"}>
+                <PlugZap size={13} /> {updaterStatus === "downloading" ? "Downloading…" : "Download Update"}
+              </Button>
             </div>
+            {window.istore?.autoLaunch && (
+              <div className="col-span-full pt-2">
+                <Toggle
+                  label="Launch I-Store ERP automatically when Windows starts"
+                  checked={data.developer_advanced.auto_launch_enabled ?? false}
+                  onChange={async (v) => {
+                    updatePath("developer_advanced.auto_launch_enabled", v);
+                    try {
+                      await window.istore.autoLaunch.set(v);
+                      toast(v ? "Auto-launch enabled on Windows startup" : "Auto-launch disabled", "info");
+                    } catch (err) {
+                      toast("Failed to update auto-launch setting", "error");
+                    }
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       ),

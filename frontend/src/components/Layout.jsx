@@ -597,9 +597,9 @@ export default function Layout() {
 
           <div className="app-workspace-host min-h-0 min-w-0 flex-1 w-full max-w-none overflow-x-auto overflow-y-auto custom-scrollbar px-3 sm:px-4 pb-3 sm:pb-4 pt-2 sm:pt-2.5">
             <Outlet />
-            <AIAssistant />
           </div>
         </main>
+        <AIAssistant />
       </div>
     </div>
   );

@@ -534,7 +534,7 @@ export default function ReturnsRefunds() {
   }
 
   return (
-    <div className="min-h-0 overflow-y-auto pb-5 xl:h-full xl:overflow-y-hidden">
+    <div className="min-h-0 overflow-y-auto pb-5 xl:h-full overflow-y-auto">
       <div className="space-y-3">
         <PageHeader
           eyebrow="Sales & Stock Policy"

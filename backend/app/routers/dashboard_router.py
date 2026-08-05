@@ -16,11 +16,11 @@ from app.utils.time import utcnow
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
-def _month_start(value):
+def dashboard_month_start(value):
     return value.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _shift_month(value, offset):
+def dashboard_shift_month(value, offset):
     month_index = value.month - 1 + offset
     return value.replace(year=value.year + month_index // 12, month=month_index % 12 + 1)
 
@@ -72,8 +72,8 @@ def dashboard(
     # Sales trend for the dashboard selector.  Build the buckets in Python so
     # SQLite and production database date functions produce the same result.
     if period == "12m":
-        period_start = _shift_month(_month_start(now), -11)
-        bucket_starts = [_shift_month(_month_start(now), -i) for i in range(11, -1, -1)]
+        period_start = dashboard_shift_month(dashboard_month_start(now), -11)
+        bucket_starts = [dashboard_shift_month(dashboard_month_start(now), -i) for i in range(11, -1, -1)]
         trend_label = "Last 12 months"
     else:
         days = 7 if period == "7d" else 30
@@ -90,7 +90,7 @@ def dashboard(
     revenue_overview = []
     for bucket_start in bucket_starts:
         if period == "12m":
-            bucket_end = _shift_month(bucket_start, 1)
+            bucket_end = dashboard_shift_month(bucket_start, 1)
             label = bucket_start.strftime("%b")
         else:
             bucket_end = bucket_start + timedelta(days=1)

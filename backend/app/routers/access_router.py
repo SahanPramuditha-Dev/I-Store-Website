@@ -899,3 +899,59 @@ def access_permission_history(
             }
         )
     return {"total": total, "rows": payload}
+
+
+@router.post("/verify-manager-pin")
+def verify_manager_pin(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Verifies a manager/admin PIN for sensitive POS overrides (voids, discounts, price edits)."""
+    pin = str(payload.get("pin") or "").strip()
+    action = str(payload.get("action") or "pos_override").strip()
+
+    if not pin:
+        raise HTTPException(status_code=400, detail="Manager PIN is required")
+
+    from app.services.security_service import validate_pin
+
+    managers = db.query(User).filter(
+        User.is_deleted == False,
+        User.is_active == True,
+        User.role.in_(["admin", "owner", "manager"]),
+    ).all()
+
+    authorized_manager = None
+    for manager in managers:
+        if manager.pin_hash and validate_pin(pin, manager.pin_hash):
+            authorized_manager = manager
+            break
+
+    if not authorized_manager:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid manager PIN or insufficient manager privileges.",
+        )
+
+    log_access_control_audit(
+        db,
+        user_id=getattr(current_user, "id", None),
+        action=f"manager_pin_override:{action}",
+        target_type="user",
+        target_id=authorized_manager.id,
+        old_value=None,
+        new_value={"authorized_by": authorized_manager.username, "action": action},
+        session_id=None,
+        ip_address=None,
+        device_name=None,
+    )
+    db.commit()
+
+    return {
+        "verified": True,
+        "authorized_by": authorized_manager.username,
+        "authorized_by_id": authorized_manager.id,
+        "role": authorized_manager.role,
+    }
+

@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define MyAppName       "I-Store ERP"
-#define MyAppVersion     "1.1.15"
+#define MyAppVersion     "1.1.39"
 #define MyAppPublisher  "I-Store Dev"
 #define MyAppURL        "https://github.com/SahanPramuditha-Dev/I-Store-Website"
 #define MyAppExeName    "I-Store ERP.exe"
@@ -24,14 +24,17 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 
-; Install under Program Files. Application Control policies commonly block
-; executable files installed in the user-writable AppData folders.
-DefaultDirName={autopf}\{#MyAppName}
+; Install per-user so business data remains in the user's AppData and is not
+; overwritten by future upgrades or by another account on the same machine.
+DefaultDirName={userappdata}\{#MyAppName}
 UsePreviousAppDir=no
 DefaultGroupName={#MyAppName}
 
-; Program Files requires elevation and is a trusted application location.
-PrivilegesRequired=admin
+; Per-user installs do not require elevation and preserve the business data
+; root in the current user's LocalAppData profile.
+PrivilegesRequired=lowest
+CloseApplications=yes
+CloseApplicationsFilter=IStoreBackend.exe
 
 
 OutputDir=..\dist-electron
@@ -73,11 +76,74 @@ Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: st
 [Registry]
 Root: HKCU; Subkey: "Software\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
 
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\userData"
+
 ; -- Run After Install -------------------------------------------------------
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 ; -- Cleanup on Uninstall ----------------------------------------------------
 [UninstallDelete]
-; Uncomment the line below to delete app data on uninstall:
-; Type: filesandordirs; Name: "{userappdata}\{#MyAppName}"
+; Preserve business data by default. The application writes its runtime data to
+; %LOCALAPPDATA%\iStore and should not be deleted during uninstall unless the
+; operator explicitly requests a full reset.
+; Type: filesandordirs; Name: "{userappdata}\iStore"
+
+[Code]
+function ExecuteAndCaptureOutput(const Cmd, Params, OutputFile: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec('cmd.exe', '/C ' + Cmd + ' ' + Params + ' > "' + OutputFile + '" 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function IsProcessRunning(const ProcessName: String): Boolean;
+var
+  TempFile: String;
+  Output: String;
+begin
+  TempFile := ExpandConstant('{tmp}\process_check.txt');
+  Result := False;
+  if ExecuteAndCaptureOutput('tasklist', '/FI "IMAGENAME eq ' + ProcessName + '" /NH', TempFile) then
+  begin
+    if LoadStringFromFile(TempFile, Output) then
+      Result := Pos(ProcessName, Output) > 0;
+  end;
+end;
+
+function TerminateProcessByName(const ProcessName: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec('taskkill', '/F /IM ' + ProcessName, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  if IsProcessRunning('IStoreBackend.exe') or IsProcessRunning('I-Store ERP.exe') then
+  begin
+    TerminateProcessByName('IStoreBackend.exe');
+    TerminateProcessByName('I-Store ERP.exe');
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  if IsProcessRunning('IStoreBackend.exe') then
+  begin
+    if MsgBox('A running instance of I-Store ERP was detected and must be closed before continuing installation.' + #13#10#13#10 +
+      'Click Yes to terminate it automatically now, or No to cancel setup.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    begin
+      if not TerminateProcessByName('IStoreBackend.exe') then
+      begin
+        MsgBox('Failed to terminate IStoreBackend.exe automatically. Please close I-Store ERP manually or end IStoreBackend.exe in Task Manager, and then rerun setup.', mbError, MB_OK);
+        Result := False;
+      end;
+    end
+    else
+      Result := False;
+  end;
+end;

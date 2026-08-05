@@ -1807,3 +1807,45 @@ def update_integrations_preferences(payload: dict, db: Session = Depends(get_db)
     state = _hydrate_state_from_legacy(state, db)
     _save_setting_dict(db, SETTINGS_STATE_KEY, state)
     return saved
+
+
+@router.get("/db-diagnostics", dependencies=[Depends(require_permission("settings.view"))])
+def get_db_diagnostics(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    import sqlite3
+    from app.config import DB_FILE
+    if not DB_FILE.exists():
+        return {"status": "error", "message": "Database file not found"}
+    try:
+        conn = sqlite3.connect(str(DB_FILE))
+        try:
+            integrity = conn.execute("PRAGMA integrity_check;").fetchall()
+            fk_check = conn.execute("PRAGMA foreign_key_check;").fetchall()
+            journal_mode = conn.execute("PRAGMA journal_mode;").fetchone()
+            table_count = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';").fetchone()[0]
+            index_count = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='index';").fetchone()[0]
+        finally:
+            conn.close()
+
+        db_size_bytes = DB_FILE.stat().st_size if DB_FILE.exists() else 0
+        wal_path = DB_FILE.with_name(DB_FILE.name + "-wal")
+        wal_size_bytes = wal_path.stat().st_size if wal_path.exists() else 0
+
+        return {
+            "status": "healthy" if integrity == [("ok",)] and len(fk_check) == 0 else "degraded",
+            "db_path": str(DB_FILE),
+            "db_size_mb": round(db_size_bytes / (1024 * 1024), 2),
+            "wal_size_mb": round(wal_size_bytes / (1024 * 1024), 2),
+            "journal_mode": journal_mode[0] if journal_mode else "unknown",
+            "integrity": "ok" if integrity == [("ok",)] else str(integrity),
+            "foreign_key_violations": len(fk_check),
+            "table_count": table_count,
+            "index_count": index_count,
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@router.post("/db-maintenance", dependencies=[Depends(require_permission("settings.system_settings"))])
+def run_db_maintenance(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    from app.services.backup_service import perform_database_maintenance
+    return perform_database_maintenance()

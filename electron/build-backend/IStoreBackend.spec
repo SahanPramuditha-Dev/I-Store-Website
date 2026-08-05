@@ -5,7 +5,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
-hiddenimports = []
+hiddenimports = ['app.main']
 datas += collect_data_files('app')
 hiddenimports += collect_submodules('app')
 tmp_ret = collect_all('certifi')

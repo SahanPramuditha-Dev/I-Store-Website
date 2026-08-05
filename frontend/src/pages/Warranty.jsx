@@ -1199,7 +1199,7 @@ export default function Warranty() {
   }
 
   return (
-    <div className="min-h-0 min-w-0 max-w-full overflow-x-clip overflow-y-auto pr-1 xl:h-full xl:overflow-y-hidden">
+    <div className="min-h-0 min-w-0 max-w-full overflow-x-clip overflow-y-auto pr-1 xl:h-full overflow-y-auto">
       <div className={`space-y-3 pb-3 ${isCompactHeight ? "warranty-compact" : ""}`}>
         <PageHeader
           eyebrow="Warranty & Claim Protection"

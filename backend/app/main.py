@@ -88,15 +88,22 @@ logger = logging.getLogger("istore.api")
 
 def _run_startup_tasks() -> None:
     try:
-        # Optional Alembic migrations with safety backup.
+        from app.services.backup_service import recover_database_from_latest_valid_backup
+
+        recovery_result = recover_database_from_latest_valid_backup()
+        if recovery_result:
+            logger.warning(
+                f"Database recovered from valid backup: {recovery_result.get('restored')}"
+            )
+
         if settings.auto_migrate_enabled:
             # Import migrate lazily to avoid import-time errors when running
             # in development environments where a local `alembic` folder may
             # shadow the installed alembic package.
             try:
-                from app.migrations import migrate
+                from app.migrations import migrate_with_rollback
             except Exception:
-                migrate = None
+                migrate_with_rollback = None
             migrate_allowed = True
             if settings.backup_before_migrate:
                 from app.services.backup_service import create_backup
@@ -108,39 +115,40 @@ def _run_startup_tasks() -> None:
                 except Exception as backup_error:
                     migrate_allowed = False
                     logger.error(f"Pre-migration backup failed; migration skipped for safety: {backup_error}")
-            if migrate_allowed and migrate:
+            if migrate_allowed and migrate_with_rollback:
                 try:
-                    migrate()
-                    logger.info("Alembic migration completed.")
+                    result = migrate_with_rollback()
+                    if result.get("status") == "rolled_back":
+                        logger.error(f"Alembic migration failed and was rolled back: {result.get('reason')}")
+                    else:
+                        logger.info("Alembic migration completed.")
                 except Exception as migration_error:
                     logger.error(f"Alembic migration failed: {migration_error}")
 
         try:
-            if settings.allow_runtime_schema_sync:
-                Base.metadata.create_all(bind=engine)
-                try:
-                    from sync_schema import sync_schema
-                    from app.config import DB_FILE
-                    sync_schema(DB_FILE)
-                except Exception as sync_err:
-                    logger.warning(f"Automatic schema column sync warning: {sync_err}")
-            else:
-                logger.info("Runtime schema sync disabled; relying on Alembic-managed schema.")
+            Base.metadata.create_all(bind=engine)
+            try:
+                from sync_schema import sync_schema
+                from app.config import DB_FILE
+                sync_schema(DB_FILE)
+            except Exception as sync_err:
+                logger.warning(f"Automatic schema column sync warning: {sync_err}")
+
             if settings.env.lower() != "production" and settings.seed_demo_data:
                 # Optional development/test baseline data (idempotent inserts).
                 # Disabled by default to prevent implicit weak/demo credentials.
                 seed_data()
-            if settings.allow_runtime_schema_sync:
-                from app.services.warranty_service import ensure_warranty_defaults
-                from app.services.labels_service import ensure_label_defaults
-                from app.services.security_service import ensure_security_defaults
-                with SessionLocal() as _db:
-                    ensure_warranty_defaults(_db)
-                    ensure_label_defaults(_db)
 
-                with SessionLocal() as _db:
-                    ensure_security_defaults(_db)
-                    ensure_development_test_admin(_db)
+            from app.services.warranty_service import ensure_warranty_defaults
+            from app.services.labels_service import ensure_label_defaults
+            from app.services.security_service import ensure_security_defaults
+            with SessionLocal() as _db:
+                ensure_warranty_defaults(_db)
+                ensure_label_defaults(_db)
+
+            with SessionLocal() as _db:
+                ensure_security_defaults(_db)
+                ensure_development_test_admin(_db)
         except Exception as db_init_error:
             logger.error(f"Database sync/initialization failed during startup: {db_init_error}")
 
@@ -162,6 +170,8 @@ def _run_startup_tasks() -> None:
 def _run_shutdown_tasks() -> None:
     try:
         shutdown_backup_scheduler()
+        from app.services.backup_service import perform_database_maintenance
+        perform_database_maintenance()
         logger.info("Application shutdown complete.")
     except Exception as e:
         import traceback
