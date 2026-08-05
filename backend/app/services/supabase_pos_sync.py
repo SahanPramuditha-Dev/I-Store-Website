@@ -32,7 +32,10 @@ def sync_checkout_invoice_to_cloud(
     total: float,
     payment_method: str,
     items: List[Dict[str, Any]],
-    status: str = "Paid"
+    status: str = "Paid",
+    store_logo_url: Optional[str] = None,
+    shop_name: Optional[str] = None,
+    shop_address: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Syncs a POS checkout transaction to the cloud Supabase database
@@ -54,7 +57,10 @@ def sync_checkout_invoice_to_cloud(
         "tax": tax,
         "total": total,
         "payment_method": payment_method,
-        "status": status
+        "status": status,
+        "store_logo_url": store_logo_url,
+        "shop_name": shop_name or "I-STORE MOBILE",
+        "shop_address": shop_address or "Liberty Plaza, Colombo 03"
     }
 
     # Prepare HTTP POST to Supabase REST API
