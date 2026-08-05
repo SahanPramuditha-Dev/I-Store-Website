@@ -66,6 +66,11 @@ def sync_checkout_invoice_to_cloud(
     }
 
     try:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
         # 1. Upsert Invoice
         req = urllib.request.Request(
             f"{SUPABASE_URL}/rest/v1/invoices",
@@ -73,7 +78,7 @@ def sync_checkout_invoice_to_cloud(
             headers=headers,
             method="POST"
         )
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, context=ctx) as resp:
             logger.info(f"Synced invoice {invoice_id} to Supabase Cloud with status {resp.status}")
 
         # 2. Insert Invoice Line Items
@@ -95,7 +100,7 @@ def sync_checkout_invoice_to_cloud(
                 headers=headers,
                 method="POST"
             )
-            with urllib.request.urlopen(items_req) as resp:
+            with urllib.request.urlopen(items_req, context=ctx) as resp:
                 logger.info(f"Synced {len(item_rows)} line items to Supabase Cloud.")
 
     except Exception as e:
