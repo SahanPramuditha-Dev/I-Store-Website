@@ -1,27 +1,37 @@
 import React from "react";
 
 /**
- * PrintContainer creates an exact-dimension preview box.
- * Automatically scales or hides borders when rendering vs printing.
+ * PrintContainer creates exact-dimension print layouts for A4, A5, Letter, Thermal 80mm, Thermal 58mm, and Barcode Labels.
  */
 export function PrintContainer({ children, format = "a4", margin = "12mm", widthMm, heightMm, className = "", style = {} }) {
-  const isThermal = format === "80mm";
-  const isLabel = format === "label";
-  
-  let maxWidth = isThermal ? "80mm" : "210mm";
-  let minHeight = isThermal ? "auto" : "297mm";
-  
-  if (isLabel) {
-    maxWidth = `${widthMm}mm`;
-    minHeight = `${heightMm}mm`;
+  const normFormat = String(format || "a4").toLowerCase();
+
+  let width = "210mm";
+  let minHeight = "297mm";
+
+  if (normFormat === "a5") {
+    width = "148mm";
+    minHeight = "210mm";
+  } else if (normFormat === "letter") {
+    width = "215.9mm";
+    minHeight = "279.4mm";
+  } else if (normFormat === "80mm" || normFormat === "thermal_80") {
+    width = "80mm";
+    minHeight = "auto";
+  } else if (normFormat === "58mm" || normFormat === "thermal_58") {
+    width = "58mm";
+    minHeight = "auto";
+  } else if (normFormat === "label") {
+    width = widthMm ? `${widthMm}mm` : "50mm";
+    minHeight = heightMm ? `${heightMm}mm` : "25mm";
   }
 
   return (
     <div
       className={`print-container relative mx-auto bg-white ${className}`}
       style={{
-        width: maxWidth,
-        maxWidth: maxWidth,
+        width: width,
+        maxWidth: width,
         minHeight: minHeight,
         padding: margin,
         boxSizing: "border-box",

@@ -4348,3 +4348,27 @@ html:not(.dark) .repairs-table-shell {
 @keyframes modal-scale-in {
   to { transform: scale(1); opacity: 1; }
 }
+
+/* Strict Single-Page Print CSS Rules */
+@media print {
+  @page {
+    margin: 0;
+  }
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  .print-container {
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    page-break-inside: avoid !important;
+    max-height: 100vh !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+}
+

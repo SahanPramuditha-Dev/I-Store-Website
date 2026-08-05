@@ -105,6 +105,14 @@ DEFAULT_PRINT_PROFILE = {
     "show_curves": True,
     "show_table_borders": True,
     "show_slogan": True,
+    "show_watermark": False,
+    "watermark_text": "ORIGINAL COPY",
+    "show_payment_breakdown": True,
+    "show_barcode": True,
+    "custom_css": "",
+    "paper_size": "A4",
+    "header_title_text": "Official Tax Invoice",
+    "header_title_color": "#0ea5e9",
 }
 
 DEFAULT_UI_PREFERENCES = {"theme": "dark", "compact_mode": True}

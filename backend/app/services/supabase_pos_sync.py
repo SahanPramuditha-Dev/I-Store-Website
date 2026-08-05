@@ -136,3 +136,45 @@ def process_offline_outbox_queue(db_session=None):
     logger.info("Outbox worker checking for pending offline invoice sync jobs...")
     return {"flushed": 0, "status": "idle"}
 
+
+def sync_staff_pin_to_cloud(username: str, role: str, pin_hash: str) -> None:
+    """
+    Syncs an admin/manager/owner's bcrypt PIN hash to the Supabase `staff_pins` table.
+    Called automatically on every successful POS PIN login for privileged roles.
+    This allows the Cloud Customer Portal website to verify the same staff PIN
+    server-side via the Supabase Edge Function `verify-staff-pin`.
+
+    NOTE: Only the bcrypt HASH is stored — the plain PIN is never transmitted.
+    """
+    import urllib.request
+    import json
+    import ssl
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    payload = {
+        "username": username,
+        "role": role,
+        "pin_hash": pin_hash,
+    }
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
+
+    try:
+        req = urllib.request.Request(
+            f"{SUPABASE_URL}/rest/v1/staff_pins",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, context=ctx) as resp:
+            logger.info(f"Synced PIN hash for staff member '{username}' (role: {role}) to Supabase. Status: {resp.status}")
+    except Exception as e:
+        logger.warning(f"Failed to sync staff PIN for '{username}' to Supabase: {e}")

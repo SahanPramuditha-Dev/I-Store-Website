@@ -287,6 +287,18 @@ def login_pin(payload: PinLoginIn, request: Request, db: Session = Depends(get_d
         expires_delta=timedelta(minutes=expiry_minutes),
     )
     record_login_success(db, user, request, login_method="pin")
+
+    # Sync admin/manager/owner PIN hash to Supabase Cloud so website Admin Panel
+    # can authenticate using the same staff PIN (bcrypt hash comparison done server-side).
+    if user.role in ("admin", "owner", "manager") and user.pin_hash:
+        import threading
+        from app.services.supabase_pos_sync import sync_staff_pin_to_cloud
+        threading.Thread(
+            target=sync_staff_pin_to_cloud,
+            args=(user.username, user.role, user.pin_hash),
+            daemon=True
+        ).start()
+
     return {"access_token": token, "token_type": "bearer", "expires_at": expires_at, "session_id": session_code}
 
 
