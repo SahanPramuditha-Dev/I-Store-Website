@@ -50,7 +50,7 @@ from app.routers.print_center_router import router as print_center_router
 from app.routers.catalog_router import router as catalog_router
 from app.config import settings
 from app.auth import require_admin, require_module_access, require_permission
-from app.seed import seed_data
+
 from app.utils.api_errors import (
     ApiError,
     ERROR_INTERNAL_SERVER_ERROR,
@@ -134,10 +134,7 @@ def _run_startup_tasks() -> None:
             except Exception as sync_err:
                 logger.warning(f"Automatic schema column sync warning: {sync_err}")
 
-            if settings.env.lower() != "production" and settings.seed_demo_data:
-                # Optional development/test baseline data (idempotent inserts).
-                # Disabled by default to prevent implicit weak/demo credentials.
-                seed_data()
+
 
             from app.services.warranty_service import ensure_warranty_defaults
             from app.services.labels_service import ensure_label_defaults

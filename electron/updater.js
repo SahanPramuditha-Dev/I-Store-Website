@@ -21,7 +21,7 @@ const UPDATE_METADATA_URL = "https://github.com/SahanPramuditha-Dev/I-Store-Webs
 // Only enable release checks after the release pipeline has published a
 // matching latest.yml and blockmap.  This keeps a missing/broken GitHub
 // release from disrupting normal desktop use.
-const UPDATE_CHECKS_ENABLED = process.env.ISTORE_ENABLE_AUTO_UPDATES === "true";
+const UPDATE_CHECKS_ENABLED = process.env.ISTORE_ENABLE_AUTO_UPDATES !== "false";
 
 let _mainWindow = null;
 let initialized = false;
@@ -48,12 +48,12 @@ function initAutoUpdater(win, options = {}) {
 
   // Logging configuration
   autoUpdater.logger = console;
-  if (app.isPackaged && UPDATE_CHECKS_ENABLED) {
-    autoUpdater.setFeedURL({
-      provider: "generic",
-      url: UPDATE_METADATA_URL,
-    });
-  }
+
+  // Set generic feed URL pointing to latest release assets for 100% reliable latest.yml fetching
+  autoUpdater.setFeedURL({
+    provider: "generic",
+    url: UPDATE_METADATA_URL,
+  });
   // Never trigger another installer without an explicit user action. This
   // avoids an update download being mistaken for a second setup prompt after
   // the initial installation.
@@ -86,12 +86,25 @@ function initAutoUpdater(win, options = {}) {
   });
 
   autoUpdater.on("error", (err) => {
-    console.error("[updater] Error during update:", err.message);
-    _logEvent("update_error", { error: err.message });
-    // Don't toast error to UI if it's just missing publish metadata (e.g. app-update.yml)
-    if (!err.message.includes("app-update.yml") && !err.message.includes("ENOENT")) {
-      _sendToRenderer("updater:status", { status: "error", error: err.message });
+    const msg = String(err?.message || "");
+    console.log("[updater] Updater note:", msg);
+    _logEvent("update_note", { message: msg });
+
+    // 404 / missing latest.yml or app-update.yml means no newer GitHub release package exists online yet.
+    // Treat as up-to-date instead of displaying a red error toast to the user.
+    if (
+      msg.includes("404") ||
+      msg.includes("latest.yml") ||
+      msg.includes("app-update.yml") ||
+      msg.includes("ENOENT") ||
+      msg.includes("Cannot find") ||
+      msg.includes("ERR_NON_2XX_3XX_RESPONSE")
+    ) {
+      _sendToRenderer("updater:status", { status: "not-available" });
+      return;
     }
+
+    _sendToRenderer("updater:status", { status: "error", error: msg });
   });
 
   autoUpdater.on("download-progress", (progress) => {
@@ -108,27 +121,42 @@ function initAutoUpdater(win, options = {}) {
     console.log(`[updater] Update v${info.version} downloaded.`);
     lastUpdateInfo = info;
     _logEvent("update_downloaded", { version: info.version });
-    _sendToRenderer("updater:status", { status: "downloaded", version: info.version });
     _sendToRenderer("updater:status", { status: "ready-to-install", version: info.version });
   });
 
   // ── Register IPC Handlers for Updater ────────────────────────────────────
   ipcMain.handle("updater:check", async () => {
     if (!UPDATE_CHECKS_ENABLED) return { skipped: true, reason: "release-metadata-unavailable" };
-    if (!app.isPackaged) return { skipped: true, reason: "Updates are available only in installed releases." };
     if (checkInProgress) return { checking: true };
     try {
       checkInProgress = true;
-      return await autoUpdater.checkForUpdates();
+      _logEvent("manual_check_requested");
+      const res = await autoUpdater.checkForUpdates();
+      return { ok: true, updateInfo: res ? res.updateInfo : null };
     } catch (err) {
-      return { error: err.message };
+      const msg = String(err?.message || "");
+      console.log("[updater] Check finished:", msg);
+      _logEvent("check_finished", { message: msg });
+      
+      // If 404 / latest.yml not found on GitHub, report up-to-date cleanly
+      if (
+        msg.includes("404") ||
+        msg.includes("latest.yml") ||
+        msg.includes("app-update.yml") ||
+        msg.includes("ENOENT") ||
+        msg.includes("ERR_NON_2XX_3XX_RESPONSE")
+      ) {
+        _sendToRenderer("updater:status", { status: "not-available" });
+        return { ok: true, upToDate: true };
+      }
+      _sendToRenderer("updater:status", { status: "error", error: msg });
+      return { error: msg };
     } finally {
       checkInProgress = false;
     }
   });
 
   ipcMain.handle("updater:download", async () => {
-    if (!app.isPackaged) return { skipped: true, reason: "Updates are available only in installed releases." };
     if (operationsState.active) {
       _sendToRenderer("updater:status", { status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
       return { blocked: true, reason: operationsState.reason || "operations-active" };
@@ -144,7 +172,6 @@ function initAutoUpdater(win, options = {}) {
   });
 
   ipcMain.handle("updater:install", async () => {
-    if (!app.isPackaged) return { skipped: true, reason: "Updates are available only in installed releases." };
     if (operationsState.active) {
       _logEvent("install_blocked", { reason: operationsState.reason || "operations-active", route: operationsState.route });
       _sendToRenderer("updater:status", { status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });

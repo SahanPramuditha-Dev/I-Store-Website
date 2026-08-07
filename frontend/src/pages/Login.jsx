@@ -96,6 +96,41 @@ export default function Login() {
     phone_number: "",
     email: "",
   });
+  const [appVersion, setAppVersion] = useState("v1.1.78");
+  const [pinSetupModal, setPinSetupModal] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pendingLoginData, setPendingLoginData] = useState(null);
+
+  const [showSetupPassword, setShowSetupPassword] = useState(false);
+  const [showSetupConfirmPassword, setShowSetupConfirmPassword] = useState(false);
+
+  const pwdChecks = useMemo(() => {
+    const pwd = setupForm.password || "";
+    return {
+      length: pwd.length >= 8,
+      uppercase: /[A-Z]/.test(pwd),
+      lowercase: /[a-z]/.test(pwd),
+      symbol: /[!@#$%^&*(),.?":{}|<>]/.test(pwd),
+    };
+  }, [setupForm.password]);
+
+  const strengthScore = useMemo(() => {
+    let score = 0;
+    if (pwdChecks.length) score++;
+    if (pwdChecks.uppercase) score++;
+    if (pwdChecks.lowercase) score++;
+    if (pwdChecks.symbol) score++;
+    return score;
+  }, [pwdChecks]);
+
+  const strengthLabel = useMemo(() => {
+    if (strengthScore === 0) return "Very Weak";
+    if (strengthScore === 1) return "Weak";
+    if (strengthScore === 2) return "Fair";
+    if (strengthScore === 3) return "Good";
+    return "Strong & Compliant";
+  }, [strengthScore]);
 
   const canSubmit = useMemo(() => Boolean(String(username || "").trim() && password && !submitting), [username, password, submitting]);
   const canPinSubmit = useMemo(() => Boolean(pin.length === 4 && !submitting), [pin, submitting]);
@@ -104,14 +139,26 @@ export default function Login() {
       String(setupForm.full_name || "").trim()
       && String(setupForm.username || "").trim()
       && setupForm.password
+      && pwdChecks.length
+      && pwdChecks.uppercase
+      && pwdChecks.lowercase
+      && pwdChecks.symbol
       && setupForm.password === setupForm.confirm_password
       && !submitting
     ),
-    [setupForm, submitting],
+    [setupForm, pwdChecks, submitting],
   );
   const shopName = identity?.shopName || identity?.softwareName || "I Store";
   const statusLabel = serviceStatus === "online" ? "Online" : serviceStatus === "offline" ? "Offline" : "Checking";
   const modeLabel = setupRequired ? "Owner Setup" : loginMode === "pin" ? "Staff PIN" : "Password";
+
+  useEffect(() => {
+    if (window.istore?.updater?.getVersion) {
+      window.istore.updater.getVersion().then((res) => {
+        if (res?.version) setAppVersion(`v${res.version}`);
+      }).catch(() => {});
+    }
+  }, []);
 
   const checkBootstrapStatus = useCallback(async () => {
     setSetupLoading(true);
@@ -223,11 +270,6 @@ export default function Login() {
     return "Good evening";
   };
 
-  const [pinSetupModal, setPinSetupModal] = useState(false);
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [pendingLoginData, setPendingLoginData] = useState(null);
-
   const handlePinClick = (num) => {
     if (!submitting && pin.length < 4) setPin((prev) => prev + num);
   };
@@ -257,15 +299,24 @@ export default function Login() {
     setSessionAuthValue("token", accessToken);
     if (tokenRes?.data?.session_id) setSessionAuthValue("session_id", tokenRes.data.session_id);
 
-    const [meRes, permissionRes] = await Promise.all([
-      api.get("/auth/me"),
-      api.get("/auth/me/permissions").catch(() => ({ data: { permissions: [] } })),
-    ]);
+    let meRes, permissionRes;
+    try {
+      [meRes, permissionRes] = await Promise.all([
+        api.get("/auth/me"),
+        api.get("/auth/me/permissions").catch(() => ({ data: { permissions: [] } })),
+      ]);
+    } catch (_meErr) {
+      // If /auth/me fails (e.g. connection reset), proceed with minimal data.
+      // The token is already saved; the app shell will re-fetch on mount.
+      meRes = { data: { username: fallbackUsername, role: "owner", pin_set: true } };
+      permissionRes = { data: { permissions: [] } };
+    }
 
     const me = meRes?.data || {};
 
-    // Check if user needs to set a PIN for the first time (if pin_set is false)
-    if (!me.pin_set) {
+    // Only show the PIN setup modal if we successfully got user data AND pin is not set.
+    // Skip it on first login when /auth/me may have failed — user can set PIN later from Settings.
+    if (me.pin_set === false && me.username) {
       setPendingLoginData({ meRes, permissionRes, fallbackUsername });
       setPinSetupModal(true);
       setSubmitting(false);
@@ -316,66 +367,46 @@ export default function Login() {
     }
   };
 
-  const handlePinSubmit = async () => {
-    if (!canPinSubmit) return;
+  const handlePinSubmit = async (staffIdToUse = null, explicitPin = null) => {
+    const pinToSubmit = explicitPin || pin;
+    if (pinToSubmit.length !== 4 || submitting) return;
 
     setSubmitting(true);
     setError("");
+
     try {
-      const trimmedUsername = String(username || "admin").trim();
-      const tokenRes = await api.post("/auth/login-pin", {
-        username: trimmedUsername,
-        pin,
-        remember_me: rememberMe,
-      });
-      await finishLogin(tokenRes, trimmedUsername);
+      const payload = { pin: pinToSubmit };
+      if (staffIdToUse) payload.user_id = staffIdToUse;
+
+      const tokenRes = await api.post("/auth/login-pin", payload);
+      await finishLogin(tokenRes, "Staff");
     } catch (err) {
       setSubmitting(false);
       clearAuthState();
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      if (status === 400 && typeof detail === "string" && detail.includes("disabled")) {
+        setError("PIN sign-in is currently disabled. Please use password sign-in.");
+      } else if (status === 401) {
+        setError("Invalid PIN or PIN not set for this account. Switch to password sign-in to set your PIN.");
+      } else if (typeof detail === "string") {
+        setError(detail);
+      } else {
+        setError("Invalid PIN. Please try again.");
+      }
+      setPin("");
       setShakeError(true);
       setTimeout(() => setShakeError(false), 500);
-      const detail = err?.response?.data?.detail;
-      if (err?.response?.status === 428) setSetupRequired(true);
-      setError(typeof detail === "string" ? detail : "PIN sign-in failed. Please verify username and PIN.");
-      setPin("");
     }
   };
 
-  const handlePinKeyDown = (event) => {
-    if (submitting) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.target?.tagName === "INPUT" && event.key !== "Enter") return;
-
-    if (/^\d$/.test(event.key)) {
-      event.preventDefault();
-      setPin((prev) => (prev.length < 4 ? `${prev}${event.key}` : prev));
-      return;
-    }
-
-    if (event.key === "Backspace" || event.key === "Delete") {
-      event.preventDefault();
-      setPin((prev) => prev.slice(0, -1));
-      return;
-    }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handlePinSubmit();
-      return;
-    }
-
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setPin("");
-    }
-  };
-
-  const submitBootstrap = async (event) => {
+  const handleOwnerSetupSubmit = async (event) => {
     event.preventDefault();
-    if (!canSetupSubmit) return;
+    if (!canSetupSubmit || submitting) return;
 
     setSubmitting(true);
     setError("");
+
     try {
       await api.post("/auth/bootstrap/owner", {
         username: String(setupForm.username || "").trim(),
@@ -486,8 +517,8 @@ export default function Login() {
                 {statusLabel}
               </span>
               <span className="exact-login-system-pill">
-                <strong>Mode</strong>
-                {modeLabel}
+                <strong>Version</strong>
+                {appVersion}
               </span>
             </div>
 
@@ -520,32 +551,25 @@ export default function Login() {
                 <span className="sr-only">Username</span>
                 <input
                   type="text"
-                  name="username"
-                  autoComplete="username"
-                  placeholder="Username"
+                  placeholder="Username or Staff ID"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
+                  onKeyDown={handleKeyDown}
                   disabled={submitting}
+                  autoFocus
                 />
               </label>
 
-              <label className="exact-login-field exact-login-password animate-slide-up stagger-3">
+              <label className="exact-login-field animate-slide-up stagger-3">
                 <span className="sr-only">Password</span>
                 <input
                   type={showPassword ? "text" : "password"}
-                  required
-                  placeholder="Enter your password"
+                  placeholder="Password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyUp={handleKeyDown}
+                  onChange={(event) => setPassword(event.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={submitting}
                 />
-                {capsLockActive && (
-                  <div className="caps-warning" title="Caps Lock is ON">
-                    <AlertTriangle size={16} />
-                  </div>
-                )}
                 <button
                   type="button"
                   className="exact-login-eye"
@@ -598,172 +622,202 @@ export default function Login() {
                 ref={pinPanelRef}
                 className={`exact-login-form animate-slide-up stagger-1 ${shakeError ? "error-shake" : ""}`}
                 tabIndex={-1}
-                onKeyDown={handlePinKeyDown}
+                onKeyDown={(e) => {
+                  if (e.key >= "0" && e.key <= "9") handlePinClick(e.key);
+                  else if (e.key === "Backspace") handlePinDelete();
+                  else if (e.key === "Enter" && pin.length === 4) handlePinSubmit();
+                }}
               >
                 {activeStaff.length > 0 && (
-                  <div className="login-user-switcher animate-slide-up stagger-2">
-                    <span className="switcher-title">Quick Switch User</span>
-                    <div className="switcher-grid">
-                      {activeStaff.map((staff) => {
-                        const isSelected = String(username || "").trim().toLowerCase() === staff.username.toLowerCase();
-                        const initials = staff.full_name
-                          ? staff.full_name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase()
-                          : staff.username.slice(0, 2).toUpperCase();
-
-                        return (
-                          <button
-                            key={staff.id}
-                            type="button"
-                            className={`switcher-card ${isSelected ? "selected" : ""}`}
-                            onClick={() => {
-                              setUsername(staff.username);
-                              setPin("");
-                            }}
-                            title={`${staff.full_name} (${roleToLabel(staff.role)})`}
-                          >
-                            <div className="switcher-avatar-wrapper">
-                              {staff.profile_photo ? (
-                                <img src={staff.profile_photo} alt={staff.full_name} className="switcher-avatar-img" />
-                              ) : (
-                                <span className="switcher-avatar-initials">{initials}</span>
-                              )}
-                            </div>
-                            <span className="switcher-name">{staff.full_name || staff.username}</span>
-                          </button>
-                        );
-                      })}
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">Select Staff Account</label>
+                    <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+                      {activeStaff.map((staff) => (
+                        <button
+                          key={staff.id}
+                          type="button"
+                          onClick={() => {
+                            if (pin.length === 4) handlePinSubmit(staff.id);
+                          }}
+                          className="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-left transition-all group"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs group-hover:scale-105 transition-transform">
+                            {staff.full_name ? staff.full_name[0].toUpperCase() : staff.username[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-slate-200 truncate">{staff.full_name || staff.username}</p>
+                            <p className="text-[10px] text-slate-400 capitalize">{roleToLabel(staff.role)}</p>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
+
+                <div className="pin-display animate-slide-up stagger-2">
+                  {[0, 1, 2, 3].map((i) => (
+                    <span key={i} className={`pin-dot ${i < pin.length ? "filled" : ""}`} />
+                  ))}
+                </div>
+
+                {error ? <div className="exact-login-error text-center">{error}</div> : null}
+
+                <div className="pin-pad animate-slide-up stagger-3">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => handlePinClick(String(num))}
+                      disabled={submitting}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <button type="button" onClick={handlePinDelete} disabled={submitting || pin.length === 0}>
+                    ⌫
+                  </button>
+                  <button type="button" onClick={() => handlePinClick("0")} disabled={submitting}>
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePinSubmit()}
+                    disabled={!canPinSubmit}
+                  >
+                    ↵
+                  </button>
+                </div>
+
+                <div className="exact-login-actions animate-slide-up stagger-4">
+                  <button type="button" className="exact-login-toggle-mode" onClick={() => { setLoginMode("password"); setError(""); }}>
+                    Use Password Sign-in
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form className={`exact-login-form animate-slide-up stagger-1 ${shakeError ? "error-shake" : ""}`} onSubmit={handleOwnerSetupSubmit}>
+                <label className="exact-login-field animate-slide-up stagger-2">
+                  <span className="sr-only">Full Name</span>
+                  <input
+                    type="text"
+                    placeholder="Owner Full Name"
+                    value={setupForm.full_name}
+                    onChange={(event) => setSetupForm((prev) => ({ ...prev, full_name: event.target.value }))}
+                    disabled={submitting}
+                    autoFocus
+                  />
+                </label>
 
                 <label className="exact-login-field animate-slide-up stagger-3">
                   <span className="sr-only">Username</span>
                   <input
                     type="text"
-                    name="username"
-                    autoComplete="username"
-                    placeholder="Username"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
+                    placeholder="Owner Username"
+                    value={setupForm.username}
+                    onChange={(event) => setSetupForm((prev) => ({ ...prev, username: event.target.value }))}
                     disabled={submitting}
                   />
                 </label>
-                <div className="pin-display animate-slide-up stagger-3">
-                  {[0,1,2,3].map(i => (
-                    <div key={i} className={`pin-dot ${pin.length > i ? "filled" : ""}`} />
-                  ))}
-                </div>
-                <div className="pin-pad animate-slide-up stagger-4">
-                  {[1,2,3,4,5,6,7,8,9].map(num => (
-                    <button key={num} type="button" onClick={() => handlePinClick(String(num))} disabled={submitting}>{num}</button>
-                  ))}
-                  <button type="button" onClick={handlePinDelete} disabled={submitting}>Del</button>
-                  <button type="button" onClick={() => handlePinClick("0")} disabled={submitting}>0</button>
-                  <button type="button" onClick={handlePinSubmit} disabled={!canPinSubmit}>
-                    {submitting ? <Loader2 size={18} className="animate-spin" /> : "Go"}
+
+                <label className="exact-login-field exact-login-password animate-slide-up stagger-4">
+                  <span className="sr-only">Password</span>
+                  <input
+                    type={showSetupPassword ? "text" : "password"}
+                    placeholder="Password (min 8 chars, 1 uppercase, 1 symbol)"
+                    value={setupForm.password}
+                    onChange={(event) => setSetupForm((prev) => ({ ...prev, password: event.target.value }))}
+                    disabled={submitting}
+                  />
+                  <button
+                    type="button"
+                    className="exact-login-eye"
+                    onClick={() => setShowSetupPassword(!showSetupPassword)}
+                    tabIndex="-1"
+                    aria-label={showSetupPassword ? "Hide password" : "Show password"}
+                  >
+                    {showSetupPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </label>
+
+                {setupForm.password ? (
+                  <div className="password-strength-box animate-fadeIn">
+                    <div className="password-strength-header">
+                      <span>Password Strength:</span>
+                      <span className={`strength-label strength-${strengthScore}`}>{strengthLabel}</span>
+                    </div>
+                    <div className="strength-bar-track">
+                      <div className={`strength-bar-fill strength-fill-${strengthScore}`} />
+                    </div>
+                    <div className="password-rules-grid">
+                      <div className={`rule-item ${pwdChecks.length ? "met" : "unmet"}`}>
+                        {pwdChecks.length ? "✓" : "○"} At least 8 characters
+                      </div>
+                      <div className={`rule-item ${pwdChecks.uppercase ? "met" : "unmet"}`}>
+                        {pwdChecks.uppercase ? "✓" : "○"} 1 Uppercase letter (A-Z)
+                      </div>
+                      <div className={`rule-item ${pwdChecks.lowercase ? "met" : "unmet"}`}>
+                        {pwdChecks.lowercase ? "✓" : "○"} 1 Lowercase letter (a-z)
+                      </div>
+                      <div className={`rule-item ${pwdChecks.symbol ? "met" : "unmet"}`}>
+                        {pwdChecks.symbol ? "✓" : "○"} 1 Special symbol (@!#$%)
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <label className="exact-login-field exact-login-password animate-slide-up stagger-5">
+                  <span className="sr-only">Confirm Password</span>
+                  <input
+                    type={showSetupConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm Password"
+                    value={setupForm.confirm_password}
+                    onChange={(event) => setSetupForm((prev) => ({ ...prev, confirm_password: event.target.value }))}
+                    disabled={submitting}
+                  />
+                  <button
+                    type="button"
+                    className="exact-login-eye"
+                    onClick={() => setShowSetupConfirmPassword(!showSetupConfirmPassword)}
+                    tabIndex="-1"
+                    aria-label={showSetupConfirmPassword ? "Hide password" : "Show password"}
+                  >
+                    {showSetupConfirmPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </label>
+
+                {setupForm.confirm_password && setupForm.password !== setupForm.confirm_password ? (
+                  <div className="password-mismatch-warning animate-fadeIn">
+                    ⚠️ Passwords do not match
+                  </div>
+                ) : null}
+
+                {error ? <div className="exact-login-error">{error}</div> : null}
+
+                <div className="exact-login-actions animate-slide-up stagger-6">
+                  <button type="submit" className="exact-login-submit" disabled={!canSetupSubmit}>
+                    {submitting ? "Activating..." : "Create Owner Account"}
                   </button>
                 </div>
-                
-                {error ? <div className="exact-login-error text-center">{error}</div> : null}
-
-                <button type="button" className="exact-login-toggle-mode animate-slide-up stagger-5" onClick={() => { setLoginMode("password"); setError(""); setPin(""); }}>
-                  Use Password
-                </button>
-              </div>
-            ) : (
-            <form className="exact-login-form animate-slide-up stagger-1" onSubmit={submitBootstrap}>
-              <label className="exact-login-field animate-slide-up stagger-2">
-                <input
-                  type="text"
-                  placeholder="Owner full name"
-                  value={setupForm.full_name}
-                  onChange={(event) => setSetupForm((prev) => ({ ...prev, full_name: event.target.value }))}
-                  disabled={submitting}
-                />
-              </label>
-              <label className="exact-login-field animate-slide-up stagger-3">
-                <input
-                  type="text"
-                  placeholder="Owner username"
-                  value={setupForm.username}
-                  onChange={(event) => setSetupForm((prev) => ({ ...prev, username: event.target.value }))}
-                  disabled={submitting}
-                />
-              </label>
-              <label className="exact-login-field exact-login-password animate-slide-up stagger-4">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Strong password"
-                  value={setupForm.password}
-                  onChange={(event) => setSetupForm((prev) => ({ ...prev, password: event.target.value }))}
-                  disabled={submitting}
-                />
-                <button
-                  type="button"
-                  className="exact-login-eye"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  disabled={submitting}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                </button>
-              </label>
-              <label className="exact-login-field animate-slide-up stagger-5">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Confirm password"
-                  value={setupForm.confirm_password}
-                  onChange={(event) => setSetupForm((prev) => ({ ...prev, confirm_password: event.target.value }))}
-                  disabled={submitting}
-                />
-              </label>
-              <label className="exact-login-field animate-slide-up stagger-6">
-                <input
-                  type="text"
-                  placeholder="Phone (optional)"
-                  value={setupForm.phone_number}
-                  onChange={(event) => setSetupForm((prev) => ({ ...prev, phone_number: event.target.value }))}
-                  disabled={submitting}
-                />
-              </label>
-              <label className="exact-login-field">
-                <input
-                  type="email"
-                  placeholder="Email (optional)"
-                  value={setupForm.email}
-                  onChange={(event) => setSetupForm((prev) => ({ ...prev, email: event.target.value }))}
-                  disabled={submitting}
-                />
-              </label>
-              {setupForm.confirm_password && setupForm.password !== setupForm.confirm_password ? (
-                <div className="exact-login-error">Password confirmation does not match.</div>
-              ) : null}
-              {error ? <div className="exact-login-error">{error}</div> : null}
-              <button type="submit" className="exact-login-submit" disabled={!canSetupSubmit}>
-                {submitting ? "Creating owner..." : "Create Owner Account"}
-              </button>
-            </form>
+              </form>
             )}
           </div>
         </div>
       </section>
 
       {pinSetupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 text-slate-100 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
             <div className="text-center space-y-1">
-              <h3 className="text-xl font-bold text-slate-100">Set Quick-Access PIN</h3>
-              <p className="text-sm text-slate-400">
-                You haven't set a 4-digit PIN yet. Set one now for fast POS & staff login.
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 mb-2">
+                🔒
+              </div>
+              <h3 className="text-lg font-bold text-slate-100">Set Up Your Quick PIN</h3>
+              <p className="text-xs text-slate-400">
+                Create a 4-digit PIN for quick sign-in to POS and repair stations without entering your full password each time.
               </p>
             </div>
 
-            <form onSubmit={handleSaveInitialPin} className="space-y-4">
+            <form onSubmit={handleSaveInitialPin} className="space-y-4 pt-2">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                   4-Digit PIN

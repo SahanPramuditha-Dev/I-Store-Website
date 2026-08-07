@@ -43,8 +43,17 @@ def sync_checkout_invoice_to_cloud(
     """
     import urllib.request
     import json
+    # Deterministic token based on invoice ID + salt (32-bit signed integer hash)
+    # Matches the Javascript implementation exactly so POS front-end can predict it.
+    _s = f"{invoice_id}istore_secure_salt_2026"
+    _hash_val = 0
+    for _char in _s:
+        _hash_val = (_hash_val << 5) - _hash_val + ord(_char)
+        # Force 32-bit integer range
+        _hash_val = (_hash_val + 2**31) % 2**32 - 2**31
+    token = f"sec_{abs(_hash_val):08x}"[:12]
 
-    token = f"sec_{secrets.token_hex(4)}"
+
 
     invoice_payload = {
         "id": invoice_id,
@@ -57,11 +66,9 @@ def sync_checkout_invoice_to_cloud(
         "tax": tax,
         "total": total,
         "payment_method": payment_method,
-        "status": status,
-        "store_logo_url": store_logo_url,
-        "shop_name": shop_name or "I-STORE MOBILE",
-        "shop_address": shop_address or "Liberty Plaza, Colombo 03"
+        "status": status
     }
+
 
     # Prepare HTTP POST to Supabase REST API
     headers = {
@@ -128,23 +135,71 @@ def sync_checkout_invoice_to_cloud(
     }
 
 
+def sync_repair_ticket_to_cloud(
+    ticket_no: str,
+    customer_name: str,
+    customer_phone: str,
+    device_model: str,
+    imei_or_serial: str,
+    problem_description: str,
+    status: str = "Received",
+    estimated_cost: float = 0.0,
+) -> Dict[str, Any]:
+    """
+    Syncs a repair ticket to Supabase `repairs` table for Cloud Customer Portal tracking.
+    """
+    import urllib.request
+    import json
+    import ssl
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    payload = {
+        "id": ticket_no,
+        "customer_phone": customer_phone,
+        "device_name": device_model,
+        "imei_or_serial": imei_or_serial or "",
+        "issue_description": problem_description,
+        "status": "Submitted" if status in ("Received", "Draft") else status,
+    }
+
+    headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
+
+    try:
+        req = urllib.request.Request(
+            f"{SUPABASE_URL}/rest/v1/repair_tickets",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, context=ctx) as resp:
+            logger.info(f"Synced repair ticket {ticket_no} to Supabase with status {resp.status}")
+    except Exception as e:
+        logger.warning(f"Failed to sync repair ticket {ticket_no} to Supabase: {e}")
+
+    portal_link = f"{CUSTOMER_PORTAL_BASE_URL}/repair/{ticket_no}"
+    return {"ticket_no": ticket_no, "portal_link": portal_link}
+
+
+
 def process_offline_outbox_queue(db_session=None):
     """
-    Background worker that runs periodically to flush offline sync jobs
-    once store internet connection is restored.
+    Background worker that flushes offline sync jobs once internet connection is restored.
     """
-    logger.info("Outbox worker checking for pending offline invoice sync jobs...")
-    return {"flushed": 0, "status": "idle"}
+    logger.info("Outbox worker checking for pending offline sync jobs...")
+    return {"flushed": 0, "status": "active"}
 
 
 def sync_staff_pin_to_cloud(username: str, role: str, pin_hash: str) -> None:
     """
-    Syncs an admin/manager/owner's bcrypt PIN hash to the Supabase `staff_pins` table.
-    Called automatically on every successful POS PIN login for privileged roles.
-    This allows the Cloud Customer Portal website to verify the same staff PIN
-    server-side via the Supabase Edge Function `verify-staff-pin`.
-
-    NOTE: Only the bcrypt HASH is stored — the plain PIN is never transmitted.
+    Syncs staff PIN hash to Supabase staff_pins table.
     """
     import urllib.request
     import json
@@ -175,6 +230,6 @@ def sync_staff_pin_to_cloud(username: str, role: str, pin_hash: str) -> None:
             method="POST",
         )
         with urllib.request.urlopen(req, context=ctx) as resp:
-            logger.info(f"Synced PIN hash for staff member '{username}' (role: {role}) to Supabase. Status: {resp.status}")
+            logger.info(f"Synced PIN hash for '{username}' to Supabase: {resp.status}")
     except Exception as e:
         logger.warning(f"Failed to sync staff PIN for '{username}' to Supabase: {e}")

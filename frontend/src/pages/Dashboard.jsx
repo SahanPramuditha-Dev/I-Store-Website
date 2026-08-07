@@ -21,6 +21,8 @@ import {
   BarChart3,
   CalendarDays,
   Sparkles,
+  Printer,
+  MessageCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -174,54 +176,54 @@ export default function Dashboard() {
     return [...quickActions, ...extra];
   }, [quickActions]);
 
-  const kpis = [
+  const executiveKpis = [
     {
-      title: "Today's Sales",
+      title: "Today's Revenue",
       value: `LKR ${(data?.daily_revenue || 0).toLocaleString()}`,
-      hint: "Completed invoices since midnight",
+      hint: `Cash LKR ${(data?.today_cash_sales || 0).toLocaleString()} | Card LKR ${(data?.today_card_sales || 0).toLocaleString()}`,
       tone: "sky",
       icon: <BadgeDollarSign size={18} />,
       to: "/reports",
     },
     {
-      title: "Pending Repairs",
-      value: String(pendingRepairs),
-      hint: `${completionRate.toFixed(0)}% completion rate`,
+      title: "Today's Profit",
+      value: `LKR ${(data?.today_profit || 0).toLocaleString()}`,
+      hint: `Margin: ${(data?.today_margin_pct || 0)}%`,
+      tone: "green",
+      icon: <Sparkles size={18} />,
+      to: "/reports",
+    },
+    {
+      title: "Inventory Worth",
+      value: `LKR ${(data?.inventory_stats?.worth_cost || 0).toLocaleString()}`,
+      hint: `${data?.inventory_stats?.total_items || 0} Total Products (${data?.inventory_stats?.out_of_stock_count || 0} Out of Stock)`,
       tone: "amber",
+      icon: <Boxes size={18} />,
+      to: "/inventory",
+    },
+    {
+      title: "Credit Receivables",
+      value: `LKR ${(data?.outstanding_balance || 0).toLocaleString()}`,
+      hint: `${data?.pending_credit_customers || 0} Customers Pending Payment`,
+      tone: "red",
+      icon: <Receipt size={18} />,
+      to: "/customers",
+    },
+    {
+      title: "Repair Workload",
+      value: `${pendingRepairs} Pending`,
+      hint: `${data?.repair_stats?.completed || 0} Completed | ${completionRate.toFixed(0)}% Rate`,
+      tone: "violet",
       icon: <Wrench size={18} />,
       to: "/repairs",
     },
     {
-      title: "Completed Repairs",
-      value: String(data?.repair_stats?.completed || 0),
-      hint: "Across all repair tickets",
-      tone: "green",
-      icon: <CheckCircle2 size={18} />,
-      to: "/repairs",
-    },
-    {
-      title: "Low Stock",
-      value: String(data?.low_stock_count || 0),
-      hint: "Reorder required",
-      tone: "red",
-      icon: <Boxes size={18} />,
-      onClick: () => setShowLowStockModal(true),
-    },
-    {
-      title: "Total Customers",
-      value: String(data?.customers_count || 0),
-      hint: "Active customer base",
+      title: "Supplier Payables",
+      value: `LKR ${(data?.suppliers_summary?.pending_payables || 0).toLocaleString()}`,
+      hint: `Across ${data?.suppliers_summary?.count || 0} Active Suppliers`,
       tone: "indigo",
       icon: <Users size={18} />,
-      to: "/customers",
-    },
-    {
-      title: "Recent Sales",
-      value: String(tx.length),
-      hint: `LKR ${recentSalesValue.toLocaleString()} across recent invoices`,
-      tone: "violet",
-      icon: <Receipt size={18} />,
-      to: "/pos",
+      to: "/suppliers",
     },
   ];
 
@@ -229,6 +231,7 @@ export default function Dashboard() {
   if (error) return <ErrorState text={error} />;
 
   const piePalette = ["#22d3ee", "#3b82f6", "#8b5cf6", "#f97316", "#10b981", "#eab308"];
+  const actionCenter = data?.action_center || {};
 
   return (
     <PageContainer className="dashboard-page pb-4 pr-1">
@@ -267,7 +270,7 @@ export default function Dashboard() {
         </div>
 
         <div className="dashboard-kpi-grid grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-6">
-          {kpis.map((k) => (
+          {executiveKpis.map((k) => (
             <button
               key={k.title}
               type="button"
@@ -278,6 +281,75 @@ export default function Dashboard() {
               <KpiCard {...k} className="h-full" />
             </button>
           ))}
+        </div>
+
+        {/* ACTION CENTER */}
+        <div className="rounded-xl border border-rose-500/20 bg-slate-900/60 p-3 shadow-lg backdrop-blur-md">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-400">
+              <Sparkles size={15} className="animate-pulse" />
+              <span>⚡ Action Center (Requires Attention)</span>
+            </div>
+            <span className="text-[10px] text-slate-400">Real-time operational alerts</span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            <div
+              onClick={() => navigate("/repairs")}
+              className="flex items-center justify-between cursor-pointer rounded-lg border border-rose-500/30 bg-rose-950/20 p-2.5 transition hover:border-rose-400"
+            >
+              <div className="flex items-center gap-2">
+                <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-ping" />
+                <div>
+                  <p className="text-xs font-semibold text-rose-200">Overdue Repairs</p>
+                  <p className="text-[10px] text-slate-400">Waiting &gt; 7 days</p>
+                </div>
+              </div>
+              <Badge tone="red">{actionCenter.overdue_repairs || 0}</Badge>
+            </div>
+
+            <div
+              onClick={() => setShowLowStockModal(true)}
+              className="flex items-center justify-between cursor-pointer rounded-lg border border-amber-500/30 bg-amber-950/20 p-2.5 transition hover:border-amber-400"
+            >
+              <div className="flex items-center gap-2">
+                <Boxes size={14} className="text-amber-400" />
+                <div>
+                  <p className="text-xs font-semibold text-amber-200">Low & Out of Stock</p>
+                  <p className="text-[10px] text-slate-400">Items below minimum</p>
+                </div>
+              </div>
+              <Badge tone="amber">{(actionCenter.low_stock_items || 0) + (actionCenter.out_of_stock_items || 0)}</Badge>
+            </div>
+
+            <div
+              onClick={() => navigate("/suppliers")}
+              className="flex items-center justify-between cursor-pointer rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-2.5 transition hover:border-indigo-400"
+            >
+              <div className="flex items-center gap-2">
+                <Users size={14} className="text-indigo-400" />
+                <div>
+                  <p className="text-xs font-semibold text-indigo-200">Supplier Payables</p>
+                  <p className="text-[10px] text-slate-400">Pending GRN bills</p>
+                </div>
+              </div>
+              <Badge tone="indigo">LKR {(actionCenter.pending_supplier_payables || 0).toLocaleString()}</Badge>
+            </div>
+
+            <div
+              onClick={() => navigate("/warranty")}
+              className="flex items-center justify-between cursor-pointer rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-2.5 transition hover:border-cyan-400"
+            >
+              <div className="flex items-center gap-2">
+                <Clock size={14} className="text-cyan-400" />
+                <div>
+                  <p className="text-xs font-semibold text-cyan-200">Expiring Warranties</p>
+                  <p className="text-[10px] text-slate-400">Next 30 days</p>
+                </div>
+              </div>
+              <Badge tone="sky">{actionCenter.expiring_warranties || 0}</Badge>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -473,7 +545,7 @@ export default function Dashboard() {
 
           <SectionCard
             title="Today's Sales"
-            subtitle="Latest transactions"
+            subtitle="Latest transactions & quick actions"
             className="dashboard-table-card xl:col-span-6 overflow-hidden"
             right={
               <Button variant="ghost" size="sm" onClick={() => navigate("/pos")}>
@@ -490,22 +562,77 @@ export default function Dashboard() {
                     <th>Customer</th>
                     <th>Total</th>
                     <th>Method</th>
+                    <th className="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {tx.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-8 text-center text-sm text-slate-400">No completed sales yet today.</td>
+                      <td colSpan={5} className="py-8 text-center text-sm text-slate-400">No completed sales yet today.</td>
                     </tr>
                   ) : tx.slice(0, 6).map((t, idx) => (
                     <tr key={t.id || idx}>
                       <td className="font-mono text-xs text-slate-400">{t.invoice_no || `INV-${String(idx + 1).padStart(4, "0")}`}</td>
-                      <td className="font-bold text-slate-200">{t.customer || "Walk-in"}</td>
+                      <td className="font-bold text-slate-200">
+                        <div>{t.customer || "Walk-in"}</div>
+                        {t.customer_phone && <div className="text-[10px] text-slate-400 font-normal">{t.customer_phone}</div>}
+                      </td>
                       <td className="font-semibold text-emerald-300">LKR {(t.total || 0).toLocaleString()}</td>
                       <td>
                         <Badge tone="indigo" className="text-[9px] px-2 py-0.5">
                           {t.payment_method || "Cash"}
                         </Badge>
+                      </td>
+                      <td className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/invoice/${t.id}`)}
+                            className="rounded-lg bg-white/5 hover:bg-white/10 p-1.5 text-slate-300 hover:text-white transition"
+                            title="View Invoice"
+                          >
+                            <Receipt size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const printWindow = window.open(`/invoice/${t.id}?autoprint=1`, "_blank");
+                              if (printWindow) printWindow.focus();
+                            }}
+                            className="rounded-lg bg-white/5 hover:bg-white/10 p-1.5 text-slate-300 hover:text-white transition"
+                            title="Print Invoice"
+                          >
+                            <Printer size={13} />
+                          </button>
+                          {t.customer_phone && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                let phone = (t.customer_phone || "").replace(/[^\d]/g, "");
+                                if (phone.startsWith("0")) phone = "94" + phone.slice(1);
+                                const portalBase = "https://i-store-customer-portal-one.vercel.app";
+
+                                // ── Generate matching token deterministically ───────────────────────────
+                                const s = `${t.invoice_no}istore_secure_salt_2026`;
+                                let hashVal = 0;
+                                for (let i = 0; i < s.length; i++) {
+                                  hashVal = (hashVal << 5) - hashVal + s.charCodeAt(i);
+                                  hashVal |= 0; // force 32-bit signed integer
+                                }
+                                const token = `sec_${Math.abs(hashVal).toString(16).padStart(8, '0')}`.slice(0, 12);
+                                // ────────────────────────────────────────────────────────────────────────
+
+                                const billUrl = `${portalBase}/invoice/${t.invoice_no}?token=${token}`;
+                                const msg = `*Receipt from I-Store*\n\nHello ${t.customer || "Customer"},\nThank you for your purchase!\n\n*Invoice No:* ${t.invoice_no}\n*Total:* LKR ${(t.total || 0).toLocaleString()}\n\n*View & Download Digital Bill:* ${billUrl}\n\nHave a great day!`;
+                                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+                              }}
+                              className="rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 p-1.5 text-emerald-300 transition"
+                              title="Share on WhatsApp"
+                            >
+                              <MessageCircle size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -571,8 +698,91 @@ export default function Dashboard() {
             </div>}
           </SectionCard>
 
-          <SectionCard title="Quick Actions" subtitle="Jump into common workflows" className="dashboard-actions-card xl:col-span-12">
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          {/* Top Products & Payment Methods Analytics */}
+          <SectionCard
+            title="Top Selling Items"
+            subtitle={`${data?.sales_period_label || "Selected period"} · Best performing products`}
+            className="dashboard-table-card xl:col-span-6"
+            right={
+              <Button variant="ghost" size="sm" onClick={() => navigate("/inventory")}>
+                Inventory
+                <ArrowRight size={14} className="ml-1" />
+              </Button>
+            }
+          >
+            {(!data?.top_products || data.top_products.length === 0) ? (
+              <div className="dashboard-empty-copy">No sales data recorded for this period.</div>
+            ) : (
+              <div className="space-y-2.5">
+                {data.top_products.map((item, idx) => (
+                  <div key={item.name + idx} className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/30 p-2.5">
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-6 w-6 place-items-center rounded-lg bg-indigo-500/20 text-xs font-black text-indigo-300">
+                        #{idx + 1}
+                      </span>
+                      <div>
+                        <p className="text-xs font-bold text-slate-200">{item.name}</p>
+                        <p className="text-[10px] text-slate-400">{item.qty} units sold</p>
+                      </div>
+                    </div>
+                    <p className="text-xs font-black text-emerald-300">LKR {item.sales.toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Payment Methods"
+            subtitle={`${data?.sales_period_label || "Selected period"} · Settlement channel breakdown`}
+            className="dashboard-table-card xl:col-span-6"
+          >
+            {(!data?.payment_methods || data.payment_methods.length === 0) ? (
+              <div className="dashboard-empty-copy">No payment records found.</div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                {data.payment_methods.map((pm) => (
+                  <div key={pm.name} className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/40 p-3">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{pm.name}</span>
+                      <p className="text-xs text-slate-400 mt-0.5">{pm.count} transactions</p>
+                    </div>
+                    <p className="text-sm font-black text-cyan-300">LKR {pm.amount.toLocaleString()}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          {/* Dead Stock Intelligence Card */}
+          <SectionCard
+            title="Inventory Health & Dead Stock"
+            subtitle="Products inactive for >90 days"
+            className="dashboard-table-card xl:col-span-6"
+            right={
+              <Button variant="ghost" size="sm" onClick={() => navigate("/inventory")}>
+                View All
+                <ArrowRight size={14} className="ml-1" />
+              </Button>
+            }
+          >
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Total Stock Value (Cost)</span>
+                <p className="text-base font-black text-amber-200 mt-1">LKR {(data?.inventory_stats?.worth_cost || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400">Retail Worth: LKR {(data?.inventory_stats?.worth_retail || 0).toLocaleString()}</p>
+              </div>
+
+              <div className="rounded-xl border border-rose-500/20 bg-rose-950/20 p-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Dead Stock Tied Value</span>
+                <p className="text-base font-black text-rose-200 mt-1">LKR {(data?.inventory_stats?.dead_stock_value || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400">{data?.inventory_stats?.dead_stock_count || 0} Products Unsold &gt; 90 Days</p>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Quick Actions" subtitle="Jump into common workflows" className="dashboard-actions-card xl:col-span-6">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
               {dashboardActions.map((action) => (
                 <button
                   key={action.label}

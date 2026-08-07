@@ -1,12 +1,13 @@
 {
   "name": "istore-electron",
-  "version": "1.1.39",
+  "version": "1.1.78",
   "description": "I-Store ERP – Electron Desktop Host (Offline Engine)",
   "main": "main.js",
   "private": true,
   "scripts": {
     "dev": "cross-env NODE_ENV=development node node_modules/electron/dist/electron.exe .",
     "start": "electron .",
+    "prepackage": "node -e \"require('fs').cpSync('../frontend/dist', './frontend-dist', {recursive: true})\"",
     "package": "electron-builder --win nsis --publish never",
     "dist": "electron-builder --win nsis --publish never",
     "release": "electron-builder --win nsis --publish always",

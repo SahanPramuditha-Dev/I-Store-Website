@@ -91,8 +91,20 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 echo     OK - Installer, latest.yml, and blockmap created.
-echo     Upload the matching Setup .exe, .exe.blockmap, and latest.yml to GitHub Release v%VERSION%.
-if /i "%PUBLISH_GITHUB%"=="1" echo     GitHub publishing was requested; ensure GH_TOKEN is set and the release upload succeeded.
+
+echo.
+echo Publishing release v%VERSION% to GitHub Releases...
+where gh >nul 2>nul
+if !errorlevel! == 0 (
+    call gh release create v%VERSION% "%DIST%\I-Store-ERP-Setup-%VERSION%.exe" "%DIST%\I-Store-ERP-Setup-%VERSION%.exe.blockmap" "%DIST%\latest.yml" --title "v%VERSION%" --notes "Release v%VERSION%"
+    if !errorlevel! == 0 (
+        echo     OK - GitHub Release v%VERSION% published automatically!
+    ) else (
+        echo     WARNING: GitHub release creation via gh CLI failed. You can upload files manually from %DIST%.
+    )
+) else (
+    echo     NOTE: gh CLI not logged in/found. Upload Setup .exe, .exe.blockmap, and latest.yml from %DIST% to GitHub Release v%VERSION%.
+)
 
 echo.
 echo Unblocking output binaries...

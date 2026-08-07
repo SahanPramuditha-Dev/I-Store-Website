@@ -29,6 +29,7 @@ import RepairSettingsPanel from "../components/settings/RepairSettingsPanel";
 import NotificationsSettingsPanel from "../components/settings/NotificationsSettingsPanel";
 import AppearanceSettingsPanel from "../components/settings/AppearanceSettingsPanel";
 import SystemApisSettingsPanel from "../components/settings/SystemApisSettingsPanel";
+import SoftwareUpdatesSettingsPanel from "../components/settings/SoftwareUpdatesSettingsPanel";
 import AppModal from "../components/layout/AppModal";
 
 const TABS = [
@@ -41,6 +42,7 @@ const TABS = [
   { id: "notifications_alerts", label: "Notifications & Alerts", group: "System", icon: Bell },
   { id: "appearance_display", label: "Appearance & Display", group: "System", icon: Palette },
   { id: "system_apis", label: "System & APIs", group: "System", icon: SettingsIcon },
+  { id: "software_updates", label: "Software Updates", group: "System", icon: SettingsIcon },
 ];
 
 const EMPTY_EMPLOYEE_FORM = {
@@ -1055,6 +1057,8 @@ export default function Settings() {
           ? renderAppearanceSettings()
           : activeTab === "system_apis"
           ? renderSystemApisSettings()
+          : activeTab === "software_updates"
+          ? <SoftwareUpdatesSettingsPanel toast={toast} />
           : renderGenericSection(activeTab)}
         </div>
       </div>

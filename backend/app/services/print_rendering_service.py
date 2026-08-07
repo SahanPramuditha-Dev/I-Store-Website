@@ -667,7 +667,10 @@ def _render_invoice_html_customizer(invoice: dict, store: dict, settings: dict, 
     </div>
 
     {thank_you_html}
-
+    <div style="margin-top: 15px; text-align: center;">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=https%3A%2F%2Fi-store-customer-portal-one.vercel.app%2Finvoice%2F{invoice_number}" alt="Scan Bill QR" style="max-width: 90px; height: auto;" />
+      <div style="font-size: 8px; color: #666; margin-top: 2px;">Scan with camera for Mobile Digital Receipt</div>
+    </div>
   </div>
 </body>
 </html>"""

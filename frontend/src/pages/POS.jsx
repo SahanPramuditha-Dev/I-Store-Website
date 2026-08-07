@@ -1283,8 +1283,47 @@ export default function POS() {
   const sendReceiptWhatsApp = () => {
     if (!lastSale) return toast("No recent sale", "warning");
     window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
-    toast("WhatsApp send prepared (integrate customer phone mapping)", "info");
+    
+    const rawPhone = lastSale.customer?.phone || lastSale.customer_phone || "";
+    if (!rawPhone) {
+      return toast("No customer phone number attached to this invoice", "warning");
+    }
+
+    // Clean phone number (strip spaces, dashes, plus)
+    let cleanedPhone = rawPhone.replace(/[^\d]/g, "");
+    // Default Sri Lanka country code 94 if phone starts with 0
+    if (cleanedPhone.startsWith("0")) {
+      cleanedPhone = "94" + cleanedPhone.slice(1);
+    }
+
+    const saleId = lastSale.id || lastSale.sale_id;
+    const invNo = lastSale.invoice_no || lastSale.invoice_number || `INV-${saleId}`;
+    const custName = lastSale.customer?.name || lastSale.customer_name || "Valued Customer";
+    const totalAmt = (lastSale.grand_total || lastSale.total_amount || 0).toLocaleString();
+
+    const itemsSummary = (lastSale.items || lastSale.lines || [])
+      .map(i => `• ${i.product_name || i.description || i.item_name || "Item"} x${i.quantity || 1} - LKR ${(i.line_total || i.unit_price || 0).toLocaleString()}`)
+      .join("\n");
+
+    // ── Generate matching token deterministically ───────────────────────────
+    const s = `${invNo}istore_secure_salt_2026`;
+    let hashVal = 0;
+    for (let i = 0; i < s.length; i++) {
+      hashVal = (hashVal << 5) - hashVal + s.charCodeAt(i);
+      hashVal |= 0; // force 32-bit signed integer
+    }
+    const token = `sec_${Math.abs(hashVal).toString(16).padStart(8, '0')}`.slice(0, 12);
+    // ────────────────────────────────────────────────────────────────────────
+
+    const portalBase = "https://i-store-customer-portal-one.vercel.app";
+    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}`;
+    const message = `*Receipt from I-Store*\n\nHello ${custName},\nThank you for shopping with us!\n\n*Invoice No:* ${invNo}\n*Total Amount:* LKR ${totalAmt}\n\n*Items Purchased:*\n${itemsSummary}\n\n*View & Download Digital Bill:* ${billUrl}\n\nHave a great day!`;
+
+    const whatsappUrl = `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, "_blank");
+    toast("Opening WhatsApp with Digital Bill link...", "info");
   };
+
 
   const sendReceiptEmail = () => {
     if (!lastSale) return toast("No recent sale", "warning");
@@ -1816,15 +1855,20 @@ export default function POS() {
               <div className="space-y-3 min-w-0">
                 <div className="flex items-center gap-2">
                   <User size={16} className="text-slate-500 shrink-0" />
-                  <select
-                    ref={customerSelectRef}
-                    className="flex-1 min-w-0 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+                  <Select
+                    size="sm"
+                    className="min-w-0 flex-1"
                     value={customerId} 
                     onChange={(e) => setCustomerId(e.target.value)}
-                  >
-                    <option value="">Walk-in Customer</option>
-                    {(customersFetch.data || []).map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
-                  </select>
+                    placeholder="Walk-in Customer"
+                    options={[
+                      { value: "", label: "Walk-in Customer" },
+                      ...(customersFetch.data || []).map((c) => ({
+                        value: String(c.id),
+                        label: `${c.name} - ${c.phone}`,
+                      })),
+                    ]}
+                  />
                   <button onClick={() => setShowNewCustomerModal(true)} className="px-2.5 py-2 rounded-lg bg-white/10 border border-white/10 text-[11px] font-bold hover:bg-white/20 whitespace-nowrap shrink-0">+New</button>
                 </div>
                 {customerId && (
@@ -2129,15 +2173,20 @@ export default function POS() {
                 <div className="mb-3 space-y-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
                   <div className="flex items-center gap-2">
                     <User size={14} className="shrink-0 text-slate-500" />
-                    <select
-                      ref={customerSelectRef}
-                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-2.5 py-2 text-xs text-white outline-none focus:border-indigo-400"
+                    <Select
+                      size="sm"
+                      className="min-w-0 flex-1"
                       value={customerId}
                       onChange={(e) => setCustomerId(e.target.value)}
-                    >
-                      <option value="">Walk-in Customer</option>
-                      {(customersFetch.data || []).map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
-                    </select>
+                      placeholder="Walk-in Customer"
+                      options={[
+                        { value: "", label: "Walk-in Customer" },
+                        ...(customersFetch.data || []).map((c) => ({
+                          value: String(c.id),
+                          label: `${c.name} - ${c.phone}`,
+                        })),
+                      ]}
+                    />
                     <button onClick={() => setShowNewCustomerModal(true)} className="shrink-0 rounded-lg border border-white/10 bg-white/10 px-2.5 py-2 text-[10px] font-black text-slate-200 hover:bg-white/20">+New</button>
                   </div>
 
@@ -2393,18 +2442,18 @@ export default function POS() {
               </>
             ) : (
               <div className="space-y-3">
-                <div className="rounded-xl border border-white/10 bg-slate-900/60 p-3 shadow-inner">
-                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-rose-300 flex items-center gap-1.5">
-                        <RotateCcw size={12} className="text-rose-400" /> Return / Exchange Module
+                <div className="rounded-xl border border-rose-500/20 bg-rose-950/20 p-3 shadow-inner">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
+                        <RotateCcw size={13} className="text-rose-400 shrink-0" /> Return / Exchange Quick Lookup
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-400">Lookup invoice, select items, and process refunds or exchanges directly.</p>
+                      <p className="mt-0.5 text-xs text-slate-400">Lookup invoice, select items, and process refunds or exchanges.</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => navigate("/returns")}
-                      className="rounded-lg bg-rose-500/15 border border-rose-500/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-rose-200 hover:bg-rose-500/25 transition shadow-sm shrink-0"
+                      className="rounded-lg bg-rose-500/20 border border-rose-500/40 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-rose-200 hover:bg-rose-500/30 transition shadow-sm shrink-0 whitespace-nowrap"
                     >
                       Open Full Returns Page
                     </button>

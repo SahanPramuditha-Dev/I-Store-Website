@@ -720,10 +720,16 @@ def _deep_merge(base: Any, override: Any) -> Any:
 def _get_setting_dict(db: Session, key: str, default_value: dict) -> dict:
     row = db.query(AppSetting).filter(AppSetting.key == key).first()
     if not row:
-        row = AppSetting(key=key, value=json.dumps(default_value))
-        db.add(row)
-        db.commit()
-        return copy.deepcopy(default_value)
+        try:
+            row = AppSetting(key=key, value=json.dumps(default_value))
+            db.add(row)
+            db.commit()
+            return copy.deepcopy(default_value)
+        except Exception:
+            db.rollback()
+            row = db.query(AppSetting).filter(AppSetting.key == key).first()
+            if not row:
+                return copy.deepcopy(default_value)
     loaded = _safe_json_load(row.value, default_value)
     if not isinstance(loaded, dict):
         return copy.deepcopy(default_value)
@@ -737,7 +743,18 @@ def _save_setting_dict(db: Session, key: str, payload: dict) -> dict:
         db.add(row)
     else:
         row.value = json.dumps(payload)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        row = db.query(AppSetting).filter(AppSetting.key == key).first()
+        if row:
+            row.value = json.dumps(payload)
+            db.commit()
+        else:
+            row = AppSetting(key=key, value=json.dumps(payload))
+            db.add(row)
+            db.commit()
     return payload
 
 
@@ -1857,3 +1874,40 @@ def get_db_diagnostics(db: Session = Depends(get_db), _=Depends(get_current_user
 def run_db_maintenance(db: Session = Depends(get_db), _=Depends(get_current_user)):
     from app.services.backup_service import perform_database_maintenance
     return perform_database_maintenance()
+
+
+@router.get("/support-bundle", dependencies=[Depends(require_permission("settings.view"))])
+def download_support_bundle(_=Depends(get_current_user)):
+    import zipfile
+    import io
+    import json
+    import os
+    from fastapi.responses import StreamingResponse
+    from app.config import DATA_ROOT, DB_FILE
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        # 1. System Summary
+        summary = {
+            "version": "1.1.44",
+            "environment": os.getenv("APP_ENV", "production"),
+            "data_root": str(DATA_ROOT),
+            "timestamp": utcnow().isoformat(),
+        }
+        zf.writestr("system_info.json", json.dumps(summary, indent=2))
+
+        # 2. Logs
+        logs_dir = DATA_ROOT / "logs"
+        if logs_dir.exists():
+            for log_file in logs_dir.glob("*.log"):
+                try:
+                    zf.write(log_file, arcname=f"logs/{log_file.name}")
+                except Exception:
+                    pass
+
+    zip_buffer.seek(0)
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=iStore-support-bundle.zip"},
+    )

@@ -155,6 +155,10 @@ def _read_setting_number(db: Session, key: str, default: float) -> float:
     row = db.query(AppSetting).filter(AppSetting.key == key).first()
     if not row or row.value is None:
         return float(default)
+    try:
+        return float(row.value)
+    except Exception:
+        return float(default)
 
 
 @router.get("/money-integrity", dependencies=[Depends(require_permission("financial_audit.view"))])
@@ -267,10 +271,7 @@ def money_integrity_check(
         "date_from": date_from,
         "date_to": date_to,
     }
-    try:
-        return float(row.value)
-    except Exception:
-        return float(default)
+
 
 
 def _next_code(db: Session, model, prefix: str) -> str:
@@ -1288,7 +1289,7 @@ def financial_audit_state(
     flag_type_counter = Counter()
     for f in unresolved_flags:
         bucket = "Other"
-        txt = f.flag_type.lower()
+        txt = str(f.get("flag_type", "") if isinstance(f, dict) else getattr(f, "flag_type", "")).lower()
         if "cash" in txt or "closing" in txt:
             bucket = "Cash"
         elif "discount" in txt:

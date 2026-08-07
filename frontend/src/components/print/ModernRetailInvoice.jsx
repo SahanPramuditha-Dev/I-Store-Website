@@ -57,8 +57,9 @@ export function ModernRetailInvoice({ invoice, storeProfile, settings }) {
           >
             {paymentStatus}
           </span>
-          <div className="p-1 border border-slate-200 bg-white rounded shadow-sm">
-            <QRCode value={`INV:${invoiceNumber}`} size={56} level="M" />
+          <div className="p-1 border border-slate-200 bg-white rounded shadow-sm flex flex-col items-center">
+            <QRCode value={`https://i-store-customer-portal-one.vercel.app/invoice/${invoiceNumber}`} size={64} level="M" />
+            <span className="text-[9px] text-slate-400 font-medium mt-1">Scan for Digital Bill</span>
           </div>
         </div>
       </div>
