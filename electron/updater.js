@@ -133,7 +133,15 @@ function initAutoUpdater(win, options = {}) {
       checkInProgress = true;
       _logEvent("manual_check_requested");
       const res = await autoUpdater.checkForUpdates();
-      return { ok: true, updateInfo: res ? res.updateInfo : null };
+      
+      // When checkForUpdates returns null/undefined or res.updateInfo is missing,
+      // it means electron-updater determined the app is up to date (or unpacked mode).
+      if (!res || !res.updateInfo) {
+        _sendToRenderer("updater:status", { status: "not-available" });
+        return { ok: true, upToDate: true };
+      }
+
+      return { ok: true, updateInfo: res.updateInfo };
     } catch (err) {
       const msg = String(err?.message || "");
       console.log("[updater] Check finished:", msg);
@@ -145,7 +153,8 @@ function initAutoUpdater(win, options = {}) {
         msg.includes("latest.yml") ||
         msg.includes("app-update.yml") ||
         msg.includes("ENOENT") ||
-        msg.includes("ERR_NON_2XX_3XX_RESPONSE")
+        msg.includes("ERR_NON_2XX_3XX_RESPONSE") ||
+        msg.includes("dev update config")
       ) {
         _sendToRenderer("updater:status", { status: "not-available" });
         return { ok: true, upToDate: true };
