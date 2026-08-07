@@ -1252,7 +1252,7 @@ def lookup_imei_intelligence(imei_text: str, db: Session = Depends(get_db), _=De
     if not clean_imei:
         raise HTTPException(status_code=400, detail="IMEI text is required")
 
-    from app.models import InventorySerial, RepairTicket, WarrantyRecord, Customer, SaleInvoice
+    from app.models import InventorySerial, RepairTicket, WarrantyRecord, Customer, Sale
     from app.models.inventory import StolenDeviceBlacklist
     from datetime import datetime, date
 
@@ -1300,7 +1300,7 @@ def lookup_imei_intelligence(imei_text: str, db: Session = Depends(get_db), _=De
 
     sale_info = None
     if serial_rec and serial_rec.sale_id:
-        sale = db.query(SaleInvoice).filter(SaleInvoice.id == serial_rec.sale_id).first()
+        sale = db.query(Sale).filter(Sale.id == serial_rec.sale_id).first()
         if sale:
             cust = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
             sale_info = {
@@ -1311,7 +1311,7 @@ def lookup_imei_intelligence(imei_text: str, db: Session = Depends(get_db), _=De
                 "sold_at": _iso(sale.created_at),
             }
     elif warranty_rec and warranty_rec.invoice_id:
-        sale = db.query(SaleInvoice).filter(SaleInvoice.id == warranty_rec.invoice_id).first()
+        sale = db.query(Sale).filter(Sale.id == warranty_rec.invoice_id).first()
         if sale:
             cust = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
             sale_info = {
@@ -1354,7 +1354,7 @@ def lookup_imei_intelligence(imei_text: str, db: Session = Depends(get_db), _=De
                 "id": r.id,
                 "ticket_number": f"REP-{r.id:05d}",
                 "status": r.status,
-                "problem": r.problem_description or r.device_model,
+                "problem": r.issue or r.device_model,
                 "created_at": _iso(r.created_at),
             }
             for r in repairs

@@ -67,124 +67,91 @@ export default function UpdateNotification() {
   if (!status || dismissed) return null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: "24px",
-        right: "24px",
-        width: "360px",
-        backgroundColor: "#0f172a",
-        color: "#f8fafc",
-        borderRadius: "12px",
-        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)",
-        border: "1px solid #334155",
-        padding: "16px",
-        zIndex: 9999,
-        fontFamily: "sans-serif",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "20px" }}>⚡</span>
-          <h4 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "#38bdf8" }}>
-            {status === "checking" && "Checking for updates"}
-            {status === "available" && `Update available ${versionInfo ? `v${versionInfo}` : ""}`}
-            {status === "not-available" && "You are up to date"}
-            {status === "downloading" && `Downloading Update ${versionInfo ? `v${versionInfo}` : ""}`}
-            {status === "ready-to-install" && `Update Ready ${versionInfo ? `v${versionInfo}` : ""}`}
-            {status === "error" && "Update Issue Detected"}
-          </h4>
-        </div>
-        <button
-          onClick={() => setDismissed(true)}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#94a3b8",
-            cursor: "pointer",
-            fontSize: "16px",
-            padding: "0 4px",
-          }}
-          title="Dismiss notification"
-        >
-          ✕
-        </button>
-      </div>
-
-      {status === "checking" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>Contacting GitHub Releases…</p>}
-
-      {status === "available" && (
-        <div style={{ marginTop: "12px" }}>
-          <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#cbd5e1" }}>A verified update is available. Download it now to keep the POS system protected.</p>
-          <button
-            onClick={handleDownloadNow}
-            style={{ width: "100%", padding: "8px 14px", backgroundColor: "#0f766e", color: "#ffffff", border: "none", borderRadius: "6px", fontWeight: 600, fontSize: "13px", cursor: "pointer" }}
-          >
-            Download Update
-          </button>
-        </div>
-      )}
-
-      {status === "not-available" && <p style={{ margin: "12px 0 0", fontSize: "13px", color: "#cbd5e1" }}>You already have the latest iStore OS release.</p>}
-
-      {status === "downloading" && (
-        <div style={{ marginTop: "12px" }}>
-          <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#cbd5e1" }}>
-            Downloading the latest version in the background ({progress}%)...
-          </p>
-          <div
-            style={{
-              width: "100%",
-              height: "6px",
-              backgroundColor: "#1e293b",
-              borderRadius: "3px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                width: `${progress}%`,
-                height: "100%",
-                backgroundColor: "#0284c7",
-                transition: "width 0.3s ease",
-              }}
-            />
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md animate-fade-in">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-indigo-500/30 bg-slate-900 shadow-2xl shadow-indigo-950/50">
+        <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/60 px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/20 text-indigo-400">
+              🚀
+            </span>
+            <div>
+              <h3 className="text-sm font-bold text-slate-100">
+                {status === "checking" && "Checking for Updates..."}
+                {status === "available" && `iStore OS Update Available`}
+                {status === "not-available" && "Software Up To Date"}
+                {status === "downloading" && `Downloading Update (${progress}%)`}
+                {status === "ready-to-install" && `Update Ready to Install`}
+                {status === "error" && "Update Issue Detected"}
+              </h3>
+              {versionInfo && <p className="text-[10px] text-indigo-300 font-semibold">Version {versionInfo}</p>}
+            </div>
           </div>
-        </div>
-      )}
-
-      {status === "ready-to-install" && (
-        <div style={{ marginTop: "12px" }}>
-          <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#cbd5e1" }}>
-            A new version has been downloaded. Database backup is saved. Restart to apply the update.
-          </p>
           <button
-            onClick={handleInstallNow}
-            style={{
-              width: "100%",
-              padding: "8px 14px",
-              backgroundColor: "#0284c7",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "6px",
-              fontWeight: 600,
-              fontSize: "13px",
-              cursor: "pointer",
-              transition: "background-color 0.2s ease",
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#0369a1")}
-            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#0284c7")}
+            onClick={() => setDismissed(true)}
+            className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white transition"
+            title="Dismiss notification"
           >
-            Restart & Install Now
+            ✕
           </button>
         </div>
-      )}
 
-      {status === "error" && (
-        <div style={{ marginTop: "12px" }}>
-          <p style={{ margin: 0, fontSize: "12px", color: "#f87171" }}>{errorMessage}</p>
+        <div className="p-5 space-y-4">
+          {status === "checking" && (
+            <p className="text-xs text-slate-300">Contacting GitHub Releases repository for latest version...</p>
+          )}
+
+          {status === "available" && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                A new software update <b className="text-cyan-300">v{versionInfo}</b> is available! Click download to keep your store, POS, and repairs up to date.
+              </p>
+              <button
+                onClick={handleDownloadNow}
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2"
+              >
+                <span>⚡ Download Update Now</span>
+              </button>
+            </div>
+          )}
+
+          {status === "not-available" && (
+            <p className="text-xs text-slate-300">You are using the latest version of iStore OS software.</p>
+          )}
+
+          {status === "downloading" && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-semibold text-slate-300">
+                <span>Downloading Update Package...</span>
+                <span className="text-cyan-400 font-bold">{progress}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {status === "ready-to-install" && (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Update <b className="text-emerald-400">v{versionInfo}</b> has been downloaded and verified! A pre-update database backup is saved.
+              </p>
+              <button
+                onClick={handleInstallNow}
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-2"
+              >
+                <span>✨ Restart & Install Now</span>
+              </button>
+            </div>
+          )}
+
+          {status === "error" && (
+            <p className="text-xs text-rose-300">{errorMessage}</p>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

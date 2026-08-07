@@ -1250,6 +1250,50 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
         "line_count": len(payload.lines),
         "payment_method": sale.payment_method,
     }))
+
+    # ── Cloud Sync ──────────────────────────────────────────────────────────
+    # Push the finalized invoice to Supabase so the Customer Portal website
+    # can show it as a Smart Bill immediately after checkout.
+    # Runs in a background daemon thread — zero delay for the cashier.
+    try:
+        import threading
+        from app.services.supabase_pos_sync import sync_checkout_invoice_to_cloud
+
+        _invoice_label_str = _invoice_label(sale)
+        _customer_name = customer.name if customer else "Walk-in"
+        _customer_phone = customer.phone if customer else ""
+        _customer_email = customer.email if customer else ""
+        _sync_items = [
+            {
+                "name": line.get("item_name") or line.get("description", "Product"),
+                "qty": line.get("qty", 1),
+                "price": line.get("unit_price", 0.0),
+                "warranty_months": round((line.get("warranty_days") or 0) / 30),
+                "imei_or_serial": line.get("serial_number"),
+            }
+            for line in receipt_lines
+        ]
+
+        def _do_sync():
+            sync_checkout_invoice_to_cloud(
+                invoice_id=_invoice_label_str,
+                customer_name=_customer_name,
+                customer_phone=_customer_phone,
+                customer_email=_customer_email,
+                subtotal=float(subtotal),
+                discount=float(payload.discount_amount or 0),
+                tax=float(payload.tax_amount or 0),
+                total=float(total),
+                payment_method=str(sale.payment_method or "Cash"),
+                items=_sync_items,
+                status="Paid" if sale.paid else "Pending",
+            )
+
+        threading.Thread(target=_do_sync, daemon=True).start()
+    except Exception as _sync_err:
+        logger.warning(f"Cloud sync skipped: {_sync_err}")
+    # ────────────────────────────────────────────────────────────────────────
+
     return {
         "sale_id": sale.id,
         "id": sale.id,

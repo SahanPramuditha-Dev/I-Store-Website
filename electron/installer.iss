@@ -6,7 +6,7 @@
 ; ============================================================
 
 #define MyAppName       "I-Store ERP"
-#define MyAppVersion     "1.1.39"
+#define MyAppVersion     "1.1.72"
 #define MyAppPublisher  "I-Store Dev"
 #define MyAppURL        "https://github.com/SahanPramuditha-Dev/I-Store-Website"
 #define MyAppExeName    "I-Store ERP.exe"

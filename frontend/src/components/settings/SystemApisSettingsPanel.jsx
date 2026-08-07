@@ -297,52 +297,67 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
       label: "Developer / Advanced",
       icon: Bug,
       render: ({ data, updatePath }) => (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Toggle label="Debug mode" checked={data.developer_advanced.debug_mode} onChange={(v) => updatePath("developer_advanced.debug_mode", v)} />
             <Toggle label="API access enabled" checked={data.developer_advanced.api_access} onChange={(v) => updatePath("developer_advanced.api_access", v)} />
             <Field label="API key" value={data.developer_advanced.api_key} onChange={(v) => updatePath("developer_advanced.api_key", v)} />
             <Field label="Webhook URL" value={data.developer_advanced.webhook_url} onChange={(v) => updatePath("developer_advanced.webhook_url", v)} />
-            <label className="flex flex-col gap-1.5">
+            <label className="flex flex-col gap-1.5 md:col-span-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Log level</span>
-              <Select value={data.developer_advanced.log_level || "Error"} onChange={(e) => updatePath("developer_advanced.log_level", e.target.value)}>
-                <option>Error</option>
-                <option>Warning</option>
-                <option>Info</option>
-                <option>Debug</option>
-              </Select>
+              <div className="flex gap-3 items-center">
+                <Select className="flex-1" value={data.developer_advanced.log_level || "Error"} onChange={(e) => updatePath("developer_advanced.log_level", e.target.value)}>
+                  <option>Error</option>
+                  <option>Warning</option>
+                  <option>Info</option>
+                  <option>Debug</option>
+                </Select>
+                <Button size="sm" variant="secondary" onClick={() => toast("Cache clear executed (simulation).", "warning")}>
+                  Clear Cache
+                </Button>
+              </div>
             </label>
-            <div className="flex items-end">
-              <Button size="sm" variant="secondary" onClick={() => toast("Cache clear executed (simulation).", "warning")}>
-                Clear Cache
-              </Button>
-            </div>
-            <div className="flex items-end gap-2">
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-slate-900/50 p-4 space-y-3">
+            <p className="text-xs font-bold text-slate-200">System Updates & Diagnostics</p>
+            <div className="flex flex-wrap items-center gap-2.5">
               <Button size="sm" variant="secondary" onClick={checkForUpdates} disabled={checkingForUpdate}>
                 <Settings2 size={13} /> {checkingForUpdate ? "Checking…" : "Check for Updates"}
               </Button>
               <Button size="sm" variant="secondary" onClick={handleDownloadUpdate} disabled={updaterStatus === "downloading"}>
                 <PlugZap size={13} /> {updaterStatus === "downloading" ? "Downloading…" : "Download Update"}
               </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  window.open("/api/v1/settings/support-bundle", "_blank");
+                  toast("Downloading diagnostic support bundle...", "info");
+                }}
+              >
+                Export Diagnostic Bundle
+              </Button>
             </div>
-            {window.istore?.autoLaunch && (
-              <div className="col-span-full pt-2">
-                <Toggle
-                  label="Launch I-Store ERP automatically when Windows starts"
-                  checked={data.developer_advanced.auto_launch_enabled ?? false}
-                  onChange={async (v) => {
-                    updatePath("developer_advanced.auto_launch_enabled", v);
-                    try {
-                      await window.istore.autoLaunch.set(v);
-                      toast(v ? "Auto-launch enabled on Windows startup" : "Auto-launch disabled", "info");
-                    } catch (err) {
-                      toast("Failed to update auto-launch setting", "error");
-                    }
-                  }}
-                />
-              </div>
-            )}
           </div>
+
+          {window.istore?.autoLaunch && (
+            <div className="pt-1">
+              <Toggle
+                label="Launch I-Store ERP automatically when Windows starts"
+                checked={data.developer_advanced.auto_launch_enabled ?? false}
+                onChange={async (v) => {
+                  updatePath("developer_advanced.auto_launch_enabled", v);
+                  try {
+                    await window.istore.autoLaunch.set(v);
+                    toast(v ? "Auto-launch enabled on Windows startup" : "Auto-launch disabled", "info");
+                  } catch (err) {
+                    toast("Failed to update auto-launch setting", "error");
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       ),
     },

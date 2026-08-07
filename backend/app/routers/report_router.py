@@ -378,7 +378,7 @@ def summary(
                 "total": s.total,
                 "is_voided": s.is_voided,
                 "payment_method": s.payment_method,
-                "created_at": s.created_at.isoformat()
+                "created_at": s.created_at.isoformat() if s.created_at else None
             } for s in recent_sales
         ]
     }
@@ -853,7 +853,7 @@ def export_inventory(
     writer.writerow(["SKU/Barcode", "Product Name", "Quantity", "Cost Price", "Retail Price", "Asset Value", "Potential Revenue"])
     
     for i in inv_q.yield_per(500):
-        writer.writerow([i.barcode or i.sku, i.name, i.quantity, i.cost_price, i.sale_price, i.quantity * i.cost_price, i.quantity * i.sale_price])
+        writer.writerow([i.barcode or i.sku, i.name, i.quantity, i.cost_price, i.sale_price, (i.quantity or 0) * (i.cost_price or 0), (i.quantity or 0) * (i.sale_price or 0)])
     
     csv_content = output.getvalue()
     _append_export_history(db, {
@@ -1267,8 +1267,8 @@ def detailed_inventory_report(
         "low_stock_threshold": i.low_stock_threshold,
         "cost_price": i.cost_price,
         "sale_price": i.sale_price,
-        "total_value": i.quantity * i.cost_price,
-        "potential_revenue": i.quantity * i.sale_price
+        "total_value": (i.quantity or 0) * (i.cost_price or 0),
+        "potential_revenue": (i.quantity or 0) * (i.sale_price or 0)
     } for i in items]
 
 

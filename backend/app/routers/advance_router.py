@@ -1333,7 +1333,7 @@ def create_invoice_from_reservation(
                 serial.status = "sold"
                 serial.sale_id = sale.id
 
-    customer = db.query(Customer).filter(Customer.id == int(row.customer_id)).first()
+    customer = db.query(Customer).filter(Customer.id == int(row.customer_id)).first() if row.customer_id else None
     created_warranties = create_sale_warranty_records(
         db=db,
         sale=sale,

@@ -12,6 +12,7 @@ from app.models import (
     AppSetting,
     Customer,
     InventoryItem,
+    InventorySerial,
     InvoiceAuditEvent,
     InvoicePayment,
     RepairTicket,

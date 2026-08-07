@@ -17,13 +17,14 @@ db_url = app.config.settings.database_url
 is_sqlite = db_url.startswith("sqlite")
 
 if is_sqlite:
-    engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    engine = create_engine(db_url, connect_args={"check_same_thread": False, "timeout": 30})
 
     @event.listens_for(engine, "connect")
     def set_sqlite_pragmas(dbapi_connection, _):
         try:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA busy_timeout=30000")
             try:
                 cursor.execute("PRAGMA journal_mode=WAL")
             except Exception:

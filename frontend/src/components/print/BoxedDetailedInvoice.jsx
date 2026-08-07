@@ -76,8 +76,9 @@ export function BoxedDetailedInvoice({ invoice, storeProfile, settings }) {
           </div>
 
           {/* QR CODE */}
-          <div className="w-24 h-24 border border-dashed border-slate-400 flex items-center justify-center p-1">
-             <QRCode value={invoice_number} size={80} level="L" />
+          <div className="w-24 h-24 border border-dashed border-slate-400 flex flex-col items-center justify-center p-1">
+             <QRCode value={`https://i-store-customer-portal-one.vercel.app/invoice/${invoice_number}`} size={72} level="L" />
+             <span className="text-[8px] text-slate-500 font-semibold mt-0.5">Scan Bill QR</span>
           </div>
         </div>
 

@@ -58,18 +58,41 @@ function ensureDataRootMigration() {
     "backups",
     "istore-local.db",
   ];
+  const legacyPaths = [
+    legacyUserData,
+    path.join(app.getPath("appData"), "istore-electron", "iStore", "iStore"),
+    path.join(app.getPath("appData"), "istore-electron", "iStore"),
+    path.join(app.getPath("appData"), "istore-electron"),
+    path.join(app.getPath("appData"), "iStore"),
+  ];
 
-  for (const item of candidates) {
-    const src = path.join(legacyUserData, item);
-    const dest = path.join(targetUserData, item);
-    if (!fs.existsSync(src) || fs.existsSync(dest)) continue;
-    try {
-      if (fs.statSync(src).isDirectory()) {
-        fs.cpSync(src, dest, { recursive: true, errorOnExist: false });
-      } else {
-        fs.copyFileSync(src, dest);
+  for (const legacyDir of legacyPaths) {
+    if (!fs.existsSync(legacyDir)) continue;
+
+    for (const item of candidates) {
+      const src = path.join(legacyDir, item);
+      const dest = path.join(targetUserData, item);
+
+      if (!fs.existsSync(src)) continue;
+
+      try {
+        if (fs.statSync(src).isDirectory()) {
+          if (!fs.existsSync(dest)) {
+            fs.mkdirSync(dest, { recursive: true });
+          }
+          const files = fs.readdirSync(src);
+          for (const f of files) {
+            const fSrc = path.join(src, f);
+            const fDest = path.join(dest, f);
+            if (!fs.existsSync(fDest) || f === "istore.db") {
+              fs.copyFileSync(fSrc, fDest);
+            }
+          }
+        } else if (!fs.existsSync(dest) || item === "istore.db") {
+          fs.copyFileSync(src, dest);
+        }
+      } catch (_err) {
       }
-    } catch (_err) {
     }
   }
 
@@ -145,7 +168,7 @@ function startBackend() {
     // opened can select a legacy database and leave the API unusable.
     AUTO_MIGRATE_ENABLED: "false",
     BACKUP_BEFORE_MIGRATE: "false",
-    ALLOW_RUNTIME_SCHEMA_SYNC: "false",
+    ALLOW_RUNTIME_SCHEMA_SYNC: "true",
     SQLITE_FILE: path.join(databaseDirectory, "istore.db"),
     BACKUP_FOLDER: backupsDirectory,
     // Do not set DATABASE_URL here. config.py derives it from SQLITE_FILE,
@@ -161,10 +184,6 @@ function startBackend() {
   backendProcess.on("error", (error) => console.error("[main] Failed to start local backend:", error.message));
   backendProcess.on("exit", (code) => {
     if (!app.isQuitting && code !== 0) console.error(`[main] Local backend exited unexpectedly (${code}).`);
-    if (backendLogHandle) {
-      fs.closeSync(backendLogHandle);
-      backendLogHandle = null;
-    }
     backendProcess = null;
   });
 }
@@ -267,8 +286,8 @@ function createWindow() {
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  ensureDataRootMigration();
   const targetUserData = resolveDataRoot();
+  ensureDataRootMigration();
   app.setPath("userData", targetUserData);
   startBackend();
   await initDatabase();

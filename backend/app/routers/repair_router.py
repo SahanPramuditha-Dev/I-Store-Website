@@ -378,6 +378,9 @@ def update_repair_status(repair_id: int, status: str, request: Request, note: st
         import urllib.parse
         whatsapp_url = f"https://wa.me/{phone}?text={urllib.parse.quote(message)}"
 
+    db.commit()
+    db.refresh(repair)
+
     return {
         "ok": True,
         "whatsapp_url": whatsapp_url,
@@ -821,7 +824,7 @@ def generate_job_card_pdf(repair_id: int, db: Session = Depends(get_db), _=Depen
         raise HTTPException(status_code=404, detail=f"Repair ID {repair_id} not found in database")
 
     parts = db.query(RepairPartUsage).options(joinedload(RepairPartUsage.item)).filter(RepairPartUsage.repair_id == repair.id).all()
-    parts_total = sum(p.quantity * p.unit_cost for p in parts)
+    parts_total = sum((p.quantity or 0) * (p.unit_cost or 0) for p in parts)
     repair_warranty = (
         db.query(WarrantyRecord)
         .filter(

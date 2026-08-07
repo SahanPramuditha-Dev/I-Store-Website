@@ -392,6 +392,84 @@
   font-weight: 600;
 }
 
+.password-strength-box {
+  background: rgba(30, 32, 48, 0.6);
+  border: 1px solid rgba(120, 126, 155, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.password-strength-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.strength-label {
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.strength-label.strength-0 { color: #f87171; }
+.strength-label.strength-1 { color: #fb923c; }
+.strength-label.strength-2 { color: #facc15; }
+.strength-label.strength-3 { color: #60a5fa; }
+.strength-label.strength-4 { color: #4ade80; }
+
+.strength-bar-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.strength-bar-fill {
+  height: 100%;
+  transition: width 0.3s ease, background-color 0.3s ease;
+  border-radius: 4px;
+}
+
+.strength-fill-0 { width: 10%; background-color: #ef4444; }
+.strength-fill-1 { width: 25%; background-color: #f97316; }
+.strength-fill-2 { width: 50%; background-color: #eab308; }
+.strength-fill-3 { width: 75%; background-color: #3b82f6; }
+.strength-fill-4 { width: 100%; background-color: #22c55e; }
+
+.password-rules-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 8px;
+}
+
+.rule-item {
+  font-size: 10.5px;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.rule-item.met {
+  color: #4ade80;
+}
+
+.rule-item.unmet {
+  color: #64748b;
+}
+
+.password-mismatch-warning {
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
 .exact-login-submit {
   margin-top: 10px;
   height: 48px;

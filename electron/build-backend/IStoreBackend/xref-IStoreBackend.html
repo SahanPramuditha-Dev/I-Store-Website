@@ -7178,7 +7178,6 @@ imported by:
  &#8226;   <a href="#app.models">app.models</a>
  &#8226;   <a href="#app.routers">app.routers</a>
  &#8226;   <a href="#app.schemas">app.schemas</a>
- &#8226;   <a href="#app.seed">app.seed</a>
  &#8226;   <a href="#app.services">app.services</a>
  &#8226;   <a href="#app.utils">app.utils</a>
 
@@ -7236,7 +7235,6 @@ imported by:
  &#8226;   <a href="#app.routers.search_router">app.routers.search_router</a>
  &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.routers.warranty_router">app.routers.warranty_router</a>
- &#8226;   <a href="#app.seed">app.seed</a>
  &#8226;   <a href="#app.services.security_service">app.services.security_service</a>
 
   </div>
@@ -7385,7 +7383,6 @@ imported by:
  &#8226;   <a href="#app.routers.search_router">app.routers.search_router</a>
  &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.routers.warranty_router">app.routers.warranty_router</a>
- &#8226;   <a href="#app.seed">app.seed</a>
  &#8226;   <a href="#app.services.backup_scheduler">app.services.backup_scheduler</a>
  &#8226;   <a href="#app.services.labels_service">app.services.labels_service</a>
  &#8226;   <a href="#app.services.security_service">app.services.security_service</a>
@@ -7435,7 +7432,6 @@ imports:
  &#8226;   <a href="#app.routers.search_router">app.routers.search_router</a>
  &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.routers.warranty_router">app.routers.warranty_router</a>
- &#8226;   <a href="#app.seed">app.seed</a>
  &#8226;   <a href="#app.services.backup_scheduler">app.services.backup_scheduler</a>
  &#8226;   <a href="#app.services.backup_service">app.services.backup_service</a>
  &#8226;   <a href="#app.services.labels_service">app.services.labels_service</a>
@@ -7539,7 +7535,6 @@ imported by:
  &#8226;   <a href="#app.routers.search_router">app.routers.search_router</a>
  &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.routers.warranty_router">app.routers.warranty_router</a>
- &#8226;   <a href="#app.seed">app.seed</a>
  &#8226;   <a href="#app.services.accounting_ledger_service">app.services.accounting_ledger_service</a>
  &#8226;   <a href="#app.services.activity_service">app.services.activity_service</a>
  &#8226;   <a href="#app.services.advance_service">app.services.advance_service</a>
@@ -7749,12 +7744,14 @@ imports:
  &#8226;   <a href="#app.routers">app.routers</a>
  &#8226;   <a href="#app.schemas">app.schemas</a>
  &#8226;   <a href="#app.services.security_service">app.services.security_service</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#fastapi">fastapi</a>
  &#8226;   <a href="#fastapi.security">fastapi.security</a>
  &#8226;   <a href="#pydantic">pydantic</a>
  &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
+ &#8226;   <a href="#threading">threading</a>
  &#8226;   <a href="#uuid">uuid</a>
 
   </div>
@@ -7871,6 +7868,7 @@ imports:
  &#8226;   <a href="#app.utils.time">app.utils.time</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#fastapi">fastapi</a>
+ &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
 
@@ -8145,6 +8143,7 @@ imports:
  &#8226;   <a href="#app.services.numbering_service">app.services.numbering_service</a>
  &#8226;   <a href="#app.services.return_service">app.services.return_service</a>
  &#8226;   <a href="#app.services.settings_policy_service">app.services.settings_policy_service</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#app.services.warranty_service">app.services.warranty_service</a>
  &#8226;   <a href="#app.utils.time">app.utils.time</a>
  &#8226;   <a href="#datetime">datetime</a>
@@ -8152,6 +8151,7 @@ imports:
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
+ &#8226;   <a href="#threading">threading</a>
 
   </div>
   <div class="import">
@@ -8360,10 +8360,14 @@ imports:
  &#8226;   <a href="#copy">copy</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#fastapi">fastapi</a>
+ &#8226;   <a href="#fastapi.responses">fastapi.responses</a>
+ &#8226;   <a href="#io">io</a>
  &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
  &#8226;   <a href="#sqlite3">sqlite3</a>
  &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#zipfile">zipfile</a>
 
   </div>
   <div class="import">
@@ -8438,27 +8442,6 @@ imported by:
 </div>
 
 <div class="node">
-  <a name="app.seed"></a>
-  <a target="code" href="///C:/D/Projects/Websites/I%20Store%20Website/backend/app/seed.py" type="text/plain"><tt>app.seed</tt></a>
-<span class="moduletype">SourceModule</span>  <div class="import">
-imports:
-    <a href="#app">app</a>
- &#8226;   <a href="#app.auth">app.auth</a>
- &#8226;   <a href="#app.database">app.database</a>
- &#8226;   <a href="#app.models">app.models</a>
- &#8226;   <a href="#os">os</a>
- &#8226;   <a href="#secrets">secrets</a>
-
-  </div>
-  <div class="import">
-imported by:
-    <a href="#app.main">app.main</a>
-
-  </div>
-
-</div>
-
-<div class="node">
   <a name="app.services"></a>
   <a target="code" href="///C:/D/Projects/Websites/I%20Store%20Website/backend/app/services/__init__.py" type="text/plain"><tt>app.services</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
@@ -8486,6 +8469,7 @@ imported by:
  &#8226;   <a href="#app.services.security_service">app.services.security_service</a>
  &#8226;   <a href="#app.services.settings_policy_service">app.services.settings_policy_service</a>
  &#8226;   <a href="#app.services.storage">app.services.storage</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#app.services.warranty_service">app.services.warranty_service</a>
 
   </div>
@@ -8988,6 +8972,31 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.routers.inventory_router">app.routers.inventory_router</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.services.supabase_pos_sync"></a>
+  <a target="code" href="///C:/D/Projects/Websites/I%20Store%20Website/backend/app/services/supabase_pos_sync.py" type="text/plain"><tt>app.services.supabase_pos_sync</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.services">app.services</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#secrets">secrets</a>
+ &#8226;   <a href="#ssl">ssl</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#urllib.parse">urllib.parse</a>
+ &#8226;   <a href="#urllib.request">urllib.request</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.routers.auth_router">app.routers.auth_router</a>
+ &#8226;   <a href="#app.routers.pos_router">app.routers.pos_router</a>
 
   </div>
 
@@ -21103,6 +21112,7 @@ imported by:
  &#8226;   <a href="#app.routers.repair_router">app.routers.repair_router</a>
  &#8226;   <a href="#app.routers.report_router">app.routers.report_router</a>
  &#8226;   <a href="#app.routers.returns_router">app.routers.returns_router</a>
+ &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.routers.warranty_router">app.routers.warranty_router</a>
  &#8226;   <a href="#fastapi">fastapi</a>
  &#8226;   <a href="#fastapi.openapi.utils">fastapi.openapi.utils</a>
@@ -42654,6 +42664,7 @@ imported by:
  &#8226;   <a href="#app.routers.backup_router">app.routers.backup_router</a>
  &#8226;   <a href="#app.routers.repair_router">app.routers.repair_router</a>
  &#8226;   <a href="#app.routers.report_router">app.routers.report_router</a>
+ &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.services.storage">app.services.storage</a>
  &#8226;   <a href="#asyncio.graph">asyncio.graph</a>
  &#8226;   <a href="#asyncio.proactor_events">asyncio.proactor_events</a>
@@ -43425,6 +43436,7 @@ imported by:
  &#8226;   <a href="#app.services.returns_management_service">app.services.returns_management_service</a>
  &#8226;   <a href="#app.services.security_service">app.services.security_service</a>
  &#8226;   <a href="#app.services.settings_policy_service">app.services.settings_policy_service</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#app.services.warranty_service">app.services.warranty_service</a>
  &#8226;   <a href="#charset_normalizer.models">charset_normalizer.models</a>
  &#8226;   <a href="#ecdsa._version">ecdsa._version</a>
@@ -44571,6 +44583,7 @@ imported by:
  &#8226;   <a href="#anyio.streams.tls">anyio.streams.tls</a>
  &#8226;   <a href="#app.config">app.config</a>
  &#8226;   <a href="#app.main">app.main</a>
+ &#8226;   <a href="#app.routers.dashboard_router">app.routers.dashboard_router</a>
  &#8226;   <a href="#app.routers.pos_router">app.routers.pos_router</a>
  &#8226;   <a href="#app.routers.repair_router">app.routers.repair_router</a>
  &#8226;   <a href="#app.services.ai_service">app.services.ai_service</a>
@@ -44578,6 +44591,7 @@ imported by:
  &#8226;   <a href="#app.services.backup_service">app.services.backup_service</a>
  &#8226;   <a href="#app.services.print_rendering_service">app.services.print_rendering_service</a>
  &#8226;   <a href="#app.services.storage">app.services.storage</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#apscheduler.executors.base">apscheduler.executors.base</a>
  &#8226;   <a href="#apscheduler.executors.base_py3">apscheduler.executors.base_py3</a>
  &#8226;   <a href="#apscheduler.jobstores.base">apscheduler.jobstores.base</a>
@@ -46817,11 +46831,12 @@ imported by:
  &#8226;   <a href="#app.database">app.database</a>
  &#8226;   <a href="#app.main">app.main</a>
  &#8226;   <a href="#app.routers.inventory_router">app.routers.inventory_router</a>
- &#8226;   <a href="#app.seed">app.seed</a>
+ &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#app.services.ai_service">app.services.ai_service</a>
  &#8226;   <a href="#app.services.backup_service">app.services.backup_service</a>
  &#8226;   <a href="#app.services.firebase_backup">app.services.firebase_backup</a>
  &#8226;   <a href="#app.services.storage">app.services.storage</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#argparse">argparse</a>
  &#8226;   <a href="#asyncio.base_events">asyncio.base_events</a>
  &#8226;   <a href="#asyncio.base_subprocess">asyncio.base_subprocess</a>
@@ -66567,7 +66582,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#app.seed">app.seed</a>
+    <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#google.auth.transport._mtls_helper">google.auth.transport._mtls_helper</a>
  &#8226;   <a href="#google.cloud.storage._helpers">google.cloud.storage._helpers</a>
  &#8226;   <a href="#multiprocessing.shared_memory">multiprocessing.shared_memory</a>
@@ -79598,6 +79613,7 @@ imports:
 imported by:
     <a href="#anyio._core._sockets">anyio._core._sockets</a>
  &#8226;   <a href="#anyio.streams.tls">anyio.streams.tls</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#asyncio.base_events">asyncio.base_events</a>
  &#8226;   <a href="#asyncio.selector_events">asyncio.selector_events</a>
  &#8226;   <a href="#asyncio.sslproto">asyncio.sslproto</a>
@@ -81382,6 +81398,8 @@ imported by:
  &#8226;   <a href="#anyio._core._asyncio_selector_thread">anyio._core._asyncio_selector_thread</a>
  &#8226;   <a href="#anyio._core._eventloop">anyio._core._eventloop</a>
  &#8226;   <a href="#anyio.from_thread">anyio.from_thread</a>
+ &#8226;   <a href="#app.routers.auth_router">app.routers.auth_router</a>
+ &#8226;   <a href="#app.routers.pos_router">app.routers.pos_router</a>
  &#8226;   <a href="#apscheduler.schedulers.background">apscheduler.schedulers.background</a>
  &#8226;   <a href="#apscheduler.schedulers.base">apscheduler.schedulers.base</a>
  &#8226;   <a href="#apscheduler.schedulers.blocking">apscheduler.schedulers.blocking</a>
@@ -82578,6 +82596,7 @@ imported by:
  &#8226;   <a href="#app.services.security_service">app.services.security_service</a>
  &#8226;   <a href="#app.services.settings_policy_service">app.services.settings_policy_service</a>
  &#8226;   <a href="#app.services.storage">app.services.storage</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#app.services.warranty_service">app.services.warranty_service</a>
  &#8226;   <a href="#app.utils.api_errors">app.utils.api_errors</a>
  &#8226;   <a href="#app.utils.money">app.utils.money</a>
@@ -84737,6 +84756,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.routers.repair_router">app.routers.repair_router</a>
+ &#8226;   <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
  &#8226;   <a href="#click._termui_impl">click._termui_impl</a>
  &#8226;   <a href="#email.utils">email.utils</a>
  &#8226;   <a href="#google.api_core.gapic_v1.routing_header">google.api_core.gapic_v1.routing_header</a>
@@ -84847,7 +84867,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#google.generativeai.types.model_types">google.generativeai.types.model_types</a>
+    <a href="#app.services.supabase_pos_sync">app.services.supabase_pos_sync</a>
+ &#8226;   <a href="#google.generativeai.types.model_types">google.generativeai.types.model_types</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#httpx._auth">httpx._auth</a>
  &#8226;   <a href="#httpx._models">httpx._models</a>
@@ -90577,6 +90598,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.routers.backup_router">app.routers.backup_router</a>
+ &#8226;   <a href="#app.routers.settings_router">app.routers.settings_router</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#importlib.resources.readers">importlib.resources.readers</a>
  &#8226;   <a href="#pyi_rth_inspect.py">pyi_rth_inspect.py</a>

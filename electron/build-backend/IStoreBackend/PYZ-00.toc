@@ -535,9 +535,6 @@
   ('app.schemas',
    'C:\\D\\Projects\\Websites\\I Store Website\\backend\\app\\schemas.py',
    'PYMODULE'),
-  ('app.seed',
-   'C:\\D\\Projects\\Websites\\I Store Website\\backend\\app\\seed.py',
-   'PYMODULE'),
   ('app.services',
    'C:\\D\\Projects\\Websites\\I Store '
    'Website\\backend\\app\\services\\__init__.py',
@@ -613,6 +610,10 @@
   ('app.services.storage',
    'C:\\D\\Projects\\Websites\\I Store '
    'Website\\backend\\app\\services\\storage.py',
+   'PYMODULE'),
+  ('app.services.supabase_pos_sync',
+   'C:\\D\\Projects\\Websites\\I Store '
+   'Website\\backend\\app\\services\\supabase_pos_sync.py',
    'PYMODULE'),
   ('app.services.warranty_service',
    'C:\\D\\Projects\\Websites\\I Store '
