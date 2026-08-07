@@ -3,7 +3,7 @@ import api from "../../lib/api";
 import { useFetch } from "../../hooks/useFetch";
 import { downloadCsv, downloadPdf, paginateRows } from "../../lib/tableUtils";
 import { AppCard, StickyTable } from "../../components/MuiPrimitives";
-import { Select } from "../../components/UI";
+import { Select, ProductSelect } from "../../components/UI";
 
 export default function InventoryDiscounts() {
   const { data: items } = useFetch("/inventory");
@@ -46,10 +46,12 @@ export default function InventoryDiscounts() {
     <div className="space-y-3">
       <AppCard title="Create Discount Offer">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-6">
-          <Select className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" value={form.item_id} onChange={(e) => setForm({ ...form, item_id: e.target.value })}>
-            <option value="">Select product</option>
-            {(items || []).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </Select>
+          <ProductSelect
+            value={form.item_id}
+            products={items || []}
+            placeholder="-- Select product --"
+            onChange={(e) => setForm({ ...form, item_id: e.target.value })}
+          />
           <Select className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" value={form.discount_type} onChange={(e) => setForm({ ...form, discount_type: e.target.value })}>
             <option value="percentage">Percentage</option>
             <option value="fixed">Fixed</option>

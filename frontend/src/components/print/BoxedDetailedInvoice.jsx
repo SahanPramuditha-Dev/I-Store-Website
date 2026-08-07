@@ -60,24 +60,18 @@ export function BoxedDetailedInvoice({ invoice, storeProfile, settings }) {
       <div className="bg-white w-full h-full text-slate-900 font-sans leading-tight">
         
         {/* HEADER */}
-        <div className="flex justify-between items-start border-b border-black pb-2 mb-2">
-          {/* LOGO */}
-          <div className="w-24 h-24 border border-dashed border-slate-400 flex items-center justify-center text-[10px] text-slate-400 text-center p-2">
-            LOGO<br/>(click to upload)
-          </div>
-          
-          {/* CENTER TEXT */}
-          <div className="flex-1 text-center px-4">
-            <h1 className="text-2xl font-bold font-serif mb-1 uppercase tracking-wider">{shopName}</h1>
-            <p className="text-[10px] italic text-slate-600 mb-1">{shopTagline}</p>
-            {shopReg && <p className="text-[10px] font-semibold">Business Reg. No: {shopReg}</p>}
-            <p className="text-[10px]">{shopAddress}</p>
+        <div className="flex justify-between items-start pb-4 border-b-2 border-slate-900 mb-4">
+          <div>
+            <h1 className="text-xl font-black tracking-tight">{shopName}</h1>
+            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">{shopTagline}</p>
+            {shopReg && <p className="text-[10px] text-slate-500">Reg No: {shopReg}</p>}
+            <p className="text-[10px] text-slate-500">{shopAddress}</p>
             <p className="text-[10px]">Tel: {shopPhone} | Email: {shopEmail}</p>
           </div>
 
           {/* QR CODE */}
           <div className="w-24 h-24 border border-dashed border-slate-400 flex flex-col items-center justify-center p-1">
-             <QRCode value={`https://i-store-customer-portal-one.vercel.app/invoice/${invoice_number}`} size={72} level="L" />
+             <QRCode value={portalUrl} size={72} level="L" />
              <span className="text-[8px] text-slate-500 font-semibold mt-0.5">Scan Bill QR</span>
           </div>
         </div>

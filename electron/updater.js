@@ -99,7 +99,8 @@ function initAutoUpdater(win, options = {}) {
       msg.includes("app-update.yml") ||
       msg.includes("ENOENT") ||
       msg.includes("Cannot find") ||
-      msg.includes("ERR_NON_2XX_3XX_RESPONSE")
+      msg.includes("ERR_NON_2XX_3XX_RESPONSE") ||
+      msg.includes("dev update config")
     ) {
       _sendToRenderer("updater:status", { status: "not-available" });
       return;
@@ -144,10 +145,10 @@ function initAutoUpdater(win, options = {}) {
       return { ok: true, updateInfo: res.updateInfo };
     } catch (err) {
       const msg = String(err?.message || "");
-      console.log("[updater] Check finished:", msg);
-      _logEvent("check_finished", { message: msg });
+      console.log("[updater] Check error:", msg);
+      _logEvent("check_error", { message: msg });
       
-      // If 404 / latest.yml not found on GitHub, report up-to-date cleanly
+      // If 404 / latest.yml missing on GitHub or dev config, treat gracefully as up-to-date
       if (
         msg.includes("404") ||
         msg.includes("latest.yml") ||
@@ -159,8 +160,9 @@ function initAutoUpdater(win, options = {}) {
         _sendToRenderer("updater:status", { status: "not-available" });
         return { ok: true, upToDate: true };
       }
+      
       _sendToRenderer("updater:status", { status: "error", error: msg });
-      return { error: msg };
+      return { ok: false, error: msg };
     } finally {
       checkInProgress = false;
     }

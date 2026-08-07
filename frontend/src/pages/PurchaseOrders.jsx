@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useFetch } from "../hooks/useFetch";
 import api from "../lib/api";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, PageHeader, Select, SensitiveActionIndicators, WorkstationNotice } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, PageHeader, Select, ProductSelect, SensitiveActionIndicators, WorkstationNotice } from "../components/UI";
 import { Calendar, History, PackageCheck, Plus, Truck, X } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import AppModal from "../components/layout/AppModal";
@@ -305,14 +305,12 @@ export default function PurchaseOrders() {
                 </div>
                 <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h3 className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Add Item</h3>
-                  <Select className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white focus:border-indigo-500 focus:outline-none" value={draftItem.item_id} onChange={(e) => setDraftItem({ ...draftItem, item_id: e.target.value })}>
-                    <option value="">Select inventory item</option>
-                    {(inventory || []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} ({item.quantity} in stock)
-                      </option>
-                    ))}
-                  </Select>
+                  <ProductSelect
+                    value={draftItem.item_id}
+                    products={inventory || []}
+                    placeholder="-- Select inventory item --"
+                    onChange={(e) => setDraftItem({ ...draftItem, item_id: e.target.value })}
+                  />
                   <div className="grid grid-cols-2 gap-2">
                     <input type="number" min="1" value={draftItem.quantity} onChange={(e) => setDraftItem({ ...draftItem, quantity: Number(e.target.value) })} className="rounded-xl border border-white/10 bg-black/40 p-2 text-center font-bold text-white outline-none" placeholder="Qty" />
                     <input type="number" min="0" value={draftItem.unit_cost} onChange={(e) => setDraftItem({ ...draftItem, unit_cost: e.target.value })} className="rounded-xl border border-white/10 bg-black/40 p-2 text-center font-bold text-white outline-none" placeholder="Unit cost" />

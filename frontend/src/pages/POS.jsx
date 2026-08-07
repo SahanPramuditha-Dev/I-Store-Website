@@ -4,7 +4,7 @@ import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { printHtmlDocument } from "../lib/printBridge";
 import { useFetch } from "../hooks/useFetch";
-import { Input, Select } from "../components/UI";
+import { Input, Select, SearchableSelect } from "../components/UI";
 import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -2173,17 +2173,19 @@ export default function POS() {
                 <div className="mb-3 space-y-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
                   <div className="flex items-center gap-2">
                     <User size={14} className="shrink-0 text-slate-500" />
-                    <Select
+                    <SearchableSelect
                       size="sm"
                       className="min-w-0 flex-1"
                       value={customerId}
                       onChange={(e) => setCustomerId(e.target.value)}
                       placeholder="Walk-in Customer"
+                      searchPlaceholder="Search customer by name or phone..."
                       options={[
                         { value: "", label: "Walk-in Customer" },
                         ...(customersFetch.data || []).map((c) => ({
                           value: String(c.id),
-                          label: `${c.name} - ${c.phone}`,
+                          label: `${c.name} (${c.phone || "No phone"})`,
+                          subText: `${c.name} ${c.phone || ""}`,
                         })),
                       ]}
                     />

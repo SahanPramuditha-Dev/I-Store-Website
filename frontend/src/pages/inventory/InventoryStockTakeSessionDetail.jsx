@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../../lib/api";
 import { useFetch } from "../../hooks/useFetch";
 import { AppCard, StickyTable } from "../../components/MuiPrimitives";
-import { Select } from "../../components/UI";
+import { Select, ProductSelect } from "../../components/UI";
 
 export default function InventoryStockTakeSessionDetail() {
   const navigate = useNavigate();
@@ -127,19 +127,13 @@ export default function InventoryStockTakeSessionDetail() {
           </div>
 
           <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-            <Select
+            <ProductSelect
               value={line.item_id}
+              products={items || []}
+              placeholder="-- Select product --"
               onChange={(e) => setLine({ ...line, item_id: e.target.value })}
-              className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100"
               disabled={isClosed}
-            >
-              <option value="">Select product</option>
-              {(items || []).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} ({item.sku}) - system {item.quantity}
-                </option>
-              ))}
-            </Select>
+            />
             <input
               type="number"
               min="0"

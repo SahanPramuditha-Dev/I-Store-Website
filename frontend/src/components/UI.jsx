@@ -1,4 +1,4 @@
-import { Children, forwardRef, isValidElement } from "react";
+import { Children, forwardRef, isValidElement, useState, useMemo } from "react";
 import { FormControl, MenuItem, Select as MuiSelect } from "@mui/material";
 import { isOwnerOrAdmin } from "../lib/rbac";
 
@@ -513,6 +513,287 @@ export function AppSelect({
         })}
       </MuiSelect>
     </FormControl>
+  );
+}
+
+export function SearchableSelect({
+  value,
+  onChange,
+  options = [],
+  placeholder = "-- Select --",
+  className = "",
+  disabled = false,
+  size = "md",
+  fullWidth = true,
+  searchPlaceholder = "Search options...",
+}) {
+  const [search, setSearch] = useState("");
+  const sizeConfig = resolveSelectSize(size);
+
+  const filteredOptions = useMemo(() => {
+    if (!search.trim()) return options;
+    const term = search.toLowerCase();
+    return options.filter((opt) => {
+      const label = typeof opt === "object" ? opt?.label || opt?.value : String(opt);
+      const sub = typeof opt === "object" && opt?.subText ? String(opt.subText) : "";
+      return String(label).toLowerCase().includes(term) || sub.toLowerCase().includes(term);
+    });
+  }, [options, search]);
+
+  const selectedOption = useMemo(() => {
+    const normValue = String(value ?? "");
+    return options.find((opt) => String(typeof opt === "object" ? opt?.value : opt) === normValue);
+  }, [options, value]);
+
+  const selectedLabel = useMemo(() => {
+    if (!selectedOption) return placeholder;
+    return typeof selectedOption === "object" ? selectedOption.label || selectedOption.value : String(selectedOption);
+  }, [selectedOption, placeholder]);
+
+  const handleSelectChange = (e) => {
+    onChange?.(e);
+    setSearch("");
+  };
+
+  return (
+    <FormControl
+      size={sizeConfig.formControlSize}
+      fullWidth={fullWidth}
+      disabled={disabled}
+      className={className}
+    >
+      <MuiSelect
+        value={value ?? ""}
+        onChange={handleSelectChange}
+        displayEmpty
+        onClose={() => setSearch("")}
+        renderValue={() => (
+          <span style={{ color: value ? "#f1f5f9" : "#94a3b8", fontWeight: 600 }}>
+            {selectedLabel}
+          </span>
+        )}
+        sx={{
+          ...APP_SELECT_INPUT_SX,
+          minHeight: sizeConfig.minHeight,
+          fontSize: sizeConfig.fontSize,
+          backgroundColor: "#0f172a",
+          color: "#f8fafc",
+          "& .MuiSelect-select": {
+            py: sizeConfig.selectPaddingY,
+            pr: "34px",
+            pl: sizeConfig.selectPaddingX,
+            display: "flex",
+            alignItems: "center",
+          },
+          "& .MuiSvgIcon-root": { color: "#818cf8" },
+        }}
+        MenuProps={{
+          PaperProps: {
+            sx: {
+              background: "#ffffff !important",
+              color: "#0f172a !important",
+              border: "1.5px solid #cbd5e1",
+              borderRadius: "14px",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.25)",
+              maxHeight: 380,
+              overflow: "hidden",
+              "& .MuiList-root": {
+                paddingTop: 0,
+                paddingBottom: 0,
+                backgroundColor: "#ffffff !important",
+              },
+              "& .MuiMenuItem-root": {
+                fontWeight: 600,
+                color: "#1e293b !important",
+                backgroundColor: "#ffffff !important",
+                fontSize: "13px",
+                py: "10px",
+                px: "14px",
+                borderBottom: "1px solid #f1f5f9",
+                transition: "all 0.15s ease",
+              },
+              "& .MuiMenuItem-root:hover": {
+                backgroundColor: "#f1f5f9 !important",
+                color: "#4f46e5 !important",
+              },
+              "& .MuiMenuItem-root.Mui-selected": {
+                backgroundColor: "#e0e7ff !important",
+                color: "#4338ca !important",
+                fontWeight: 700,
+              },
+              "& .MuiMenuItem-root.Mui-selected:hover": {
+                backgroundColor: "#c7d2fe !important",
+              },
+            },
+          },
+        }}
+      >
+        {/* White Search Header Bar */}
+        <div
+          style={{
+            padding: "10px 12px",
+            position: "sticky",
+            top: 0,
+            zIndex: 20,
+            backgroundColor: "#ffffff",
+            borderBottom: "2px solid #e2e8f0",
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <svg
+              style={{
+                position: "absolute",
+                left: "10px",
+                width: "15px",
+                height: "15px",
+                color: "#4f46e5",
+                pointerEvents: "none",
+              }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={searchPlaceholder}
+              autoFocus
+              style={{
+                width: "100%",
+                padding: "8px 30px 8px 34px",
+                fontSize: "13px",
+                fontWeight: 600,
+                borderRadius: "8px",
+                backgroundColor: "#f8fafc",
+                border: "1.5px solid #6366f1",
+                color: "#0f172a",
+                outline: "none",
+                boxShadow: "0 0 0 3px rgba(99, 102, 241, 0.2)",
+              }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                style={{
+                  position: "absolute",
+                  right: "10px",
+                  background: "#e2e8f0",
+                  border: "none",
+                  borderRadius: "50%",
+                  width: "18px",
+                  height: "18px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#475569",
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  fontWeight: "bold",
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {placeholder && (
+          <MenuItem value="" style={{ color: "#64748b", fontStyle: "italic", fontSize: "12px", backgroundColor: "#ffffff" }}>
+            {placeholder}
+          </MenuItem>
+        )}
+
+        {filteredOptions.length === 0 ? (
+          <MenuItem disabled style={{ fontSize: "12px", color: "#94a3b8", justifyContent: "center", py: "16px", backgroundColor: "#ffffff" }}>
+            No matching options found
+          </MenuItem>
+        ) : (
+          filteredOptions.map((opt) => {
+            const optVal = typeof opt === "object" ? opt?.value : opt;
+            const optLabel = typeof opt === "object" ? opt?.label || opt?.value : String(opt);
+            const optDisabled = Boolean(opt?.disabled);
+            const customRender = typeof opt === "object" ? opt?.customRender : null;
+            return (
+              <MenuItem key={String(optVal)} value={optVal} disabled={optDisabled}>
+                {customRender ? customRender : optLabel}
+              </MenuItem>
+            );
+          })
+        )}
+      </MuiSelect>
+    </FormControl>
+  );
+}
+
+export function ProductSelect({
+  value,
+  onChange,
+  products = [],
+  placeholder = "-- Select Product / SKU --",
+  className = "",
+  disabled = false,
+  size = "md",
+  fullWidth = true,
+}) {
+  const options = useMemo(() => {
+    return (products || []).map((p) => {
+      const skuStr = p.sku ? ` (${p.sku})` : "";
+      const priceVal = p.sale_price !== undefined && p.sale_price !== null ? Number(p.sale_price) : null;
+      const qtyVal = p.quantity !== undefined && p.quantity !== null ? Number(p.quantity) : null;
+
+      return {
+        value: String(p.id),
+        label: `${p.name || "Unnamed Item"}${skuStr}${priceVal !== null ? ` | LKR ${priceVal.toLocaleString("en-LK")}` : ""}${qtyVal !== null ? ` | Stock: ${qtyVal}` : ""}`,
+        subText: `${p.sku || ""} ${p.barcode || ""}`,
+        customRender: (
+          <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "2px", py: "2px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+              <span style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px" }}>
+                {p.name || "Unnamed Product"}
+              </span>
+              {p.sku && (
+                <span style={{ fontSize: "10px", fontFamily: "monospace", color: "#0284c7", backgroundColor: "#e0f2fe", padding: "1px 6px", borderRadius: "4px", border: "1px solid #bae6fd" }}>
+                  {p.sku}
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "11px", color: "#64748b" }}>
+              {priceVal !== null && (
+                <span style={{ color: "#16a34a", fontWeight: 700 }}>
+                  LKR {priceVal.toLocaleString("en-LK", { minimumFractionDigits: 2 })}
+                </span>
+              )}
+              {qtyVal !== null && (
+                <span style={{ color: qtyVal > 0 ? "#4f46e5" : "#dc2626", fontWeight: 700 }}>
+                  {qtyVal > 0 ? `Stock: ${qtyVal}` : "Out of Stock"}
+                </span>
+              )}
+            </div>
+          </div>
+        ),
+      };
+    });
+  }, [products]);
+
+  return (
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={options}
+      placeholder={placeholder}
+      searchPlaceholder="Search product by name, SKU, or barcode..."
+      className={className}
+      disabled={disabled}
+      size={size}
+      fullWidth={fullWidth}
+    />
   );
 }
 
