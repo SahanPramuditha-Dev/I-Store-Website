@@ -219,7 +219,21 @@ function initAutoUpdater(win, options = {}) {
         }
       }
       _logEvent("quit_and_install");
-      autoUpdater.quitAndInstall(false, true);
+
+      // Close/destroy all open Electron browser windows to prevent app.quit() from hanging
+      const { BrowserWindow } = require("electron");
+      BrowserWindow.getAllWindows().forEach((w) => {
+        try {
+          w.removeAllListeners("close");
+          w.destroy();
+        } catch (_e) {}
+      });
+
+      // Launch NSIS silent installer and restart
+      setTimeout(() => {
+        autoUpdater.quitAndInstall(false, true);
+      }, 300);
+
       return { installing: true };
     } catch (error) {
       console.error("[updater] Backup failed before install:", error);
