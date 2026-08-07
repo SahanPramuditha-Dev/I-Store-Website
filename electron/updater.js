@@ -49,10 +49,11 @@ function initAutoUpdater(win, options = {}) {
   // Logging configuration
   autoUpdater.logger = console;
 
-  // Set generic feed URL pointing to latest release assets for 100% reliable latest.yml fetching
+  // Use native GitHub provider so electron-updater handles releases and redirects natively
   autoUpdater.setFeedURL({
-    provider: "generic",
-    url: UPDATE_METADATA_URL,
+    provider: "github",
+    owner: "SahanPramuditha-Dev",
+    repo: "I-Store-Website",
   });
   // Never trigger another installer without an explicit user action. This
   // avoids an update download being mistaken for a second setup prompt after
