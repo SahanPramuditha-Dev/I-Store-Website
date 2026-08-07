@@ -226,6 +226,14 @@ app.on("web-contents-created", (_e, contents) => {
       shell.openExternal(url);   // open in system browser instead
     }
   });
+
+  // Intercept window.open / target="_blank" links (e.g. WhatsApp Web API links)
+  contents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("http:") || url.startsWith("https:") || url.startsWith("mailto:")) {
+      shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
 });
 
 // ── Database bootstrap ─────────────────────────────────────────────────────

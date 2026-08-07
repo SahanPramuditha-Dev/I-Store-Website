@@ -4,7 +4,7 @@ import { ClipboardList, Plus, ReceiptText, RefreshCw, X } from "lucide-react";
 import api from "../lib/api";
 import { openPrintCenter } from "../lib/printCenter";
 import { useFetch } from "../hooks/useFetch";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageHeader, Select } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageHeader, Select, ProductSelect } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import { useFeedback } from "../components/FeedbackProvider";
 
@@ -411,14 +411,13 @@ export default function ProductReservations() {
           </div>
           <div>
             <label className="text-xs text-slate-400">Product</label>
-            <Select value={form.product_id} onChange={(e) => setForm({ ...form, product_id: e.target.value })} className="mt-1">
-              <option value="">Select product (optional for special order)</option>
-              {inventory.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name} | Stock: {row.quantity}
-                </option>
-              ))}
-            </Select>
+            <ProductSelect
+              value={form.product_id}
+              products={inventory || []}
+              placeholder="-- Select product (optional) --"
+              onChange={(e) => setForm({ ...form, product_id: e.target.value })}
+              className="mt-1"
+            />
           </div>
           <div>
             <label className="text-xs text-slate-400">Requested Product Name</label>

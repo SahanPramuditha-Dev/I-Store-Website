@@ -4,7 +4,7 @@ import { printHtmlDocument } from "../../lib/printBridge";
 import { useFetch } from "../../hooks/useFetch";
 import { downloadCsv, downloadPdf, paginateRows } from "../../lib/tableUtils";
 import { AppCard, StickyTable } from "../../components/MuiPrimitives";
-import { Select } from "../../components/UI";
+import { Select, ProductSelect } from "../../components/UI";
 import { useFeedback } from "../../components/FeedbackProvider";
 
 const emptyLine = { item_id: "", quantity: 1, damaged_qty: 0, unit_cost: 0, sale_price: 0 };
@@ -382,19 +382,13 @@ export default function InventoryGrn() {
                     return (
                       <tr key={index} className="hover:bg-white/[0.02]">
                         <td className="px-3 py-2 text-center text-slate-500 font-mono">{index + 1}</td>
-                        <td className="px-3 py-2">
-                          <Select
-                            className="w-full rounded-lg border border-white/10 bg-black/40 px-2 py-1.5 text-xs text-slate-100"
+                        <td className="px-3 py-2 min-w-[240px]">
+                          <ProductSelect
                             value={line.item_id}
+                            products={items || []}
+                            placeholder="-- Select product --"
                             onChange={(e) => setLine(index, { item_id: e.target.value })}
-                          >
-                            <option value="">Select product</option>
-                            {(items || []).map((i) => (
-                              <option key={i.id} value={i.id}>
-                                {i.name} ({i.sku})
-                              </option>
-                            ))}
-                          </Select>
+                          />
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-slate-400">
                           {matchedItem ? money(lastCp) : "-"}

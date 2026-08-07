@@ -3,7 +3,7 @@ import { RefreshCw, Download, CheckCircle2, ShieldCheck, Cpu, HardDrive, Sparkle
 import { Button, SectionCard, Badge } from "../UI";
 
 export default function SoftwareUpdatesSettingsPanel({ toast }) {
-  const [appVersion, setAppVersion] = useState("v1.1.82");
+  const [appVersion, setAppVersion] = useState("v1.1.89");
   const [checking, setChecking] = useState(false);
   const [updaterStatus, setUpdaterStatus] = useState("idle"); // 'idle' | 'checking' | 'available' | 'downloading' | 'ready-to-install' | 'up-to-date' | 'error'
   const [progress, setProgress] = useState(0);
@@ -74,8 +74,11 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
         toast?.(`Update check failed: ${result.error}`, "error");
       }
     } catch (err) {
+      console.error("[Update Check Error]", err);
+      const msg = err?.message || String(err) || "Failed to check for updates";
       setUpdaterStatus("error");
-      toast?.("Failed to check for updates", "error");
+      setErrorMessage(msg);
+      toast?.(`Failed to check for updates: ${msg}`, "error");
     } finally {
       setChecking(false);
     }

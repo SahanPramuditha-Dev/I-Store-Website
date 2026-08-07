@@ -4,7 +4,7 @@ import api from "../../lib/api";
 import { useFetch } from "../../hooks/useFetch";
 import { downloadCsv, downloadPdf, paginateRows } from "../../lib/tableUtils";
 import { AppCard, StickyTable } from "../../components/MuiPrimitives";
-import { Select } from "../../components/UI";
+import { Select, ProductSelect } from "../../components/UI";
 
 export default function InventoryStockTake() {
   const navigate = useNavigate();
@@ -60,10 +60,12 @@ export default function InventoryStockTake() {
 
       <AppCard title="Submit Physical Count">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-          <Select className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" value={line.item_id} onChange={(e) => setLine({ ...line, item_id: e.target.value })}>
-            <option value="">Select product</option>
-            {(items || []).map((i) => <option key={i.id} value={i.id}>{i.name} ({i.sku})</option>)}
-          </Select>
+          <ProductSelect
+            value={line.item_id}
+            products={items || []}
+            placeholder="-- Select product --"
+            onChange={(e) => setLine({ ...line, item_id: e.target.value })}
+          />
           <input type="number" min="0" className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100" placeholder="Physical qty" value={line.physical_qty} onChange={(e) => setLine({ ...line, physical_qty: e.target.value })} />
           <button onClick={submitLine} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">Submit Count</button>
           <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-400">Difference logs are posted to stock movements</div>

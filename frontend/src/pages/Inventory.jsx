@@ -5,7 +5,7 @@ import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { useCachedQuery } from "../hooks/useCachedQuery";
 import { apiService } from "../lib/apiService";
-import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, ErrorState, KpiCard, Loading, PageHeader, Select, StatusBadge } from "../components/UI";
+import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, ErrorState, KpiCard, Loading, PageHeader, Select, SearchableSelect, StatusBadge } from "../components/UI";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppModal from "../components/layout/AppModal";
 import { downloadCsv, downloadPdf, paginateRows } from "../lib/tableUtils";
@@ -893,9 +893,10 @@ export default function Inventory() {
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-indigo-300">
                   1. Master Product Family (Optional Link)
                 </label>
-                <Select
+                <SearchableSelect
                   value={form.master_product_id}
                   placeholder="-- No Master Product (Standalone SKU) --"
+                  searchPlaceholder="Search master products..."
                   onChange={(e) => {
                     const mpId = e.target.value;
                     const selectedMp = masterProductsList.find((mp) => String(mp.id) === String(mpId));
@@ -916,10 +917,13 @@ export default function Inventory() {
                     }
                   }}
                   className="w-full"
-                  options={masterProductsList.map((mp) => ({
-                    value: String(mp.id),
-                    label: `${mp.name}${mp.brand ? ` (${mp.brand})` : ""}`,
-                  }))}
+                  options={masterProductsList.map((mp) => {
+                    const vCount = mp.variants?.length || 0;
+                    return {
+                      value: String(mp.id),
+                      label: `${mp.name}${mp.brand ? ` (${mp.brand})` : ""} - ${vCount} variant${vCount === 1 ? "" : "s"}`,
+                    };
+                  })}
                 />
                 {(!masterProductsList.length && !loadingMasterProducts) && (
                   <p className="mt-2 text-xs text-slate-400">No master products have been created yet.</p>
@@ -938,9 +942,10 @@ export default function Inventory() {
                     <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-amber-300">
                       2. Pick Variant Preset SKU
                     </label>
-                    <Select
+                    <SearchableSelect
                       value={form.selected_variant_id}
                       placeholder="-- Select Variant Preset --"
+                      searchPlaceholder="Search variant presets..."
                       onChange={(e) => {
                         const varId = e.target.value;
                         const v = mpVariants.find((varItem) => String(varItem.id) === String(varId));
@@ -964,10 +969,14 @@ export default function Inventory() {
                         }
                       }}
                       className="w-full font-mono text-amber-200"
-                      options={mpVariants.map((v) => ({
-                        value: String(v.id),
-                        label: `${v.display_name || v.sku} (SKU: ${v.sku} | Price: Rs. ${v.default_selling_price})`,
-                      }))}
+                      options={mpVariants.map((v) => {
+                        const attrs = v.attributes || {};
+                        const attrStr = Object.entries(attrs).map(([k, val]) => `${k}: ${val}`).join(", ");
+                        return {
+                          value: String(v.id),
+                          label: `${v.display_name || v.sku} ${attrStr ? `[${attrStr}]` : ""} (SKU: ${v.sku} | Rs. ${v.default_selling_price})`,
+                        };
+                      })}
                     />
                   </div>
                 );
