@@ -189,10 +189,21 @@ function startBackend() {
 }
 
 function stopBackend() {
-  if (backendProcess && !backendProcess.killed) backendProcess.kill();
-  backendProcess = null;
+  if (backendProcess) {
+    const pid = backendProcess.pid;
+    try {
+      if (process.platform === "win32" && pid) {
+        const { execSync } = require("child_process");
+        execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
+      } else {
+        backendProcess.kill("SIGKILL");
+      }
+    } catch (_err) {
+    }
+    backendProcess = null;
+  }
   if (backendLogHandle) {
-    fs.closeSync(backendLogHandle);
+    try { fs.closeSync(backendLogHandle); } catch (_e) {}
     backendLogHandle = null;
   }
 }
@@ -292,7 +303,7 @@ app.whenReady().then(async () => {
   startBackend();
   await initDatabase();
   const win = createWindow();
-  initAutoUpdater(win);
+  initAutoUpdater(win, { stopBackend });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
