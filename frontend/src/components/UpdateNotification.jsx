@@ -17,6 +17,22 @@ export default function UpdateNotification() {
     // Only execute if running inside Electron host with updater bridge
     if (!window.istore?.updater) return;
 
+    window.istore.updater.getState?.().then((data) => {
+      if (!data?.status) return;
+      if (data.status === "checking") setStatus("checking");
+      else if (data.status === "available") {
+        setStatus("available");
+        if (data.version) setVersionInfo(data.version);
+      } else if (data.status === "not-available") setStatus("not-available");
+      else if (data.status === "downloaded" || data.status === "ready-to-install") {
+        setStatus("ready-to-install");
+        if (data.version) setVersionInfo(data.version);
+      } else if (data.status === "error" || data.status === "backup-failed") {
+        setStatus("error");
+        setErrorMessage(data.error || "Failed to complete update process.");
+      }
+    }).catch(() => {});
+
     const unsubStatus = window.istore.updater.onStatus((data) => {
       console.log("[UpdateNotification] Status event:", data);
       setDismissed(false); // Re-open banner on new status event

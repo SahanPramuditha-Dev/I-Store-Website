@@ -17,7 +17,8 @@
 
 "use strict";
 
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, ipcMain } = require("electron");
+app.disableHardwareAcceleration();
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");

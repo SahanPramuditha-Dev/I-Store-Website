@@ -24,7 +24,7 @@ const ALLOWED_INVOKE = new Set([
   "db:cursor:get", "db:cursor:set",
   "db:auth:setToken",
   "db:sync:push", "db:sync:pull",
-  "updater:check", "updater:download", "updater:install", "updater:setOperationsActive", "updater:getVersion",
+  "updater:check", "updater:download", "updater:install", "updater:setOperationsActive", "updater:getVersion", "updater:getState",
 ]);
 
 // ── Whitelist of valid "on" event channels ────────────────────────────────
@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld("istore", {
   // ── Auto Updater ─────────────────────────────────────────────────────
   updater: {
     getVersion:      () => safeInvoke("updater:getVersion"),
+    getState:        () => safeInvoke("updater:getState"),
     checkForUpdates: () => safeInvoke("updater:check"),
     downloadUpdate:  () => safeInvoke("updater:download"),
     installUpdate:   () => safeInvoke("updater:install"),

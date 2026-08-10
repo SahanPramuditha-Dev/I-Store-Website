@@ -140,10 +140,10 @@ export function useSyncStatus() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline]);
 
-  // ── Poll outbox status every 15 s ────────────────────────────────────────
+  // ── Poll outbox status every 60 s ────────────────────────────────────────
   useEffect(() => {
     refreshStatus();
-    const id = setInterval(refreshStatus, 15_000);
+    const id = setInterval(refreshStatus, 60_000);
     return () => clearInterval(id);
   }, [refreshStatus]);
 

@@ -17,7 +17,8 @@
 
 "use strict";
 
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, ipcMain } = require("electron");
+app.disableHardwareAcceleration();
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -227,10 +228,26 @@ app.on("web-contents-created", (_e, contents) => {
     }
   });
 
-  // Intercept window.open / target="_blank" links (e.g. WhatsApp Web API links)
+  // Intercept window.open / target="_blank" links.
+  // Allow internal app popups for same-origin routes, but open external links in the default browser.
   contents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http:") || url.startsWith("https:") || url.startsWith("mailto:")) {
-      shell.openExternal(url);
+    try {
+      const openerUrl = contents.getURL();
+      const target = new URL(url);
+      const opener = new URL(openerUrl);
+
+      const isSameOrigin = target.protocol === opener.protocol && target.host === opener.host;
+      const isSameFilePath = target.protocol === "file:" && opener.protocol === "file:" && path.resolve(target.pathname) === path.resolve(opener.pathname);
+
+      if (isSameOrigin || isSameFilePath) {
+        return { action: "allow" };
+      }
+
+      if (target.protocol === "http:" || target.protocol === "https:" || target.protocol === "mailto:") {
+        shell.openExternal(url);
+      }
+    } catch (_err) {
+      // If URL parsing fails, deny to keep external navigation locked down.
     }
     return { action: "deny" };
   });

@@ -17,7 +17,9 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  const fullUrl = String(config.url || '');
+  const isLocalRequest = isLocalhost || fullUrl.includes('127.0.0.1') || fullUrl.includes('localhost') || fullUrl.startsWith('/');
+  if (!isLocalRequest && typeof navigator !== 'undefined' && navigator.onLine === false) {
     return Promise.reject(new axios.AxiosError('You are offline. Reconnect to continue.', 'ERR_NETWORK', config));
   }
   const token = getAuthValue('token');
@@ -40,7 +42,10 @@ function isRetryableGet(error) {
 }
 
 function toUserMessage(error) {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  const config = error?.config || {};
+  const fullUrl = String(config.url || '');
+  const isLocalRequest = isLocalhost || fullUrl.includes('127.0.0.1') || fullUrl.includes('localhost') || fullUrl.startsWith('/');
+  if (!isLocalRequest && typeof navigator !== 'undefined' && navigator.onLine === false) {
     return 'You are offline. Please check your network connection.';
   }
   if (error.code === 'ECONNABORTED') {

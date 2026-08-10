@@ -29,6 +29,25 @@ let checkInProgress = false;
 let operationsState = { active: false, reason: null, route: null };
 let stopBackendFn = null;
 let lastUpdateInfo = null;
+let currentUpdaterState = {
+  status: "idle",
+  version: null,
+  releaseNotes: null,
+  error: null,
+  reason: null,
+  count: null,
+  route: null,
+};
+
+function _updateState(state) {
+  currentUpdaterState = {
+    ...currentUpdaterState,
+    ...state,
+  };
+  if (_mainWindow && !_mainWindow.isDestroyed()) {
+    _mainWindow.webContents.send("updater:status", currentUpdaterState);
+  }
+}
 
 function _logEvent(event, payload = {}) {
   try {
@@ -65,17 +84,20 @@ function initAutoUpdater(win, options = {}) {
   autoUpdater.on("checking-for-update", () => {
     console.log("[updater] Checking for update...");
     _logEvent("checking_for_update");
-    _sendToRenderer("updater:status", { status: "checking" });
+    _updateState({ status: "checking", error: null, reason: null, count: null });
   });
 
   autoUpdater.on("update-available", (info) => {
     console.log(`[updater] Update available: v${info.version}`);
     lastUpdateInfo = info;
     _logEvent("update_available", { version: info.version });
-    _sendToRenderer("updater:status", {
+    _updateState({
       status: "available",
       version: info.version,
       releaseNotes: info.releaseNotes,
+      error: null,
+      reason: null,
+      count: null,
     });
   });
 
@@ -83,7 +105,7 @@ function initAutoUpdater(win, options = {}) {
     console.log("[updater] App is up to date.");
     lastUpdateInfo = null;
     _logEvent("update_not_available");
-    _sendToRenderer("updater:status", { status: "not-available" });
+    _updateState({ status: "not-available", error: null, reason: null, count: null });
   });
 
   autoUpdater.on("error", (err) => {
@@ -91,8 +113,6 @@ function initAutoUpdater(win, options = {}) {
     console.log("[updater] Updater note:", msg);
     _logEvent("update_note", { message: msg });
 
-    // 404 / missing latest.yml or app-update.yml means no newer GitHub release package exists online yet.
-    // Treat as up-to-date instead of displaying a red error toast to the user.
     if (
       msg.includes("404") ||
       msg.includes("latest.yml") ||
@@ -102,15 +122,16 @@ function initAutoUpdater(win, options = {}) {
       msg.includes("ERR_NON_2XX_3XX_RESPONSE") ||
       msg.includes("dev update config")
     ) {
-      _sendToRenderer("updater:status", { status: "not-available" });
+      _updateState({ status: "not-available", error: null });
       return;
     }
 
-    _sendToRenderer("updater:status", { status: "error", error: msg });
+    _updateState({ status: "error", error: msg });
   });
 
   autoUpdater.on("download-progress", (progress) => {
     _logEvent("download_progress", { percent: progress.percent });
+    _updateState({ status: "downloading", count: Math.round(progress.percent || 0) });
     _sendToRenderer("updater:progress", {
       percent: progress.percent,
       bytesPerSecond: progress.bytesPerSecond,
@@ -123,7 +144,7 @@ function initAutoUpdater(win, options = {}) {
     console.log(`[updater] Update v${info.version} downloaded.`);
     lastUpdateInfo = info;
     _logEvent("update_downloaded", { version: info.version });
-    _sendToRenderer("updater:status", { status: "ready-to-install", version: info.version });
+    _updateState({ status: "ready-to-install", version: info.version });
   });
 
   // ── Register IPC Handlers for Updater ────────────────────────────────────
@@ -138,8 +159,12 @@ function initAutoUpdater(win, options = {}) {
       // When checkForUpdates returns null/undefined or res.updateInfo is missing,
       // it means electron-updater determined the app is up to date (or unpacked mode).
       if (!res || !res.updateInfo) {
-        _sendToRenderer("updater:status", { status: "not-available" });
+        _updateState({ status: "not-available", error: null });
         return { ok: true, upToDate: true };
+      }
+
+      if (res.updateInfo) {
+        _updateState({ status: "available", version: res.updateInfo.version, releaseNotes: res.updateInfo.releaseNotes, error: null });
       }
 
       return { ok: true, updateInfo: res.updateInfo };
@@ -157,11 +182,11 @@ function initAutoUpdater(win, options = {}) {
         msg.includes("ERR_NON_2XX_3XX_RESPONSE") ||
         msg.includes("dev update config")
       ) {
-        _sendToRenderer("updater:status", { status: "not-available" });
+        _updateState({ status: "not-available", error: null });
         return { ok: true, upToDate: true };
       }
       
-      _sendToRenderer("updater:status", { status: "error", error: msg });
+      _updateState({ status: "error", error: msg });
       return { ok: false, error: msg };
     } finally {
       checkInProgress = false;
@@ -170,15 +195,16 @@ function initAutoUpdater(win, options = {}) {
 
   ipcMain.handle("updater:download", async () => {
     if (operationsState.active) {
-      _sendToRenderer("updater:status", { status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
+      _updateState({ status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
       return { blocked: true, reason: operationsState.reason || "operations-active" };
     }
     try {
       _logEvent("download_requested");
+      _updateState({ status: "downloading", error: null });
       return await autoUpdater.downloadUpdate();
     } catch (err) {
       _logEvent("download_failed", { error: err.message });
-      _sendToRenderer("updater:status", { status: "error", error: err.message });
+      _updateState({ status: "error", error: err.message });
       return { error: err.message };
     }
   });
@@ -186,7 +212,7 @@ function initAutoUpdater(win, options = {}) {
   ipcMain.handle("updater:install", async () => {
     if (operationsState.active) {
       _logEvent("install_blocked", { reason: operationsState.reason || "operations-active", route: operationsState.route });
-      _sendToRenderer("updater:status", { status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
+      _updateState({ status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
       return { blocked: true, reason: operationsState.reason || "operations-active" };
     }
 
@@ -194,7 +220,7 @@ function initAutoUpdater(win, options = {}) {
       const pending = typeof db.getPendingOutbox === "function" ? db.getPendingOutbox() : [];
       if (Array.isArray(pending) && pending.length > 0) {
         _logEvent("install_blocked", { reason: "pending-outbox", count: pending.length });
-        _sendToRenderer("updater:status", { status: "blocked", reason: "pending-outbox", count: pending.length });
+        _updateState({ status: "blocked", reason: "pending-outbox", count: pending.length });
         return { blocked: true, reason: "pending-outbox", count: pending.length };
       }
 
@@ -247,6 +273,10 @@ function initAutoUpdater(win, options = {}) {
 
   ipcMain.handle("updater:getVersion", () => {
     return { version: app.getVersion() };
+  });
+
+  ipcMain.handle("updater:getState", () => {
+    return currentUpdaterState;
   });
 
   ipcMain.handle("updater:setOperationsActive", (_e, active, detail = {}) => {

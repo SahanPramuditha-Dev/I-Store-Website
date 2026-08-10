@@ -1,11 +1,17 @@
 import os
 from datetime import datetime
-from firebase_admin import credentials, firestore, initialize_app, storage
+try:
+    from firebase_admin import credentials, firestore, initialize_app, storage
+    FIREBASE_AVAILABLE = True
+except Exception:
+    FIREBASE_AVAILABLE = False
 
 _app = None
 
 def init_firebase(service_account_path: str, bucket_name: str):
     global _app
+    if not FIREBASE_AVAILABLE:
+        return
     if _app is None:
         cred = credentials.Certificate(service_account_path)
         _app = initialize_app(cred, {"storageBucket": bucket_name})

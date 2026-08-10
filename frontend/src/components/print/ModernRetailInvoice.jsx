@@ -11,6 +11,16 @@ export function ModernRetailInvoice({ invoice, storeProfile, settings }) {
   const accentColor = settings?.print?.accent_color || "#0ea5e9";
 
   const invoiceNumber = invoice?.invoice_number || invoice?.id || "INV-0001";
+  const portalBase = "https://i-store-customer-portal-one.vercel.app";
+  const portalSeed = `${invoiceNumber}istore_secure_salt_2026`;
+  let portalHash = 0;
+  for (let i = 0; i < portalSeed.length; i += 1) {
+    portalHash = (portalHash << 5) - portalHash + portalSeed.charCodeAt(i);
+    portalHash |= 0;
+  }
+  const portalToken = `sec_${Math.abs(portalHash).toString(16).padStart(8, "0")}`.slice(0, 12);
+  const portalUrl = `${portalBase}/invoice/${encodeURIComponent(invoiceNumber)}?token=${portalToken}`;
+
   const invoiceDate = invoice?.created_at
     ? new Date(invoice.created_at).toLocaleDateString()
     : new Date().toLocaleDateString();

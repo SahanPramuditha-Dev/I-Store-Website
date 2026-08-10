@@ -943,6 +943,7 @@ export default function Repairs() {
                     a.href = url;
                     a.download = `repairs_export_${new Date().toISOString().split('T')[0]}.csv`;
                     a.click();
+                    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
                   }}
                   className="px-3 h-9 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[11px] font-bold transition"
                 >

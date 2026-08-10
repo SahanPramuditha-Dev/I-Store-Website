@@ -596,7 +596,8 @@ export default function Dashboard() {
                           <button
                             type="button"
                             onClick={() => {
-                              const printWindow = window.open(`/invoice/${t.id}?autoprint=1`, "_blank");
+                              const printUrl = `/invoice/${t.id}?autoprint=1`;
+                              const printWindow = window.open(printUrl, "_blank");
                               if (printWindow) printWindow.focus();
                             }}
                             className="rounded-lg bg-white/5 hover:bg-white/10 p-1.5 text-slate-300 hover:text-white transition"

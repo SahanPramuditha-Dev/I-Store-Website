@@ -66,28 +66,42 @@ def get_unpaid_customer_balances(
     current_user = Depends(get_current_user),
 ):
     """AI Query Endpoint: Which customers have unpaid balances?"""
-    sales = db.query(Sale).filter(
-        Sale.is_voided == False,
-        Sale.balance_due > 0,
-        Sale.customer_id.isnot(None),
-    ).all()
+    rows = (
+        db.query(
+            Sale.customer_id,
+            func.coalesce(func.sum(Sale.balance_due), 0.0).label("total_unpaid_balance"),
+            func.count(Sale.id).label("unpaid_invoices_count"),
+        )
+        .filter(
+            Sale.is_voided == False,  # noqa: E712
+            Sale.balance_due > 0,
+            Sale.customer_id.isnot(None),
+        )
+        .group_by(Sale.customer_id)
+        .all()
+    )
 
-    balances: Dict[int, Dict[str, Any]] = {}
-    for s in sales:
-        c_id = s.customer_id
-        if c_id not in balances:
-            c = db.query(Customer).filter(Customer.id == c_id).first()
-            balances[c_id] = {
-                "customer_id": c_id,
-                "customer_name": c.name if c else "Unknown",
-                "phone": c.phone if c else None,
-                "total_unpaid_balance": 0.0,
-                "unpaid_invoices_count": 0,
-            }
-        balances[c_id]["total_unpaid_balance"] += float(s.balance_due)
-        balances[c_id]["unpaid_invoices_count"] += 1
+    if not rows:
+        return []
 
-    return list(balances.values())
+    customer_ids = [int(r.customer_id) for r in rows if r.customer_id]
+    customers = (
+        db.query(Customer.id, Customer.name, Customer.phone)
+        .filter(Customer.id.in_(customer_ids))
+        .all()
+    )
+    cust_map = {c.id: c for c in customers}
+
+    return [
+        {
+            "customer_id": int(r.customer_id),
+            "customer_name": cust_map[r.customer_id].name if r.customer_id in cust_map else "Unknown",
+            "phone": cust_map[r.customer_id].phone if r.customer_id in cust_map else None,
+            "total_unpaid_balance": float(r.total_unpaid_balance or 0.0),
+            "unpaid_invoices_count": int(r.unpaid_invoices_count or 0),
+        }
+        for r in rows
+    ]
 
 
 @router.get("/delayed-repairs", response_model=List[Dict[str, Any]], dependencies=[Depends(require_permission("repairs.view"))])
@@ -97,12 +111,23 @@ def get_delayed_repairs_analytics(
 ):
     """AI Query Endpoint: Which repairs are delayed?"""
     now = datetime.utcnow()
-    repairs = db.query(RepairTicket).filter(
-        RepairTicket.is_deleted == False,
-        RepairTicket.status.notin_(["completed", "delivered", "cancelled"]),
-        RepairTicket.estimated_completion.isnot(None),
-        RepairTicket.estimated_completion < now,
-    ).all()
+    repairs = (
+        db.query(
+            RepairTicket.id,
+            RepairTicket.ticket_no,
+            RepairTicket.device_model,
+            RepairTicket.customer_id,
+            RepairTicket.status,
+            RepairTicket.estimated_completion,
+        )
+        .filter(
+            RepairTicket.is_deleted == False,  # noqa: E712
+            RepairTicket.status.notin_(["completed", "delivered", "cancelled"]),
+            RepairTicket.estimated_completion.isnot(None),
+            RepairTicket.estimated_completion < now,
+        )
+        .all()
+    )
 
     return [
         {
@@ -126,14 +151,17 @@ def get_peak_hours_analytics(
 ):
     """BI Endpoint: Distribution of sales and revenue by hour of the day."""
     start_date = datetime.utcnow() - timedelta(days=days)
-    sales = db.query(Sale).filter(Sale.created_at >= start_date, Sale.is_voided == False).all()
-    
+    sales = (
+        db.query(Sale.created_at, Sale.total)
+        .filter(Sale.created_at >= start_date, Sale.is_voided == False)  # noqa: E712
+        .all()
+    )
+
     hourly_data = {h: {"hour": h, "sales_count": 0, "total_revenue": 0.0} for h in range(24)}
-    for s in sales:
-        if s.created_at:
-            h = s.created_at.hour
+    for created_at, total in sales:
+        if created_at:
+            h = created_at.hour
             hourly_data[h]["sales_count"] += 1
-            hourly_data[h]["total_revenue"] += float(s.total or 0.0)
+            hourly_data[h]["total_revenue"] += float(total or 0.0)
             
     return list(hourly_data.values())
-
