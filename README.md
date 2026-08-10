@@ -2,6 +2,51 @@
 
 A web-based POS, inventory, and repair management application. This project has been optimized to deploy the frontend and backend separately on Vercel with a Postgres database on Neon.tech.
 
+## Screenshots
+
+The project includes a collection of screenshots for the main modules and workflows. A few highlights are shown below, and the full set is stored in the Screenshots folder.
+
+### Main modules
+
+![Settings](Screenshots/Settings.png)
+![Tasks](Screenshots/Tasks.png)
+![Timer](Screenshots/Timer.png)
+![Video tracker](Screenshots/VideoTracker.png)
+![Workspace](Screenshots/Workspace.png)
+
+### Additional captures
+
+![Overview 1](Screenshots/screenshot-01.png)
+![Overview 2](Screenshots/screenshot-02.png)
+![Overview 3](Screenshots/screenshot-03.png)
+![Overview 4](Screenshots/screenshot-04.png)
+
+Additional files are available in the [Screenshots](Screenshots) directory:
+
+- [screenshot-01](Screenshots/screenshot-01.png)
+- [screenshot-02](Screenshots/screenshot-02.png)
+- [screenshot-03](Screenshots/screenshot-03.png)
+- [screenshot-04](Screenshots/screenshot-04.png)
+- [screenshot-05](Screenshots/screenshot-05.png)
+- [screenshot-06](Screenshots/screenshot-06.png)
+- [screenshot-07](Screenshots/screenshot-07.png)
+- [screenshot-08](Screenshots/screenshot-08.png)
+- [screenshot-09](Screenshots/screenshot-09.png)
+- [screenshot-10](Screenshots/screenshot-10.png)
+- [screenshot-11](Screenshots/screenshot-11.png)
+- [screenshot-12](Screenshots/screenshot-12.png)
+- [screenshot-13](Screenshots/screenshot-13.png)
+- [screenshot-14](Screenshots/screenshot-14.png)
+- [screenshot-15](Screenshots/screenshot-15.png)
+- [screenshot-16](Screenshots/screenshot-16.png)
+- [screenshot-17](Screenshots/screenshot-17.png)
+- [screenshot-18](Screenshots/screenshot-18.png)
+- [Settings](Screenshots/Settings.png)
+- [Tasks](Screenshots/Tasks.png)
+- [Timer](Screenshots/Timer.png)
+- [VideoTracker](Screenshots/VideoTracker.png)
+- [Workspace](Screenshots/Workspace.png)
+
 ## Architecture & Deployment Strategy
 
 *   **Frontend**: Built with React / Vite. Hosted on Vercel at `https://i-store-website.vercel.app`.
