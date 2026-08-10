@@ -4,29 +4,19 @@ A web-based POS, inventory, and repair management application. This project has 
 
 ## Screenshots
 
-The project includes a collection of screenshots for the main modules and workflows. A few highlights are shown below, and the full set is stored in the Screenshots folder.
+The project includes a curated gallery of screenshots for the main workflows and administrative screens. A selection of featured images is shown below, and the full gallery is available in the `Screenshots` folder.
 
-### Main modules
-
-![Settings](Screenshots/Settings.png)
-![Tasks](Screenshots/Tasks.png)
-![Timer](Screenshots/Timer.png)
-![Video tracker](Screenshots/VideoTracker.png)
-![Workspace](Screenshots/Workspace.png)
-
-### Additional captures
+### Featured workflow screenshots
 
 ![Software update](Screenshots/software-update.png)
 ![Secure cloud backups](Screenshots/secure-cloud-backups.png)
 ![Role-based access control](Screenshots/role-based-access-control.png)
 ![Repair tracking](Screenshots/repair-tracking.png)
 
-Additional files are available in the [Screenshots](Screenshots) directory:
+### Full screenshot gallery
 
-- [Software update](Screenshots/software-update.png)
-- [Secure cloud backups](Screenshots/secure-cloud-backups.png)
-- [Role-based access control](Screenshots/role-based-access-control.png)
-- [Repair tracking](Screenshots/repair-tracking.png)
+#### Feature workflows
+
 - [Dashboard overview](Screenshots/dashboard-overview.png)
 - [POS billing](Screenshots/pos-billing.png)
 - [Repair management](Screenshots/repair-management.png)
@@ -36,16 +26,17 @@ Additional files are available in the [Screenshots](Screenshots) directory:
 - [Reservations and orders](Screenshots/reservations-orders.png)
 - [Reports and analytics](Screenshots/reports-analytics.png)
 - [Print center](Screenshots/print-center.png)
+
+#### Administrative flows
+
+- [Software update](Screenshots/software-update.png)
+- [Secure cloud backups](Screenshots/secure-cloud-backups.png)
+- [Role-based access control](Screenshots/role-based-access-control.png)
 - [Permissions management](Screenshots/permissions-management.png)
 - [Audit trail](Screenshots/audit-trail.png)
 - [Notifications center](Screenshots/notifications-center.png)
 - [Backup center](Screenshots/backup-center.png)
 - [Settings system configuration](Screenshots/settings-system-configuration.png)
-- [Settings](Screenshots/Settings.png)
-- [Tasks](Screenshots/Tasks.png)
-- [Timer](Screenshots/Timer.png)
-- [Video tracker](Screenshots/VideoTracker.png)
-- [Workspace](Screenshots/Workspace.png)
 
 ## Architecture & Deployment Strategy
 
