@@ -568,7 +568,7 @@ export function SearchableSelect({
         displayEmpty
         onClose={() => setSearch("")}
         renderValue={() => (
-          <span style={{ color: value ? "#f1f5f9" : "#94a3b8", fontWeight: 600 }}>
+          <span style={{ color: value ? "#0f172a" : "#64748b", fontWeight: 600 }}>
             {selectedLabel}
           </span>
         )}
@@ -576,8 +576,10 @@ export function SearchableSelect({
           ...APP_SELECT_INPUT_SX,
           minHeight: sizeConfig.minHeight,
           fontSize: sizeConfig.fontSize,
-          backgroundColor: "#0f172a",
-          color: "#f8fafc",
+          backgroundColor: "#ffffff",
+          color: "#0f172a",
+          border: "1px solid #cbd5e1",
+          boxShadow: "0 0 0 1px rgba(148, 163, 184, 0.18)",
           "& .MuiSelect-select": {
             py: sizeConfig.selectPaddingY,
             pr: "34px",
@@ -585,7 +587,7 @@ export function SearchableSelect({
             display: "flex",
             alignItems: "center",
           },
-          "& .MuiSvgIcon-root": { color: "#818cf8" },
+          "& .MuiSvgIcon-root": { color: "#64748b" },
         }}
         MenuProps={{
           PaperProps: {
@@ -594,7 +596,7 @@ export function SearchableSelect({
               color: "#0f172a !important",
               border: "1.5px solid #cbd5e1",
               borderRadius: "14px",
-              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.25)",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.12)",
               maxHeight: 380,
               overflow: "hidden",
               "& .MuiList-root": {

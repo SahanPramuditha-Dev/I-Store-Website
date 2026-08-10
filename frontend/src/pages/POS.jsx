@@ -23,10 +23,10 @@ export default function POS() {
   const reservationRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
-  const inventoryFetch = useFetch('/inventory');
+  const inventoryFetch = useFetch('/inventory?limit=50');
   const categoriesFetch = useFetch('/inventory/categories');
   const suppliersFetch = useFetch('/inventory/suppliers');
-  const customersFetch = useFetch('/customers');
+  const customersFetch = useFetch('/customers?limit=100');
   const salesFetch = useFetch('/pos/sales');
   const repairsFetch = useFetch('/repairs'); // To link tickets
   const reservationsFetch = useFetch('/product-reservations');
@@ -1202,6 +1202,12 @@ export default function POS() {
       return;
     }
 
+    const popup = window.open("", "_blank");
+    if (!popup) {
+      toast("Pop-up blocked. Allow pop-ups to print receipt.", "error");
+      return;
+    }
+
     try {
       // Fetch receipt HTML from backend
       const { data: html } = await api.get("/print-center/render", {
@@ -1214,10 +1220,11 @@ export default function POS() {
         transformResponse: [(data) => data],
       });
 
-      // Open print dialog
-      await printHtmlDocument(html);
+      // Write content and trigger print in the already-opened popup
+      await printHtmlDocument(html, { win: popup });
       toast("Receipt sent to printer", "success");
     } catch (err) {
+      if (popup && !popup.closed) popup.close();
       toast(err?.message || "Failed to print receipt", "error");
     }
   }, [lastSale, toast]);

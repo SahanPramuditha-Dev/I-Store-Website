@@ -3,7 +3,7 @@ import { RefreshCw, Download, CheckCircle2, ShieldCheck, Cpu, HardDrive, Sparkle
 import { Button, SectionCard, Badge } from "../UI";
 
 export default function SoftwareUpdatesSettingsPanel({ toast }) {
-  const [appVersion, setAppVersion] = useState("v1.1.89");
+  const [appVersion, setAppVersion] = useState("v1.1.96");
   const [checking, setChecking] = useState(false);
   const [updaterStatus, setUpdaterStatus] = useState("idle"); // 'idle' | 'checking' | 'available' | 'downloading' | 'ready-to-install' | 'up-to-date' | 'error'
   const [progress, setProgress] = useState(0);
@@ -15,6 +15,26 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
     if (window.istore?.updater?.getVersion) {
       window.istore.updater.getVersion().then((res) => {
         if (res?.version) setAppVersion(`v${res.version}`);
+      }).catch(() => {});
+    }
+
+    if (window.istore?.updater?.getState) {
+      window.istore.updater.getState().then((data) => {
+        if (data?.status === "checking") {
+          setUpdaterStatus("checking");
+        } else if (data?.status === "available") {
+          setUpdaterStatus("available");
+          if (data.version) setLatestVersion(data.version);
+          if (data.releaseNotes) setReleaseNotes(data.releaseNotes);
+        } else if (data?.status === "not-available") {
+          setUpdaterStatus("up-to-date");
+        } else if (data?.status === "downloaded" || data?.status === "ready-to-install") {
+          setUpdaterStatus("ready-to-install");
+          if (data.version) setLatestVersion(data.version);
+        } else if (data?.status === "error" || data?.status === "backup-failed") {
+          setUpdaterStatus("error");
+          setErrorMessage(data?.error || "Update error occurred");
+        }
       }).catch(() => {});
     }
 

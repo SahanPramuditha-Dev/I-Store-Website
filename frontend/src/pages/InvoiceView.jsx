@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../lib/api";
 import { Badge, Button } from "../components/UI";
 import { ArrowLeft, Printer } from "lucide-react";
@@ -7,11 +7,14 @@ import { ArrowLeft, Printer } from "lucide-react";
 export default function InvoiceView() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const iframeRef = useRef(null);
   const [previewHtml, setPreviewHtml] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [invoiceTemplate, setInvoiceTemplate] = useState("");
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const autoPrint = ["1", "true"].includes(String(searchParams.get("autoprint") || "").toLowerCase());
 
   useEffect(() => {
     let active = true;
@@ -68,11 +71,16 @@ export default function InvoiceView() {
     };
   }, [id, invoiceTemplate]);
 
-  const handlePrint = () => {
+  const handlePrint = useCallback(() => {
     if (!iframeRef.current?.contentWindow) return;
     iframeRef.current.contentWindow.focus();
     iframeRef.current.contentWindow.print();
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!autoPrint || !iframeLoaded) return;
+    handlePrint();
+  }, [autoPrint, iframeLoaded, handlePrint]);
 
   if (loading) return <div className="p-4">Loading invoice preview...</div>;
   if (error) return (
@@ -106,6 +114,7 @@ export default function InvoiceView() {
           srcDoc={previewHtml}
           className="w-full h-[800px] border-0 bg-white"
           sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+          onLoad={() => setIframeLoaded(true)}
         />
       </div>
     </div>

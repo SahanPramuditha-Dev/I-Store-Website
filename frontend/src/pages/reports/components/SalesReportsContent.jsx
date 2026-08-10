@@ -28,6 +28,7 @@ import {
 } from "recharts";
 import { Badge, Button, KpiCard, SectionCard, Table, Select } from "../../../components/UI";
 import { openPrintCenter } from "../../../lib/printCenter";
+import { parseUtcIso, parseLocalDate } from "../../../lib/dateParser";
 
 const MONEY_LOCALE = "en-LK";
 const DAY_LABEL = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
@@ -50,9 +51,7 @@ function money(value) {
 }
 
 function toDate(value) {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseUtcIso(value);
 }
 
 function toDayKey(value) {
@@ -69,6 +68,12 @@ function monthKey(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function formatUtcDateTime(value) {
+  const date = parseUtcIso(value);
+  if (!date) return "";
+  return date.toLocaleString();
+}
+
 function addDays(value, days) {
   const date = toDate(value);
   if (!date) return null;
@@ -79,7 +84,7 @@ function addDays(value, days) {
 
 function parseDateInput(value, endExclusive = false) {
   if (!value) return null;
-  const date = toDate(`${value}T00:00:00`);
+  const date = parseLocalDate(value);
   if (!date) return null;
   if (!endExclusive) return date;
   const cloned = new Date(date);
@@ -747,7 +752,7 @@ export default function SalesReportsContent({
             <MiniTable
               columns={[
                 { label: "Invoice", value: "invoice" },
-                { label: "Date", value: (row) => new Date(row.date).toLocaleString() },
+                { label: "Date", value: (row) => formatUtcDateTime(row.date) },
                 { label: "Amount", value: (row) => money(row.amount) },
                 { label: "Reason", value: "reason" },
               ]}
@@ -821,7 +826,7 @@ export default function SalesReportsContent({
               columns={[
                 { label: "Invoice", value: "invoice" },
                 { label: "Cancelled By", value: "cancelledBy" },
-                { label: "Cancelled At", value: (row) => new Date(row.cancelledAt).toLocaleString() },
+                { label: "Cancelled At", value: (row) => formatUtcDateTime(row.cancelledAt) },
                 { label: "Reason", value: "reason" },
               ]}
               rows={analytics.cancelledRows}
@@ -1046,7 +1051,7 @@ export default function SalesReportsContent({
               {pagedRows.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono">{row.invoice_no}</td>
-                  <td>{new Date(row.created_at).toLocaleString()}</td>
+                  <td>{formatUtcDateTime(row.created_at)}</td>
                   <td>{row.customer_name || "Walk-in"}</td>
                   <td>{Number(row.item_qty || 0).toLocaleString()}</td>
                   <td>{money(row.subtotal)}</td>

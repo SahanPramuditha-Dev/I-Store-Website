@@ -33,6 +33,16 @@ export function BoxedDetailedInvoice({ invoice, storeProfile, settings }) {
     repair_details = {},
   } = invoice || {};
 
+  const portalBase = "https://i-store-customer-portal-one.vercel.app";
+  const portalSeed = `${invoice_number}istore_secure_salt_2026`;
+  let portalHash = 0;
+  for (let i = 0; i < portalSeed.length; i += 1) {
+    portalHash = (portalHash << 5) - portalHash + portalSeed.charCodeAt(i);
+    portalHash |= 0;
+  }
+  const portalToken = `sec_${Math.abs(portalHash).toString(16).padStart(8, "0")}`.slice(0, 12);
+  const portalUrl = `${portalBase}/invoice/${encodeURIComponent(invoice_number)}?token=${portalToken}`;
+
   const {
     brand = "",
     model = "",

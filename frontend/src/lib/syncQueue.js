@@ -90,13 +90,14 @@ export const syncQueue = {
   }
 };
 
-// Start periodic sync worker (every 3 minutes)
-if (typeof window !== "undefined") {
+// Start periodic sync worker (every 5 minutes)
+if (typeof window !== "undefined" && !window.__istore_sync_worker_started) {
+  window.__istore_sync_worker_started = true;
   setInterval(() => {
     if (navigator.onLine) {
       syncQueue.processQueue();
     }
-  }, 3 * 60 * 1000);
+  }, 5 * 60 * 1000);
 
   window.addEventListener("online", () => {
     syncQueue.processQueue();

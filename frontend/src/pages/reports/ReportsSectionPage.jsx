@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import {
   AlertTriangle,
@@ -11,20 +11,21 @@ import {
 import { Badge, Button, KpiCard, SectionCard, Table } from "../../components/UI";
 import { downloadCsv, downloadPdf } from "../../lib/tableUtils";
 import { REPORT_SECTION_MAP } from "./reportsConfig";
-import OverviewDashboardContent from "./components/OverviewDashboardContent";
-import SalesReportsContent from "./components/SalesReportsContent";
-import RepairReportsContent from "./components/RepairReportsContent";
-import ProfitLossReportsContent from "./components/ProfitLossReportsContent";
-import ExpenseReportsContent from "./components/ExpenseReportsContent";
-import InventoryReportsContent from "./components/InventoryReportsContent";
-import OutstandingPaymentsContent from "./components/OutstandingPaymentsContent";
-import ProductPerformanceContent from "./components/ProductPerformanceContent";
-import CustomerReportsContent from "./components/CustomerReportsContent";
-import SupplierReportsContent from "./components/SupplierReportsContent";
-import TaxFinancialReportsContent from "./components/TaxFinancialReportsContent";
-import RefundsReturnsContent from "./components/RefundsReturnsContent";
-import AuditReportsContent from "./components/AuditReportsContent";
-import ExportCenterContent from "./components/ExportCenterContent";
+
+const OverviewDashboardContent = lazy(() => import("./components/OverviewDashboardContent"));
+const SalesReportsContent = lazy(() => import("./components/SalesReportsContent"));
+const RepairReportsContent = lazy(() => import("./components/RepairReportsContent"));
+const ProfitLossReportsContent = lazy(() => import("./components/ProfitLossReportsContent"));
+const ExpenseReportsContent = lazy(() => import("./components/ExpenseReportsContent"));
+const InventoryReportsContent = lazy(() => import("./components/InventoryReportsContent"));
+const OutstandingPaymentsContent = lazy(() => import("./components/OutstandingPaymentsContent"));
+const ProductPerformanceContent = lazy(() => import("./components/ProductPerformanceContent"));
+const CustomerReportsContent = lazy(() => import("./components/CustomerReportsContent"));
+const SupplierReportsContent = lazy(() => import("./components/SupplierReportsContent"));
+const TaxFinancialReportsContent = lazy(() => import("./components/TaxFinancialReportsContent"));
+const RefundsReturnsContent = lazy(() => import("./components/RefundsReturnsContent"));
+const AuditReportsContent = lazy(() => import("./components/AuditReportsContent"));
+const ExportCenterContent = lazy(() => import("./components/ExportCenterContent"));
 
 const money = (value) => `LKR ${Math.round(Number(value || 0)).toLocaleString("en-LK")}`;
 
@@ -741,7 +742,9 @@ export default function ReportsSectionPage({ sectionKey }) {
           {sectionNote && <p className="mt-2 text-xs text-amber-300">{sectionNote}</p>}
         </section>
 
-        {content}
+        <Suspense fallback={<div className="panel p-6 text-center text-slate-400">Loading report view...</div>}>
+          {content}
+        </Suspense>
       </div>
     </div>
   );
