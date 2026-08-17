@@ -177,6 +177,7 @@ def sync_repair_ticket_to_cloud(
     advance_paid: float = 0.0,
     balance_due: float = 0.0,
     status_note: str = "",
+    store_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Syncs a repair ticket to Supabase `repair_tickets` table for Cloud Customer Portal live tracking.
@@ -189,8 +190,11 @@ def sync_repair_ticket_to_cloud(
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
+    resolved_store_id = str(store_id).strip().lower().replace(" ", "-") if store_id else "default"
+
     payload = {
         "id": ticket_no,
+        "store_id": resolved_store_id,
         "customer_phone": customer_phone,
         "device_name": device_model,
         "imei_or_serial": imei_or_serial or "",
@@ -221,7 +225,8 @@ def sync_repair_ticket_to_cloud(
     except Exception as e:
         logger.warning(f"Failed to sync repair ticket {ticket_no} to Supabase: {e}")
 
-    portal_link = f"{CUSTOMER_PORTAL_BASE_URL}/repair/{ticket_no}"
+    store_query = f"?store={resolved_store_id}" if resolved_store_id != "default" else ""
+    portal_link = f"{CUSTOMER_PORTAL_BASE_URL}/repair/{ticket_no}{store_query}"
     return {"ticket_no": ticket_no, "portal_link": portal_link}
 
 
