@@ -48,20 +48,25 @@ def sync_checkout_invoice_to_cloud(
     status: str = "Paid",
     store_logo_url: Optional[str] = None,
     shop_name: Optional[str] = None,
-    shop_address: Optional[str] = None
+    shop_address: Optional[str] = None,
+    store_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Syncs a POS checkout transaction to the cloud Supabase database
     and returns the public smart bill link + WhatsApp share link.
+    Supports multi-tenant store isolation via store_id.
     """
     import urllib.request
     import json
 
     token = generate_invoice_token(invoice_id)
+    resolved_store_id = str(store_id).strip().lower().replace(" ", "-") if store_id else "default"
+    display_shop_name = shop_name or "I-Store"
 
     invoice_payload = {
         "id": invoice_id,
         "token": token,
+        "store_id": resolved_store_id,
         "customer_name": customer_name,
         "customer_phone": customer_phone,
         "customer_email": customer_email or "",
@@ -72,7 +77,6 @@ def sync_checkout_invoice_to_cloud(
         "payment_method": payment_method,
         "status": status
     }
-
 
     # Prepare HTTP POST to Supabase REST API
     headers = {
@@ -87,6 +91,27 @@ def sync_checkout_invoice_to_cloud(
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+
+        # 0. Ensure Store record exists in Supabase
+        if shop_name or resolved_store_id != "default":
+            store_payload = {
+                "id": resolved_store_id,
+                "name": shop_name or "Retail Store",
+                "tagline": "Digital Receipts & Warranty Portal",
+                "logo_url": store_logo_url or "",
+                "address": shop_address or "",
+            }
+            try:
+                store_req = urllib.request.Request(
+                    f"{SUPABASE_URL}/rest/v1/stores",
+                    data=json.dumps(store_payload).encode("utf-8"),
+                    headers=headers,
+                    method="POST"
+                )
+                with urllib.request.urlopen(store_req, context=ctx) as sresp:
+                    logger.debug(f"Synced store profile {resolved_store_id} to Supabase: {sresp.status}")
+            except Exception as se:
+                logger.debug(f"Store upsert notice: {se}")
 
         # 1. Upsert Invoice
         req = urllib.request.Request(
@@ -123,10 +148,11 @@ def sync_checkout_invoice_to_cloud(
     except Exception as e:
         logger.error(f"Failed to sync invoice {invoice_id} to Supabase (Saved to local offline queue): {e}")
 
-    # Generate Smart Bill Links
-    public_link = f"{CUSTOMER_PORTAL_BASE_URL}/invoice/{invoice_id}?token={token}"
+    # Generate Store-Scoped Smart Bill Links
+    store_query = f"&store={resolved_store_id}" if resolved_store_id != "default" else ""
+    public_link = f"{CUSTOMER_PORTAL_BASE_URL}/invoice/{invoice_id}?token={token}{store_query}"
     whatsapp_text = quote(
-        f"Thank you for shopping at I-Store! 🛍️\n"
+        f"Thank you for shopping at {display_shop_name}! 🛍️\n"
         f"View your official digital receipt & warranty details here:\n{public_link}"
     )
     whatsapp_click_link = f"https://wa.me/{customer_phone.replace(' ', '').replace('+', '')}?text={whatsapp_text}"

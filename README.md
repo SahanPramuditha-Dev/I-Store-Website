@@ -5,6 +5,7 @@
 [![Vite](https://img.shields.io/badge/Vite-5.x-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Electron](https://img.shields.io/badge/Electron-Desktop-47848F.svg?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Database](https://img.shields.io/badge/Database-SQLite%20%7C%20PostgreSQL-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![CI](https://github.com/SahanPramuditha-Dev/I-Store-Website/actions/workflows/ci.yml/badge.svg)](https://github.com/SahanPramuditha-Dev/I-Store-Website/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A production-grade, all-in-one ERP system tailored for electronics stores, mobile repair shops, and modern retail businesses. Built with high performance in mind, **iStore ERP** runs seamlessly as a standalone **Windows desktop app (Electron)**, a **local networked POS**, or a **cloud-hosted web platform (Vercel + Neon PostgreSQL)**.
