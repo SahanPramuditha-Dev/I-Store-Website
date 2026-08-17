@@ -5,25 +5,21 @@ import { useFetch } from "../../hooks/useFetch";
 import { REPORT_SECTIONS } from "./reportsConfig";
 import { PageHeader } from "../../components/UI";
 
-function toIsoDate(date) {
-  const value = new Date(date);
-  if (Number.isNaN(value.getTime())) return "";
-  return value.toISOString().slice(0, 10);
-}
+import { toLocalIsoDate, parseUtcIso, parseLocalDate } from "../../lib/dateParser";
 
 function getPresetRange(preset) {
   const now = new Date();
-  const today = toIsoDate(now);
+  const today = toLocalIsoDate(now);
   if (preset === "today") return { from: today, to: today };
   if (preset === "week") {
     const day = now.getDay();
     const diff = (day + 6) % 7;
     const monday = new Date(now);
     monday.setDate(now.getDate() - diff);
-    return { from: toIsoDate(monday), to: today };
+    return { from: toLocalIsoDate(monday), to: today };
   }
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { from: toIsoDate(startOfMonth), to: today };
+  return { from: toLocalIsoDate(startOfMonth), to: today };
 }
 
 function safeArray(value) {
@@ -64,16 +60,18 @@ export default function ReportsModuleLayout() {
 
   const inRange = (iso) => {
     if (!iso) return false;
-    const value = new Date(iso);
-    if (Number.isNaN(value.getTime())) return false;
+    const value = parseUtcIso(iso);
+    if (!value) return false;
     if (dateFrom) {
-      const start = new Date(dateFrom);
-      if (value < start) return false;
+      const start = parseLocalDate(dateFrom);
+      if (start && value < start) return false;
     }
     if (dateTo) {
-      const end = new Date(dateTo);
-      end.setDate(end.getDate() + 1);
-      if (value >= end) return false;
+      const end = parseLocalDate(dateTo);
+      if (end) {
+        end.setDate(end.getDate() + 1);
+        if (value >= end) return false;
+      }
     }
     return true;
   };

@@ -124,9 +124,7 @@ export default function AppModal({
                     {title}
                   </h3>
                 )
-              ) : (
-                <span className="min-w-0 text-base font-bold text-white">Dialog</span>
-              )}
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {headerActions}

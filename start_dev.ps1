@@ -43,7 +43,7 @@ function Write-StatusPanel {
     param([hashtable]$Status)
     Write-Host ""
     Write-Host "  ┌─── LIVE STATUS ───────────────────────────────────────────┐" -ForegroundColor DarkCyan
-    foreach ($svc in @("Database", "Backend", "Frontend")) {
+    foreach ($svc in @("Database", "Backend", "Frontend", "WhatsApp")) {
         $s = $Status[$svc]
         $icon  = if ($s.Ok) { "✓" } else { "✗" }
         $color = if ($s.Ok) { "Green" } else { "Red" }
@@ -232,6 +232,29 @@ if ($SkipFrontend) {
         $status.Frontend = @{ Ok = $true; Msg = "running  →  $FRONTEND_URL" }
     } else {
         $status.Frontend = @{ Ok = $false; Msg = "failed to start — check frontend window for errors" }
+    }
+}
+
+# ── [5.5] WhatsApp Microservice ───────────────────────────────────────────────
+$WHATSAPP_PORT = 3001
+$WHATSAPP_DIR  = Join-Path $ROOT "whatsapp_service"
+Write-Host ""
+Write-Step "💬" "WhatsApp Service — Node.js / Puppeteer"
+if (Test-Port $WHATSAPP_PORT) {
+    Write-Step "  ↺" "Already running on :$WHATSAPP_PORT" "" "Yellow"
+    $status.WhatsApp = @{ Ok = $true; Msg = "already running  →  http://127.0.0.1:$WHATSAPP_PORT" }
+} else {
+    Write-Step "  ▶" "Starting WhatsApp service..." "" "Cyan"
+
+    $whatsappCmd = "Set-Location '$WHATSAPP_DIR'; node server.js"
+    Start-Process powershell -ArgumentList "-NoExit", "-NoProfile", "-Command", $whatsappCmd `
+        -WindowStyle Normal
+
+    $waOk = Wait-ForPort -Port $WHATSAPP_PORT -Seconds 20 -Label "WhatsApp Service"
+    if ($waOk) {
+        $status.WhatsApp = @{ Ok = $true; Msg = "running  →  http://127.0.0.1:$WHATSAPP_PORT" }
+    } else {
+        $status.WhatsApp = @{ Ok = $false; Msg = "failed to start" }
     }
 }
 

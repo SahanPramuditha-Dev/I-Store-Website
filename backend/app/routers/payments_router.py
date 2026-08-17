@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,8 @@ from app.auth import get_current_user, require_permission
 from app.database import get_db
 from app.models import AppSetting, Customer, InvoiceAuditEvent, InvoicePayment, Sale
 from app.services.numbering_service import next_number
+from app.services.supabase_pos_sync import generate_invoice_token
+from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.services.print_rendering_service import get_store_profile_print_data, render_payment_receipt_html
 from app.services.settings_policy_service import enforce_void_refund_policy
 from app.utils.money import add as money_add
@@ -74,7 +76,7 @@ def _payment_payload(row: InvoicePayment) -> dict:
 
 
 @router.post("/payments", dependencies=[Depends(require_permission("pos.checkout"))])
-def create_payment(payload: dict, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def create_payment(payload: dict, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     invoice_id = int(payload.get("invoice_id") or 0)
     if invoice_id <= 0:
         raise HTTPException(status_code=400, detail="invoice_id is required")
@@ -113,6 +115,31 @@ def create_payment(payload: dict, db: Session = Depends(get_db), current_user=De
     )
     db.commit()
     db.refresh(row)
+    
+    # WhatsApp Notification Trigger
+    customer = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
+    if customer and (customer.whatsapp_number or customer.phone):
+        _phone = str(customer.whatsapp_number or customer.phone)
+        _customer_name = customer.name or "Customer"
+        _invoice_no = _invoice_label(sale)
+        _token = generate_invoice_token(_invoice_no)
+        _smart_bill_url = f'https://i-store-customer-portal-one.vercel.app/invoice/{_invoice_no}?token={_token}'
+        
+        background_tasks.add_task(
+            log_and_send_whatsapp,
+            "payment_receipt",
+            _phone,
+            {
+                "customer_name": _customer_name,
+                "invoice_number": _invoice_no,
+                "payment_amount": f"{amount:.2f}",
+                "payment_method": payment_method.replace("_", " ").title(),
+                "balance_due": f"{_safe_float(sale.balance_due):.2f}",
+                "smart_bill_url": _smart_bill_url
+            },
+            customer_id=customer.id
+        )
+
     return {
         "ok": True,
         "invoice_id": sale.id,

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@mui/material";
 import { useFetch } from "../../hooks/useFetch";
 import { KpiCard } from "../../components/UI";
+import { toLocalIsoDate } from "../../lib/dateParser";
 import { AlertTriangle, Boxes, Layers, PackagePlus, FileBarChart2, ClipboardCheck, SlidersHorizontal, Sparkles } from "lucide-react";
 
 const currency = (n) => `Rs. ${Number(n || 0).toLocaleString()}`;
@@ -65,13 +66,13 @@ export default function InventoryOverview() {
   }, [moves]);
 
   const movementTrend = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const today = toLocalIsoDate(new Date());
+    const yesterday = toLocalIsoDate(new Date(Date.now() - 86400000));
     const todayQty = moves
-      .filter((m) => String(m.created_at || "").slice(0, 10) === today)
+      .filter((m) => toLocalIsoDate(m.created_at) === today)
       .reduce((sum, m) => sum + Math.abs(Number(m.quantity || 0)), 0);
     const yesterdayQty = moves
-      .filter((m) => String(m.created_at || "").slice(0, 10) === yesterday)
+      .filter((m) => toLocalIsoDate(m.created_at) === yesterday)
       .reduce((sum, m) => sum + Math.abs(Number(m.quantity || 0)), 0);
     return { todayQty, yesterdayQty };
   }, [moves]);

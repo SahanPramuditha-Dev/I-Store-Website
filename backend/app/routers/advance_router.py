@@ -61,7 +61,7 @@ from app.utils.time import utcnow
 
 
 router = APIRouter(tags=["advance_payments"])
-SOFTWARE_NAME = "I Store"
+SOFTWARE_NAME = "E Store"
 
 ALLOWED_ADVANCE_TYPES = {
     "repair",
@@ -155,14 +155,20 @@ def _get_store_profile_print_data(db: Session) -> dict:
     if state_row and state_row.value:
         try:
             state_payload = json.loads(state_row.value)
-        except Exception:
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"State parsing failed: {e}")
             state_payload = {}
 
     print_profile = {}
     if print_row and print_row.value:
         try:
             print_profile = json.loads(print_row.value)
-        except Exception:
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Print profile parsing failed: {e}")
             print_profile = {}
 
     store_profile = (state_payload or {}).get("store_profile", {})
@@ -327,13 +333,17 @@ def list_advance_payments(
     if date_from:
         try:
             query = query.filter(AdvancePayment.payment_date >= datetime.fromisoformat(str(date_from)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Date parse ignored: {e}")
     if date_to:
         try:
             query = query.filter(AdvancePayment.payment_date <= datetime.fromisoformat(str(date_to)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Date parse ignored: {e}")
     rows = query.order_by(AdvancePayment.payment_date.desc(), AdvancePayment.id.desc()).all()
     return [_serialize_advance(row) for row in rows]
 
@@ -1490,6 +1500,38 @@ def create_or_update_repair_estimate(
     )
     db.commit()
     db.refresh(row)
+    
+    # Send WhatsApp notification
+    customer = db.query(Customer).filter(Customer.id == repair.customer_id).first() if repair.customer_id else None
+    if customer and customer.phone:
+        import os
+        from app.utils.whatsapp_helper import log_and_send_whatsapp
+        from fastapi import BackgroundTasks
+        # Hack to trigger without changing method signature
+        import threading
+        
+        store_website = os.getenv("CUSTOMER_PORTAL_URL", "https://i-store-customer-portal-one.vercel.app").rstrip("/")
+        ticket_no = repair.ticket_no or f"JOB-{repair.id:05d}"
+        tracking_url = f"{store_website}/repair/{ticket_no}"
+        
+        def run_whatsapp():
+            log_and_send_whatsapp(
+                event_type='repair_estimate',
+                phone=customer.phone,
+                variables={
+                    'customer_name': customer.name or 'Customer',
+                    'job_number': ticket_no,
+                    'device_model': repair.device_model or 'Device',
+                    'estimate_amount': f"{float(estimated_total):,.2f}",
+                    'advance_paid': f"{float(repair.advance_payment or 0):,.2f}",
+                    'balance_due': f"{float(estimated_total - (repair.advance_payment or 0)):,.2f}",
+                    'technician_notes': row.notes or 'Diagnosis complete.',
+                    'repair_tracking_url': tracking_url
+                },
+                customer_id=customer.id
+            )
+        threading.Thread(target=run_whatsapp, daemon=True).start()
+    
     return _serialize_estimate(row)
 
 

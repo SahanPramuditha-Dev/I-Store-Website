@@ -92,8 +92,10 @@ def _ensure_runtime_schema(db: Session) -> None:
                         type_str = col_type.upper().replace("DATETIME", "TIMESTAMP")
                     db.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {type_str}"))
         db.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Runtime schema migration warning: {e}")
     _RUNTIME_SCHEMA_READY = True
 
 

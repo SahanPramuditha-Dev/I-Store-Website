@@ -1,4 +1,4 @@
-import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import Layout from "./components/Layout";
 import UpdateNotification from "./components/UpdateNotification";
 import { bootstrapPermissions, canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions } from "./lib/rbac";
@@ -6,6 +6,13 @@ import InvoiceView from "./pages/InvoiceView";
 
 import { lazy, Suspense, useEffect, useState } from "react";
 import api from "./lib/api";
+
+function RepairRedirect() {
+  const { id } = useParams();
+  const searchParam = new URLSearchParams(window.location.search);
+  const qVal = id || searchParam.get("search") || searchParam.get("q") || "";
+  return <Navigate to={`/repairs?search=${encodeURIComponent(qVal)}`} replace />;
+}
 
 const Login = lazy(() => import("./pages/Login"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -64,6 +71,7 @@ const FinancialControl = lazy(() => import("./pages/FinancialControl"));
 const AccessDenied = lazy(() => import("./pages/AccessDenied"));
 const PermissionManagement = lazy(() => import("./pages/PermissionManagement"));
 const Notifications = lazy(() => import("./pages/Notifications"));
+const WhatsAppManager = lazy(() => import("./pages/WhatsAppManager").then(m => ({ default: m.WhatsAppManager })));
 
 function RouteFallback() {
   return <div className="h-dvh grid place-items-center text-slate-400">Loading workspace...</div>;
@@ -89,11 +97,6 @@ function Guard({ children }) {
 }
 
 export default function App() {
-  // NOTE: Auto-backups are handled by the backend scheduler (backup_scheduler.py).
-  // Removed client-side backup trigger to prevent concurrent backup races under multi-user load.
-  // Electron loads the packaged frontend from file://. BrowserRouter treats an
-  // absolute route such as /dashboard as a filesystem path in that context
-  // (file:///C:/dashboard), so use URL hashes for the packaged application.
   const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
   return <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -105,6 +108,9 @@ export default function App() {
           <Route path="/access-denied" element={<AccessDenied/>} />
           <Route path="/dashboard" element={<Dashboard/>} />
           <Route path="/repairs" element={<Repairs/>} />
+          <Route path="/repair/:id" element={<RepairRedirect/>} />
+          <Route path="/repairs/:id" element={<RepairRedirect/>} />
+          <Route path="/r/:id" element={<RepairRedirect/>} />
           <Route path="/reservations" element={<ProductReservations/>} />
           <Route path="/inventory" element={<Navigate to="/inventory/overview" replace />} />
           <Route path="/inventory/*" element={<InventoryModuleLayout/>}>
@@ -130,12 +136,13 @@ export default function App() {
           <Route path="/purchase" element={<PurchaseOrders/>} />
           <Route path="/expenses" element={<Expenses/>} />
           <Route path="/pos" element={<POS/>} />
-            <Route path="/invoice/:id" element={<InvoiceView/>} />
+          <Route path="/invoice/:id" element={<InvoiceView/>} />
           <Route path="/customers" element={<Customers/>} />
           <Route path="/warranty" element={<Warranty/>} />
           <Route path="/returns" element={<ReturnsRefunds/>} />
           <Route path="/advances" element={<AdvancePayments/>} />
           <Route path="/customers/:id" element={<CustomerDetail/>} />
+          <Route path="/whatsapp" element={<WhatsAppManager/>} />
           <Route path="/reports" element={<Navigate to="/reports/overview" replace />} />
           <Route path="/reports/*" element={<ReportsModuleLayout/>}>
             <Route path="overview" element={<OverviewDashboardPage />} />

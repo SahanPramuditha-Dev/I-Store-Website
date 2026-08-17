@@ -38,6 +38,7 @@ import api from "../lib/api";
 import { printHtmlDocument } from "../lib/printBridge";
 import { openPrintCenter } from "../lib/printCenter";
 import { useFeedback } from "../components/FeedbackProvider";
+import { toLocalIsoDate, formatDate } from "../lib/dateParser";
 import { AppTableEmptyRow, AppTableHead, AppTableShell, Button, FilterToolbar, KpiCard, Loading, PageHeader, SectionCard, Select, StatusBadge } from "../components/UI";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppModal from "../components/layout/AppModal";
@@ -57,17 +58,11 @@ const WARRANTY_STATUS_FLOW = ["Active", "Expired", "Claimed", "Rejected", "Repla
 const CHART_COLORS = ["#22c55e", "#f59e0b", "#ef4444", "#6366f1", "#06b6d4", "#a855f7"];
 
 function toDateInput(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+  return toLocalIsoDate(value);
 }
 
 function toHumanDate(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString();
+  return formatDate(value);
 }
 
 function dayDiff(from, to = new Date()) {

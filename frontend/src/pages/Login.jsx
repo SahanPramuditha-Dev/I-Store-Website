@@ -96,7 +96,7 @@ export default function Login() {
     phone_number: "",
     email: "",
   });
-  const [appVersion, setAppVersion] = useState("v1.1.96");
+  const [appVersion, setAppVersion] = useState("v1.1.100");
   const [pinSetupModal, setPinSetupModal] = useState(false);
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -148,7 +148,7 @@ export default function Login() {
     ),
     [setupForm, pwdChecks, submitting],
   );
-  const shopName = identity?.shopName || identity?.softwareName || "I Store";
+  const shopName = identity?.shopName || identity?.softwareName || "E Store";
   const statusLabel = serviceStatus === "online" ? "Online" : serviceStatus === "offline" ? "Offline" : "Checking";
   const modeLabel = setupRequired ? "Owner Setup" : loginMode === "pin" ? "Staff PIN" : "Password";
 
@@ -516,10 +516,15 @@ export default function Login() {
                 <strong>Backend</strong>
                 {statusLabel}
               </span>
-              <span className="exact-login-system-pill">
+              <button
+                type="button"
+                onClick={() => window.istore?.updater?.check?.()}
+                className="exact-login-system-pill cursor-pointer hover:opacity-80 transition"
+                title="Click to check for software updates"
+              >
                 <strong>Version</strong>
                 {appVersion}
-              </span>
+              </button>
             </div>
 
             {serviceStatus === "offline" ? (

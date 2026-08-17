@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.constants import normalize_repair_status
@@ -16,11 +16,14 @@ from app.models import (
     ReturnItem,
     RepairTicket,
     Sale,
+    SaleItem,
+    User,
     WarrantyRecord,
 )
 from app.services.advance_service import calc_advance_remaining
 from app.schemas import CustomerIn
-from app.utils.time import utcnow
+from app.utils.time import utcnow, format_iso_utc
+from app.utils.whatsapp_helper import log_and_send_whatsapp
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
@@ -76,8 +79,8 @@ def _serialize_customer(row: Customer, active_warranty_count: int = 0) -> dict:
         "address": row.address,
         "notes": row.notes,
         "birthday": row.birthday.isoformat() if row.birthday else None,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "created_at": format_iso_utc(row.created_at),
+        "updated_at": format_iso_utc(row.updated_at),
         "active_warranty_count": int(active_warranty_count or 0),
     }
 
@@ -149,7 +152,7 @@ def list_customers(
     return [_serialize_customer(row, warranty_count_map.get(int(row.id), 0)) for row in rows]
 
 @router.post('', dependencies=[Depends(require_permission("customers.create"))])
-def create_customer(payload: CustomerIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def create_customer(payload: CustomerIn, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     data = _validate_customer_payload(payload)
     c = Customer(**data)
     db.add(c)
@@ -164,6 +167,16 @@ def create_customer(payload: CustomerIn, db: Session = Depends(get_db), current_
     )
     db.commit()
     db.refresh(c)
+    
+    if c.phone:
+        background_tasks.add_task(
+            log_and_send_whatsapp,
+            "customer_welcome",
+            c.phone,
+            {"customer_name": c.name},
+            customer_id=c.id
+        )
+        
     return _serialize_customer(c, 0)
 
 @router.get('/{customer_id}', dependencies=[Depends(require_permission("customers.view"))])
@@ -325,7 +338,7 @@ def customer_history(customer_id: int, db: Session = Depends(get_db), _=Depends(
             "notes": customer.notes,
             "birthday": customer.birthday.isoformat() if customer.birthday else None,
         } if customer else None,
-        "sales": [{"id": s.id, "total": s.total, "payment_method": s.payment_method, "created_at": s.created_at.isoformat()} for s in sales],
+        "sales": [{"id": s.id, "total": s.total, "payment_method": s.payment_method, "created_at": format_iso_utc(s.created_at)} for s in sales],
         "advances": [
             {
                 "id": row.id,
@@ -429,7 +442,83 @@ def customer_sales(customer_id: int, db: Session = Depends(get_db), _=Depends(ge
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     sales = db.query(Sale).filter(Sale.customer_id == customer_id).order_by(Sale.created_at.desc()).all()
-    return sales
+    sale_ids = [s.id for s in sales]
+    items_by_sale: dict[int, list[dict]] = {sid: [] for sid in sale_ids}
+    if sale_ids:
+        all_items = db.query(SaleItem).filter(SaleItem.sale_id.in_(sale_ids)).all()
+        for item in all_items:
+            items_by_sale.setdefault(item.sale_id, []).append({
+                "id": item.id,
+                "name": item.name,
+                "quantity": item.quantity,
+                "price": float(item.price or 0),
+                "total": float(item.price or 0) * float(item.quantity or 1),
+                "is_labor": getattr(item, "is_labor", False),
+                "warranty_days": getattr(item, "warranty_days", 0) or 0,
+            })
+    
+    user_ids = list({s.user_id for s in sales if s.user_id})
+    users_map = {}
+    if user_ids:
+        users_map = {u.id: u.name for u in db.query(User).filter(User.id.in_(user_ids)).all()}
+
+    result = []
+    for s in sales:
+        inv_code = s.invoice_no or f"INV-{s.id:06d}"
+        result.append({
+            "id": s.id,
+            "invoice_no": inv_code,
+            "total": float(s.total or 0),
+            "subtotal": float(s.subtotal or s.total or 0),
+            "amount_paid": float(s.amount_paid or s.total or 0),
+            "balance_due": float(s.balance_due or 0),
+            "payment_method": s.payment_method or "Cash",
+            "cashier_name": users_map.get(s.user_id, "Store Staff"),
+            "is_voided": bool(s.is_voided),
+            "is_return": bool(s.is_return),
+            "items": items_by_sale.get(s.id, []),
+            "items_count": len(items_by_sale.get(s.id, [])),
+            "created_at": format_iso_utc(s.created_at),
+        })
+    return result
+
+
+@router.get('/{customer_id}/warranties', dependencies=[Depends(require_permission("customers.view_history"))])
+def customer_warranties(customer_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    customer = db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False).first()  # noqa: E712
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    warranties = (
+        db.query(WarrantyRecord)
+        .filter(WarrantyRecord.customer_id == customer_id, WarrantyRecord.is_deleted == False)  # noqa: E712
+        .order_by(WarrantyRecord.created_at.desc())
+        .all()
+    )
+    now_dt = utcnow()
+    res = []
+    for w in warranties:
+        remaining_days = 0
+        if w.end_date:
+            try:
+                diff = (w.end_date - now_dt).total_seconds() / 86400.0
+                remaining_days = max(0, int(diff))
+            except Exception:
+                remaining_days = 0
+        res.append({
+            "id": w.id,
+            "warranty_code": getattr(w, "warranty_code", None) or f"WAR-{w.id:05d}",
+            "product_or_service_name": w.product_or_service_name or "Product / Repair Service",
+            "imei_or_serial": w.imei_or_serial or w.serial_number or w.imei or "-",
+            "warranty_type": w.warranty_type or "standard",
+            "status": w.status or ("active" if remaining_days > 0 else "expired"),
+            "warranty_days": w.warranty_days or 0,
+            "start_date": format_iso_utc(w.start_date) if w.start_date else None,
+            "end_date": format_iso_utc(w.end_date) if w.end_date else None,
+            "remaining_days": remaining_days,
+            "repair_ticket_id": w.repair_ticket_id,
+            "invoice_id": w.invoice_id,
+        })
+    return res
 
 @router.get('/{customer_id}/repairs', dependencies=[Depends(require_permission("customers.view_history"))])
 def customer_repairs(customer_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -451,8 +540,8 @@ def customer_repairs(customer_id: int, db: Session = Depends(get_db), _=Depends(
             "invoice_amount": repair_totals.get(int(r.id), float(r.estimated_cost or 0)),
             "invoice_paid": repair_paid.get(int(r.id), float(r.advance_payment or 0)),
             "invoice_balance": repair_balances.get(int(r.id), max(0.0, float(r.estimated_cost or 0) - float(r.advance_payment or 0))),
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "delivered_at": r.delivered_at.isoformat() if r.delivered_at else None,
+            "created_at": format_iso_utc(r.created_at),
+            "delivered_at": format_iso_utc(r.delivered_at),
         }
         for r in repairs
     ]

@@ -63,7 +63,7 @@ except Exception:
     pass
 
 class Settings(BaseModel):
-    app_name: str = os.getenv("APP_NAME", "i Store API")
+    app_name: str = os.getenv("APP_NAME", "E Store API")
     env: str = os.getenv("APP_ENV", "development")
     secret_key: str = os.getenv("SECRET_KEY", "change-this-secret")
 

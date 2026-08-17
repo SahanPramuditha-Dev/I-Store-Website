@@ -1,20 +1,55 @@
+# ==============================================================================
+# Dependencies
+# ==============================================================================
 node_modules/
+*/node_modules/
 frontend/node_modules/
 electron/node_modules/
+whatsapp_service/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
+# ==============================================================================
+# Build & Distribution Artifacts
+# ==============================================================================
 dist/
 build/
 frontend/dist/
 electron/dist/
 dist-electron/
 electron/frontend-dist/
+electron/backend-dist/
+electron/build-backend/
+*.egg-info/
+*.toc
+*.pkg
+*.pyz
+*.manifest
 
-.env
-.env.local
-.env.*.local
-!.env.example
-!.env.sample
+# ==============================================================================
+# Python & Testing Artifacts
+# ==============================================================================
+__pycache__/
+*/__pycache__/
+*/**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+env/
+backend/.venv/
 
+# ==============================================================================
+# Databases, Backups & Exports
+# ==============================================================================
 *.sqlite
 *.db
 *.db-shm
@@ -24,29 +59,58 @@ backups/
 backup/
 backend/backups/
 backend/audit_tmp/
+exports/
+tmp/
+uploads/
+backend/uploads/
+uploads/tmp/
+
+# ==============================================================================
+# Logs & Diagnostic Dumps
+# ==============================================================================
 logs/
 *.log
+backend.log
 *_backup.txt
 *hash_backup*
+inventory-bundle-*.txt
+release-test-output.txt
+release-checksums-*.txt
+release-notes-*.md
 
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+# ==============================================================================
+# WhatsApp Microservice Cache & Auth
+# ==============================================================================
+whatsapp_service/.wwebjs_auth/
+whatsapp_service/.wwebjs_cache/
+whatsapp_service/session/
 
-.venv/
-venv/
-backend/.venv/
+# ==============================================================================
+# Environment Variables & Sensitive Credentials
+# ==============================================================================
+.env
+.env.local
+.env.*.local
+*.env
+backend/.env
+frontend/.env
+whatsapp_service/.env
+!.env.example
+!.env.sample
+assets/serviceAccountKey.json
+*.pem
+*.key
+*.cert
 
+# ==============================================================================
+# IDE & Operating System Files
+# ==============================================================================
 .DS_Store
 Thumbs.db
+.cache/
+.idea/
+.vscode/
+*.sublime-workspace
 *.bak
 *.old
 *.tmp
-
-uploads/tmp/
-backend/uploads/
-assets/serviceAccountKey.json
-exports/
-tmp/

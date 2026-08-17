@@ -30,7 +30,7 @@ from app.models import (
     AppSetting,
 )
 from app.services.advance_service import calc_advance_remaining
-from app.utils.time import utcnow
+from app.utils.time import utcnow, format_iso_utc
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -103,7 +103,9 @@ def _safe_parse_json(value: str | None) -> Any:
         return None
     try:
         return json.loads(value)
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"JSON parse ignored: {e}")
         return value
 
 
@@ -148,7 +150,9 @@ def _read_setting_json(db: Session, key: str, default: Any) -> Any:
         return default
     try:
         return json.loads(row.value or "null")
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"Setting parse ignored: {e}")
         return default
 
 
@@ -452,13 +456,15 @@ def advance_payment_summary(
     if date_from:
         try:
             query = query.filter(AdvancePayment.payment_date >= datetime.fromisoformat(str(date_from)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"Date parse ignored: {e}")
     if date_to:
         try:
             query = query.filter(AdvancePayment.payment_date <= datetime.fromisoformat(str(date_to)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"Date parse ignored: {e}")
     if customer_id:
         query = query.filter(AdvancePayment.customer_id == int(customer_id))
     if cashier_id:
@@ -535,13 +541,15 @@ def product_reservations_report(
     if date_from:
         try:
             query = query.filter(ProductReservation.created_at >= datetime.fromisoformat(str(date_from)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"Date parse ignored: {e}")
     if date_to:
         try:
             query = query.filter(ProductReservation.created_at <= datetime.fromisoformat(str(date_to)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"Date parse ignored: {e}")
     if customer_id:
         query = query.filter(ProductReservation.customer_id == int(customer_id))
     if status and str(status).lower() != "all":
@@ -739,7 +747,9 @@ def audit_repair_history_report(
             try:
                 after_from = note.split("from", 1)[1]
                 old_status = after_from.split("to", 1)[0].strip(" .:-")
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"Status parse ignored: {e}")
                 old_status = None
         output.append({
             "id": history.id,
@@ -987,7 +997,7 @@ def detailed_sales_report(
             "void_reason": s.void_reason,
             "cancelled_at": cancel_meta_map.get(s.id, {}).get("cancelled_at"),
             "cancelled_by": cancel_meta_map.get(s.id, {}).get("cancelled_by"),
-            "created_at": s.created_at.isoformat(),
+            "created_at": format_iso_utc(s.created_at),
             "customer_id": s.customer_id,
             "customer_name": s.customer.name if s.customer else "Walk-in",
             "cashier": "N/A",
@@ -1233,9 +1243,9 @@ def detailed_repairs_report(
             "actual_cost": actual_cost,
             "cost_variance": cost_variance,
             "job_profitability": job_profitability,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-            "delivered_at": t.delivered_at.isoformat() if t.delivered_at else None,
-            "estimated_completion": t.estimated_completion.isoformat() if t.estimated_completion else None,
+            "created_at": format_iso_utc(t.created_at),
+            "delivered_at": format_iso_utc(t.delivered_at),
+            "estimated_completion": format_iso_utc(t.estimated_completion),
             "time_taken_hours": time_taken_hours,
             "sla_breached": sla_breached,
             "is_repeat_repair": is_repeat_repair,

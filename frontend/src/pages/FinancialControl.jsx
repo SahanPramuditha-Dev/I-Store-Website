@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 import api from "../lib/api";
 import { useFeedback } from "../components/FeedbackProvider";
-import { Badge, Button, Input, KpiCard, PageHeader, SectionCard, Select, Table } from "../components/UI";
 import { downloadCsv, downloadPdf, formatLabel } from "../lib/tableUtils";
+import { toLocalIsoDate } from "../lib/dateParser";
 import AppDrawer from "../components/layout/AppDrawer";
 
 const TABS = [
@@ -432,7 +432,7 @@ export default function FinancialControl() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [form, setForm] = useState({
-    recon_date: new Date().toISOString().slice(0, 10),
+    recon_date: toLocalIsoDate(new Date()),
     shift: "Full Day",
     opening_float: 0,
     closing_float: 0,
@@ -444,8 +444,8 @@ export default function FinancialControl() {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
     return {
-      date_from: from.toISOString().slice(0, 10),
-      date_to: now.toISOString().slice(0, 10),
+      date_from: toLocalIsoDate(from),
+      date_to: toLocalIsoDate(now),
       staff_id: "all",
       module: "all",
       flag_status: "all",

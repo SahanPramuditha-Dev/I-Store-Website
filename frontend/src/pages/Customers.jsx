@@ -64,12 +64,18 @@ export default function Customers() {
     "customers",
     fetchCustomersList
   );
-  const customers = customersData?.items || [];
+  const customers = useMemo(() => {
+    if (!customersData) return [];
+    if (Array.isArray(customersData)) return customersData;
+    if (Array.isArray(customersData.items)) return customersData.items;
+    return [];
+  }, [customersData]);
 
   const setCustomers = (updater) => {
     setCustomersCache((prev) => {
-      const currentItems = prev?.items || [];
+      const currentItems = Array.isArray(prev) ? prev : (prev?.items || []);
       const newItems = typeof updater === "function" ? updater(currentItems) : (updater?.items ?? updater);
+      if (Array.isArray(prev)) return newItems;
       return {
         ...prev,
         items: newItems,
@@ -82,13 +88,23 @@ export default function Customers() {
     "sales",
     fetchSalesList
   );
-  const sales = salesData?.items || [];
+  const sales = useMemo(() => {
+    if (!salesData) return [];
+    if (Array.isArray(salesData)) return salesData;
+    if (Array.isArray(salesData.items)) return salesData.items;
+    return [];
+  }, [salesData]);
 
   const { data: repairsData, loading: repairsLoading } = useCachedQuery(
     "repairs",
     fetchRepairsList
   );
-  const repairs = repairsData?.items || [];
+  const repairs = useMemo(() => {
+    if (!repairsData) return [];
+    if (Array.isArray(repairsData)) return repairsData;
+    if (Array.isArray(repairsData.items)) return repairsData.items;
+    return [];
+  }, [repairsData]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [quickFilter, setQuickFilter] = useState("all");
@@ -623,7 +639,7 @@ export default function Customers() {
           anchorEl={columnsMenuAnchor}
           open={Boolean(columnsMenuAnchor)}
           onClose={() => setColumnsMenuAnchor(null)}
-          PaperProps={{ sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } }}
+          slotProps={{ paper: { sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } } }}
         >
           {CUSTOMER_COLUMNS.map((col) => (
             <MenuItem key={col.key} onClick={() => setVisibleColumns({ ...visibleColumns, [col.key]: !visibleColumns[col.key] })}>
@@ -642,7 +658,7 @@ export default function Customers() {
           anchorEl={rowMenuAnchor}
           open={Boolean(rowMenuAnchor)}
           onClose={() => setRowMenuAnchor(null)}
-          PaperProps={{ sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } }}
+          slotProps={{ paper: { sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } } }}
         >
           <MenuItem
             onClick={() => {

@@ -8,8 +8,15 @@ import { useFeedback } from "../components/FeedbackProvider";
 import { AppSelect, AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, KpiCard, PageHeader, PageTitle, Select, Table } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import { Menu, MenuItem } from "@mui/material";
-import { CheckCircle2, ClipboardList, Loader2, Wrench, LayoutGrid, List, Search, Plus, Filter, Clock, MoreVertical, Bell, AlertTriangle, UserCheck, Phone, CheckCheck, X, Sparkles } from "lucide-react";
+import {
+  CheckCircle2, ClipboardList, Loader2, Wrench, LayoutGrid, List, Search,
+  Plus, Filter, Clock, MoreVertical, Bell, AlertTriangle, UserCheck, Phone,
+  CheckCheck, X, Sparkles, MessageSquare, Send, Smartphone, User, Mail,
+  Calendar, DollarSign, RotateCcw, Printer, Info, Cpu, CreditCard, History,
+  AlertCircle, ExternalLink, ShieldCheck, ChevronDown, Trash2
+} from "lucide-react";
 import { isValidLuhnIMEI } from "../lib/tableUtils";
+import { toLocalIsoDate, formatDate, formatDateTime } from "../lib/dateParser";
 
 const REPAIR_STATUS_OPTIONS = [
   "pending",
@@ -203,6 +210,7 @@ export default function Repairs() {
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', address: '' });
   const [selectedRepair, setSelectedRepair] = useState(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
+  const [detailTab, setDetailTab] = useState("overview");
   const [timeline, setTimeline] = useState([]);
   const [parts, setParts] = useState([]);
   const [repairAdvances, setRepairAdvances] = useState([]);
@@ -213,6 +221,11 @@ export default function Repairs() {
     refresh: () => inventoryQuery.refetch()
   };
   const [selectedPart, setSelectedPart] = useState({ item_id: '', quantity: 1 });
+  const [partSourceMode, setPartSourceMode] = useState("inventory"); // "inventory" | "manual"
+  const [partSearchQuery, setPartSearchQuery] = useState("");
+  const [isPartDropdownOpen, setIsPartDropdownOpen] = useState(false);
+  const [manualPart, setManualPart] = useState({ name: "", unit_cost: "", quantity: 1 });
+  const partDropdownRef = useRef(null);
   const [priorityFilter, setPriorityFilter] = useState("All Priority");
   const [dateFilter, setDateFilter] = useState("All Dates");
   const [selectedRows, setSelectedRows] = useState([]);
@@ -236,6 +249,28 @@ export default function Repairs() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (partDropdownRef.current && !partDropdownRef.current.contains(e.target)) {
+        setIsPartDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredInventoryParts = useMemo(() => {
+    if (!partSearchQuery.trim()) return inventory.slice(0, 35);
+    const q = partSearchQuery.toLowerCase().trim();
+    return inventory
+      .filter((item) =>
+        (item.name || "").toLowerCase().includes(q) ||
+        (item.sku || "").toLowerCase().includes(q) ||
+        (item.category || "").toLowerCase().includes(q)
+      )
+      .slice(0, 35);
+  }, [inventory, partSearchQuery]);
 
   const isCompactHeight = viewportHeight <= 900;
 
@@ -263,20 +298,92 @@ export default function Repairs() {
     }
   };
 
-  const addPart = async () => {
-    if (!selectedPart.item_id) return toast("Select a part first", "warning");
+  const addInventoryPart = async () => {
+    if (!selectedPart.item_id) return toast("Select a replacement part first", "warning");
     const currentStatus = normalizeStatus(selectedRepair?.status);
     if (currentStatus === "pending" || currentStatus === "diagnosing") {
       return toast("Parts can only be consumed once estimate is approved (In Progress / Repairing)", "warning");
     }
+    const item = inventory.find(i => String(i.id) === String(selectedPart.item_id));
+    if (item && item.quantity < (selectedPart.quantity || 1)) {
+      return toast(`Insufficient stock for ${item.name} (${item.quantity} available)`, "warning");
+    }
     try {
-      await api.post(`/repairs/${selectedRepair.id}/consume-part`, selectedPart);
+      const res = await api.post(`/repairs/${selectedRepair.id}/consume-part`, {
+        item_id: Number(selectedPart.item_id),
+        quantity: Number(selectedPart.quantity || 1)
+      });
       const { data: updatedParts } = await api.get(`/repairs/${selectedRepair.id}/parts`);
       setParts(updatedParts);
+      if (res.data?.estimated_cost !== undefined) {
+        setSelectedRepair(prev => ({
+          ...prev,
+          estimated_cost: res.data.estimated_cost,
+          outstanding_balance: res.data.outstanding_balance
+        }));
+      }
       setSelectedPart({ item_id: '', quantity: 1 });
-      toast("Part consumed from inventory", "success");
+      setPartSearchQuery("");
+      setIsPartDropdownOpen(false);
+      inventoryQuery.refetch();
+      repairsQuery.refetch();
+      toast("Part consumed from inventory & estimate updated", "success");
     } catch (err) {
-      toast("Failed to add part (check stock)", "error");
+      toast(err?.response?.data?.detail || "Failed to add part (check stock)", "error");
+    }
+  };
+
+  const addManualPart = async () => {
+    if (!manualPart.name.trim()) return toast("Please enter a part or material name", "warning");
+    const currentStatus = normalizeStatus(selectedRepair?.status);
+    if (currentStatus === "pending" || currentStatus === "diagnosing") {
+      return toast("Parts can only be consumed once estimate is approved (In Progress / Repairing)", "warning");
+    }
+    const cost = parseFloat(manualPart.unit_cost) || 0;
+    const qty = Math.max(1, parseInt(manualPart.quantity) || 1);
+    try {
+      const res = await api.post(`/repairs/${selectedRepair.id}/consume-part`, {
+        custom_part_name: manualPart.name.trim(),
+        unit_cost: cost,
+        quantity: qty
+      });
+      const { data: updatedParts } = await api.get(`/repairs/${selectedRepair.id}/parts`);
+      setParts(updatedParts);
+      if (res.data?.estimated_cost !== undefined) {
+        setSelectedRepair(prev => ({
+          ...prev,
+          estimated_cost: res.data.estimated_cost,
+          outstanding_balance: res.data.outstanding_balance
+        }));
+      }
+      setManualPart({ name: "", unit_cost: "", quantity: 1 });
+      repairsQuery.refetch();
+      toast("Manual part added to repair & estimate updated", "success");
+    } catch (err) {
+      toast(err?.response?.data?.detail || "Failed to add manual part", "error");
+    }
+  };
+
+  const removePart = async (part) => {
+    if (!part || !selectedRepair) return;
+    const ok = await confirm("Remove Part?", `Remove "${part.item_name}" from this repair? If it came from inventory, stock will be returned.`);
+    if (!ok) return;
+    try {
+      const res = await api.delete(`/repairs/${selectedRepair.id}/parts/${part.id}`);
+      const { data: updatedParts } = await api.get(`/repairs/${selectedRepair.id}/parts`);
+      setParts(updatedParts);
+      if (res.data?.estimated_cost !== undefined) {
+        setSelectedRepair(prev => ({
+          ...prev,
+          estimated_cost: res.data.estimated_cost,
+          outstanding_balance: res.data.outstanding_balance
+        }));
+      }
+      inventoryQuery.refetch();
+      repairsQuery.refetch();
+      toast(res.data?.message || "Part removed and stock returned.", "success");
+    } catch (err) {
+      toast(err?.response?.data?.detail || "Failed to remove part", "error");
     }
   };
 
@@ -328,7 +435,7 @@ export default function Repairs() {
       // Close modal
       setShowCreate(false);
       
-      toast("âœ… Repair ticket created successfully", "success");
+      toast("Repair ticket created successfully", "success");
       
       // Wait a moment for modal to close, then ask about printing
       setTimeout(async () => {
@@ -358,16 +465,21 @@ export default function Repairs() {
 
       if (res?.repair) {
         setData((data || []).map((r) => (r.id === statusUpdateRepair.id ? { ...r, ...res.repair } : r)));
+        if (selectedRepair?.id === statusUpdateRepair.id) {
+          setSelectedRepair((prev) => ({ ...(prev || {}), ...res.repair }));
+          const { data: tl } = await api.get(`/repairs/${statusUpdateRepair.id}/timeline`);
+          setTimeline(tl || []);
+        }
       } else {
         setData((data || []).map((r) => (r.id === statusUpdateRepair.id ? { ...r, status: statusForm.status } : r)));
       }
       
-      if (statusForm.notify && res.whatsapp_url) {
-        window.open(res.whatsapp_url, "_blank");
-      }
-      
       setStatusUpdateRepair(null);
-      toast(`Status updated to ${statusLabel(statusForm.status)}`, "success");
+      if (statusForm.notify) {
+        toast(`Status updated to ${statusLabel(statusForm.status)} and WhatsApp alert dispatched!`, "success");
+      } else {
+        toast(`Status updated to ${statusLabel(statusForm.status)}`, "success");
+      }
     } catch {
       toast("Failed to update status", "error");
     }
@@ -492,12 +604,70 @@ export default function Repairs() {
   };
 
   const notify = async (r) => {
-    const { data: res } = await api.put(`/repairs/${r.id}/status?status=${encodeURIComponent(r.status)}`);
-    if (res.whatsapp_url) {
-      window.open(res.whatsapp_url, "_blank");
-      toast("Notification prepared in WhatsApp", "info");
-    } else {
-      toast("No customer phone available", "warning");
+    if (!r) return;
+    const phone = r.customer_phone || r.phone;
+    if (!phone) {
+      return toast("No customer phone available for this repair ticket.", "warning");
+    }
+
+    const jobNo = r.ticket_no ? `REP-${r.ticket_no}` : `REP-${r.id}`;
+    const device = r.device_model || "Device";
+    const statusText = statusLabel(r.status);
+    const balance = Number(r.outstanding_balance || r.estimated_cost || 0).toLocaleString();
+
+    const msg = `*Repair Status Update - I-Store*\n\n` +
+      `Hello ${r.customer_name || "Customer"},\n` +
+      `Your repair ticket *#${jobNo}* (${device}) status is now: *${statusText}*.\n` +
+      `Balance Due: LKR ${balance}\n\n` +
+      `Thank you for trusting I-Store!`;
+
+    try {
+      const res = await api.post("/api/whatsapp/send-direct", {
+        phone,
+        message: msg,
+        repair_no: jobNo,
+        customer_id: r.customer_id ? Number(r.customer_id) : undefined,
+        category: "repairs"
+      });
+
+      toast({
+        title: "WhatsApp Repair Alert Dispatched",
+        description: `Status update sent to ${r.customer_name || "Customer"} (${device})`,
+        details: `Ticket: #${jobNo} • Status: ${statusText}`,
+        tone: "success",
+        iconType: "whatsapp",
+        timeoutMs: 4500
+      });
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message || "Failed to dispatch WhatsApp notification.";
+      toast({
+        title: "WhatsApp Dispatch Failed",
+        description: detail,
+        tone: "error",
+        timeoutMs: 5000
+      });
+    }
+  };
+
+  const sendPickupReminder = async (r) => {
+    if (!r) return;
+    try {
+      await api.post(`/api/repairs/${r.id}/send-pickup-reminder`);
+      toast({
+        title: "Ready for Pickup Alert Dispatched",
+        description: `Official collection notification with balance breakdown sent to ${r.customer_name || "Customer"}.`,
+        tone: "success",
+        iconType: "whatsapp",
+        timeoutMs: 4500
+      });
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message || "Failed to dispatch pickup reminder.";
+      toast({
+        title: "Dispatch Failed",
+        description: detail,
+        tone: "error",
+        timeoutMs: 5000
+      });
     }
   };
 
@@ -607,7 +777,7 @@ export default function Repairs() {
     if (hydratedFromQuery.current) return;
     hydratedFromQuery.current = true;
 
-    const q = searchParams.get("q");
+    const q = searchParams.get("q") || searchParams.get("search");
     const st = searchParams.get("status");
     const tech = searchParams.get("tech");
     const pr = searchParams.get("priority");
@@ -749,12 +919,25 @@ export default function Repairs() {
     const order = ["pending", "diagnosing", "waiting_for_approval", "waiting_for_parts", "repairing", "quality_checking", "completed", "delivered"];
     const idx = order.indexOf(normalizeStatus(repair.status));
     const next = order[(idx + 1) % order.length];
+
+    if (next === "delivered" && Number(repair.outstanding_balance || 0) > 0) {
+      const ok = await confirm(
+        "Outstanding Balance Due",
+        `Ticket #${repair.ticket_no || repair.id} has an unpaid balance of LKR ${Number(repair.outstanding_balance).toLocaleString()}.\n\nDeliveries require payment settlement. Would you like to open POS to collect payment now?`
+      );
+      if (ok) {
+        navigate(`/pos?mode=repair&ticket=${encodeURIComponent(repair.ticket_no || repair.id)}`);
+      }
+      return;
+    }
+
     try {
       await api.put(`/repairs/${repair.id}/status?status=${encodeURIComponent(next)}&note=${encodeURIComponent("Status updated from quick action")}`);
       setData((data || []).map((r) => (r.id === repair.id ? { ...r, status: next } : r)));
       toast(`Moved to ${statusLabel(next)}`, "success");
-    } catch {
-      toast("Failed to update status", "error");
+    } catch (err) {
+      const detail = err?.response?.data?.detail || "Failed to update status";
+      toast(detail, "error");
     }
   };
 
@@ -797,12 +980,12 @@ export default function Repairs() {
 
   const stats = useMemo(() => {
     const rows = data || [];
-    const today = new Date().toISOString().split("T")[0];
+    const today = toLocalIsoDate(new Date());
     return {
       pending: rows.filter((r) => normalizeStatus(r.status) === "pending").length,
       active: rows.filter((r) => ["repairing", "diagnosing", "waiting_for_parts", "waiting_for_approval", "quality_checking"].includes(normalizeStatus(r.status))).length,
       ready: rows.filter((r) => normalizeStatus(r.status) === "completed").length,
-      completedToday: rows.filter((r) => ["completed", "delivered"].includes(normalizeStatus(r.status)) && String(r.updated_at || r.created_at || "").startsWith(today)).length,
+      completedToday: rows.filter((r) => ["delivered", "completed"].includes(normalizeStatus(r.status)) && toLocalIsoDate(r.delivered_at || r.updated_at || r.created_at) === today).length,
     };
   }, [data]);
 
@@ -863,7 +1046,7 @@ export default function Repairs() {
       )}
 
       <div className="repairs-workspace-grid min-h-0 flex-1 grid grid-cols-12 gap-4">
-      <div className={`${detailsVisible ? "col-span-12 xl:col-span-8" : "col-span-12"} repairs-jobs-panel min-h-0 bg-[#12182a]/60 backdrop-blur-xl border border-white/5 rounded-xl overflow-hidden shadow-2xl flex flex-col`}>
+      <div className="col-span-12 repairs-jobs-panel min-h-0 bg-[#12182a]/60 backdrop-blur-xl border border-white/5 rounded-xl overflow-hidden shadow-2xl flex flex-col">
         <div className={`repairs-jobs-toolbar border-b border-white/5 bg-white/[0.01] ${isCompactHeight ? "p-4 space-y-3" : "p-6 space-y-5"}`}>
           <div className="repairs-jobs-title-row flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-2xl font-black tracking-tight text-white">Repair Jobs</h3>
@@ -923,14 +1106,6 @@ export default function Repairs() {
 
           <div className="repairs-actions-row flex flex-wrap items-center justify-end gap-3">
              <div className="repairs-quick-actions flex flex-wrap items-center gap-2">
-               {!detailsVisible && (
-                 <button
-                   onClick={() => setDetailsVisible(true)}
-                   className="px-3 h-9 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-200 text-[11px] font-bold transition"
-                 >
-                   Show Details
-                 </button>
-               )}
                <button 
                   onClick={() => {
                     const csv = [
@@ -1054,7 +1229,7 @@ export default function Repairs() {
                             </button>
                           </td>
                         )}
-                        {visibleColumns.created_at && <td className="px-3 py-3 font-bold text-slate-400">{new Date(r.created_at).toISOString().split('T')[0]}</td>}
+                        {visibleColumns.created_at && <td className="px-3 py-3 font-bold text-slate-400">{formatDate(r.created_at)}</td>}
                         {visibleColumns.parts && <td className="px-3 py-3">{normalizeStatus(r.status) === "waiting_for_parts" ? <Badge tone="amber">Waiting Parts</Badge> : <Badge tone="green">Parts Ready</Badge>}</td>}
                         <td className="px-3 py-3 text-right">
                           <div className="flex items-center justify-end gap-1 whitespace-nowrap">
@@ -1106,7 +1281,7 @@ export default function Repairs() {
               anchorEl={columnsMenuAnchor}
               open={Boolean(columnsMenuAnchor)}
               onClose={() => setColumnsMenuAnchor(null)}
-              PaperProps={{ sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } }}
+              slotProps={{ paper: { sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } } }}
             >
               {REPAIR_COLUMNS.map((col) => (
                 <MenuItem key={col.key} onClick={() => toggleColumn(col.key)} sx={{ gap: 1 }}>
@@ -1124,291 +1299,688 @@ export default function Repairs() {
               anchorEl={rowMenuAnchor}
               open={Boolean(rowMenuAnchor)}
               onClose={closeRowMenu}
-              PaperProps={{ sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } }}
+              slotProps={{ paper: { sx: { bgcolor: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", color: "#e2e8f0" } } }}
             >
               <MenuItem onClick={() => { if (rowMenuRepair) showDetails(rowMenuRepair); closeRowMenu(); }}>View Details</MenuItem>
+              <MenuItem onClick={() => { if (rowMenuRepair) { navigate(`/pos?mode=repair&ticket=${encodeURIComponent(rowMenuRepair.ticket_no || rowMenuRepair.id)}`); } closeRowMenu(); }}>
+                Settle & Pay in POS
+              </MenuItem>
               <MenuItem onClick={() => { if (rowMenuRepair) openStatusModal(rowMenuRepair); closeRowMenu(); }}>Update Status</MenuItem>
+              <MenuItem onClick={() => { if (rowMenuRepair) sendPickupReminder(rowMenuRepair); closeRowMenu(); }}>Send Pickup Alert (WhatsApp)</MenuItem>
+              <MenuItem onClick={() => { if (rowMenuRepair) notify(rowMenuRepair); closeRowMenu(); }}>Send Custom WhatsApp Alert</MenuItem>
               <MenuItem onClick={() => { if (rowMenuRepair) cancelRepair(rowMenuRepair); closeRowMenu(); }}>Cancel Repair</MenuItem>
-              <MenuItem onClick={() => { if (rowMenuRepair) notify(rowMenuRepair); closeRowMenu(); }}>Notify Customer</MenuItem>
               <MenuItem onClick={() => { if (rowMenuRepair) printTicket(rowMenuRepair); closeRowMenu(); }}>Print Job Card</MenuItem>
             </Menu>
           </div>
         )}
         </div>
       </div>
+    </div>
 
-        {detailsVisible && (
-        <aside className="col-span-12 xl:col-span-4 repairs-detail-panel min-h-0 bg-[#12182a]/60 backdrop-blur-xl border border-white/5 rounded-xl overflow-hidden shadow-2xl flex flex-col">
-          <div className="repairs-detail-header border-b border-white/5 bg-white/[0.02] p-5">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="truncate text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-                {selectedRepair ? `R-2025-${String(selectedRepair.ticket_no || "").padStart(4, "0")}` : "Repair Details"}
-              </p>
+      {/* ─── Centered Repair Details Modal Popup ─── */}
+      <AppModal
+        open={Boolean(selectedRepair && detailsVisible)}
+        onClose={() => {
+          setSelectedRepair(null);
+          setDetailsVisible(false);
+        }}
+        panelClassName="max-w-4xl bg-[#0d1322] border-white/10 shadow-2xl"
+        title={
+          selectedRepair ? (
+            <div className="space-y-1.5 py-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-400/30 bg-indigo-500/15 px-2.5 py-1 font-mono text-xs font-black text-indigo-300">
+                  <Wrench size={13} /> #{selectedRepair.ticket_no || `JOB-${selectedRepair.id}`}
+                </span>
+                <Badge tone={statusTone(selectedRepair.status)} className="px-2.5 py-1 text-[11px] font-black uppercase tracking-wider">
+                  {statusLabel(selectedRepair.status)}
+                </Badge>
+                {selectedRepair.priority && (
+                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold uppercase text-slate-300">
+                    {selectedRepair.priority} Priority
+                  </span>
+                )}
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                {selectedRepair.device_model}
+              </h2>
+              <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap font-medium">
+                <span>Registered: <strong className="text-slate-300">{formatDate(selectedRepair.created_at)}</strong></span>
+                <span className="text-slate-600">•</span>
+                <span>Assigned Tech: <strong className="text-indigo-300">{selectedRepair.technician || "Unassigned"}</strong></span>
+              </div>
+            </div>
+          ) : null
+        }
+        headerActions={
+          selectedRepair ? (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setDetailsVisible(false)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-300 transition hover:border-indigo-400/40 hover:text-white"
-                title="Close details bar"
+                onClick={() => openStatusModal(selectedRepair)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-400/30 bg-indigo-500/20 px-3 py-1.5 text-xs font-bold text-indigo-200 transition hover:bg-indigo-500/30 cursor-pointer"
+                title="Update status of this job"
               >
-                <X size={15} />
-                <span className="hidden 2xl:inline">Close</span>
+                <CheckCheck size={14} /> <span>Status</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => notify(selectedRepair)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/20 px-3 py-1.5 text-xs font-bold text-emerald-200 transition hover:bg-emerald-500/30 cursor-pointer"
+                title="Send direct WhatsApp update to customer"
+              >
+                <Send size={14} /> <span>WhatsApp</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => printTicket(selectedRepair)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-slate-300 transition hover:bg-white/10 hover:text-white cursor-pointer"
+                title="Print physical repair ticket / job card"
+              >
+                <Printer size={14} /> <span>Print</span>
               </button>
             </div>
+          ) : null
+        }
+        footer={
+          selectedRepair ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Balance Due</span>
+                <span className="rounded-lg border border-indigo-500/30 bg-indigo-500/15 px-3 py-1 font-mono text-sm font-black text-indigo-300">
+                  LKR {selectedBalanceDue.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {normalizeStatus(selectedRepair.status) !== "cancelled" && (
+                  <button
+                    type="button"
+                    onClick={() => cancelRepair(selectedRepair)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-2 text-xs font-bold text-rose-300 transition hover:bg-rose-500/20 cursor-pointer"
+                  >
+                    <AlertTriangle size={14} /> Cancel Ticket
+                  </button>
+                )}
+                <Button
+                  onClick={() => {
+                    setSelectedRepair(null);
+                    setDetailsVisible(false);
+                  }}
+                  variant="secondary"
+                  className="px-5 h-9 text-xs font-bold"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null
+        }
+      >
+        {selectedRepair && (
+          <div className="space-y-6 p-5 sm:p-6">
+            {/* Segmented Navigation Tabs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-black/40 border border-white/10 rounded-xl">
+              {[
+                { id: "overview", label: "Overview & Diagnostics", icon: Info },
+                { id: "parts", label: `Parts Consumed (${parts.length})`, icon: Cpu },
+                { id: "financials", label: "Financials & Advances", icon: CreditCard },
+                { id: "timeline", label: `Activity Log (${timeline.length})`, icon: History },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const active = detailTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setDetailTab(tab.id)}
+                    className={`flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      active
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 border border-indigo-400/40"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                    }`}
+                  >
+                    <Icon size={14} />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
 
-            {selectedRepair ? (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-3xl font-black tracking-tight text-white">R-2025-{String(selectedRepair.ticket_no || "").padStart(4, "0")}</h3>
-                    <p className="mt-1 text-xs font-semibold text-slate-400">{selectedRepair.device_model}</p>
+            {/* Tab 1: Overview */}
+            {detailTab === "overview" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Customer Profile Card */}
+                <div className="rounded-2xl border border-white/10 bg-[#121929]/80 p-5 space-y-4 shadow-lg">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                      <User size={15} className="text-indigo-400" />
+                      <span>Customer Profile</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge tone={statusTone(selectedRepair.status)} className="px-2 py-1 text-[9px] font-black tracking-wider uppercase">
-                      {statusLabel(selectedRepair.status)}
-                    </Badge>
+                  <div className="space-y-2">
+                    <p className="text-base font-bold text-white">{selectedRepair.customer_name || "Walk-in Customer"}</p>
+                    <p className="flex items-center gap-2 text-xs font-mono text-indigo-300">
+                      <Phone size={13} className="text-indigo-400 shrink-0" />
+                      <span>{selectedRepair.customer_phone || "No phone registered"}</span>
+                    </p>
+                    <p className="flex items-center gap-2 text-xs text-slate-400">
+                      <Mail size={13} className="text-slate-500 shrink-0" />
+                      <span>{selectedRepair.customer_email || "No email provided"}</span>
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5">
                     <button
                       type="button"
-                      onClick={() => setSelectedRepair(null)}
-                      className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-400 transition hover:text-white"
-                      title="Clear selection"
+                      onClick={() => selectedRepair.customer_phone && window.open(`tel:${selectedRepair.customer_phone}`, "_self")}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 py-2 px-2 text-center text-xs font-bold text-slate-200 transition hover:border-sky-400/40 hover:bg-sky-500/10 cursor-pointer"
                     >
-                      x
+                      <Phone size={13} className="text-sky-400" />
+                      <span>Call</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectedRepair.customer_phone && window.open(`sms:${selectedRepair.customer_phone}`, "_self")}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 py-2 px-2 text-center text-xs font-bold text-slate-200 transition hover:border-amber-400/40 hover:bg-amber-500/10 cursor-pointer"
+                    >
+                      <MessageSquare size={13} className="text-amber-400" />
+                      <span>SMS</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => notify(selectedRepair)}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/15 py-2 px-2 text-center text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/25 cursor-pointer"
+                    >
+                      <Send size={13} className="text-emerald-400" />
+                      <span>WhatsApp</span>
                     </button>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs font-semibold">
-                  <button className="rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-2 py-1 text-indigo-200">Details</button>
-                  <button className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-slate-400">History</button>
-                  <button className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-slate-400">Notes</button>
-                  <button className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-slate-400">Files</button>
+
+                {/* Device & Hardware Info Card */}
+                <div className="rounded-2xl border border-white/10 bg-[#121929]/80 p-5 space-y-4 shadow-lg">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                      <Smartphone size={15} className="text-indigo-400" />
+                      <span>Device & Hardware</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                      <span className="text-slate-400">Device Model</span>
+                      <span className="font-bold text-white">{selectedRepair.device_model}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                      <span className="text-slate-400">IMEI / Serial</span>
+                      <span className="font-mono font-bold text-slate-200 bg-white/5 px-2 py-0.5 rounded border border-white/5">{selectedRepair.imei || "N/A"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Technician</span>
+                      <span className="font-bold text-indigo-300 flex items-center gap-1.5">
+                        <UserCheck size={13} /> {selectedRepair.technician || "Unassigned"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </>
-            ) : (
-              <div>
-                <h3 className="text-xl font-black tracking-tight text-white">Repair Details</h3>
-                <p className="mt-1 text-sm text-slate-400">Select a ticket from the table to preview full job details.</p>
-              </div>
-            )}
-          </div>
 
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 custom-scrollbar">
-            {!selectedRepair && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-sm text-slate-400">
-                No repair selected. Click any row in the repair jobs table.
+                {/* Problem Description Card */}
+                <div className="col-span-1 md:col-span-2 rounded-2xl border border-white/10 bg-[#121929]/80 p-5 space-y-3 shadow-lg">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                    <AlertCircle size={15} className="text-amber-400" />
+                    <span>Reported Problem & Diagnostics</span>
+                  </div>
+                  <div className="rounded-xl border border-white/5 bg-black/30 p-4 text-sm font-medium leading-relaxed text-slate-200">
+                    {selectedRepair.issue || "No issue description provided during intake."}
+                  </div>
+                </div>
               </div>
             )}
 
-            {selectedRepair && (
-              <>
-                <section className="space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Customer Information</p>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                    <p className="text-sm font-bold text-slate-200">{selectedRepair.customer_name || "Walk-in Customer"}</p>
-                    <p className="mt-1 text-xs text-slate-400">{selectedRepair.customer_phone || "No phone"}</p>
-                    <p className="text-xs text-slate-500">{selectedRepair.customer_email || "No email"}</p>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
+            {/* Tab 2: Parts */}
+            {detailTab === "parts" && (
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-white/10 bg-[#121929]/80 p-5 space-y-4 shadow-lg">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                      <Cpu size={15} className="text-indigo-400" />
+                      <span>Spare Parts & Inventory Consumption</span>
+                    </div>
+
+                    {/* Source Mode Toggle */}
+                    <div className="inline-flex rounded-xl bg-black/40 p-1 border border-white/10">
                       <button
                         type="button"
-                        onClick={() => selectedRepair.customer_phone && window.open(`tel:${selectedRepair.customer_phone}`, "_self")}
-                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs font-bold text-slate-200 transition hover:border-indigo-400/40"
+                        onClick={() => setPartSourceMode("inventory")}
+                        className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg transition ${
+                          partSourceMode === "inventory"
+                            ? "bg-indigo-600 text-white shadow"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
                       >
-                        Call
+                        <Cpu size={13} />
+                        <span>From Inventory</span>
                       </button>
                       <button
                         type="button"
-                        onClick={() => selectedRepair.customer_phone && window.open(`sms:${selectedRepair.customer_phone}`, "_self")}
-                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs font-bold text-slate-200 transition hover:border-indigo-400/40"
+                        onClick={() => setPartSourceMode("manual")}
+                        className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg transition ${
+                          partSourceMode === "manual"
+                            ? "bg-indigo-600 text-white shadow"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
                       >
-                        SMS
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectedRepair.customer_phone && window.open(`https://wa.me/${String(selectedRepair.customer_phone).replace(/\D/g, "")}`, "_blank")}
-                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs font-bold text-slate-200 transition hover:border-indigo-400/40"
-                      >
-                        WhatsApp
+                        <Plus size={13} />
+                        <span>Manual / Custom Part</span>
                       </button>
                     </div>
                   </div>
-                </section>
 
-                <section className="space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Device Information</p>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-1.5">
-                    <p className="text-sm font-bold text-slate-200">{selectedRepair.device_model}</p>
-                    <p className="text-xs text-slate-400">IMEI/Serial: {selectedRepair.imei || "N/A"}</p>
-                    <p className="text-xs text-slate-400">Priority: {selectedRepair.priority || "Normal"}</p>
-                    <p className="text-xs text-slate-400">Status: {statusLabel(selectedRepair.status)}</p>
-                  </div>
-                </section>
-
-                <section className="space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Problem Summary</p>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                    <p className="text-sm leading-relaxed text-slate-300">{selectedRepair.issue || "No issue description provided."}</p>
-                  </div>
-                </section>
-
-                <section className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Assigned Technician</p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openStatusModal(selectedRepair)}
-                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-300 transition hover:border-indigo-400/40"
-                      >
-                        Update Status
-                      </button>
-                      {normalizeStatus(selectedRepair.status) !== "cancelled" && (
-                        <button
-                          type="button"
-                          onClick={() => cancelRepair(selectedRepair)}
-                          className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-rose-200 transition hover:bg-rose-500/20"
+                  {/* Mode 1: Searchable Dropdown from Inventory */}
+                  {partSourceMode === "inventory" && (
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                      {/* Searchable Select Combobox */}
+                      <div className="relative flex-1 min-w-[280px]" ref={partDropdownRef}>
+                        <div
+                          onClick={() => {
+                            if (!["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))) {
+                              setIsPartDropdownOpen(true);
+                            }
+                          }}
+                          className={`flex items-center justify-between gap-2 h-10 px-3.5 rounded-xl border bg-black/40 text-xs font-medium cursor-pointer transition ${
+                            isPartDropdownOpen
+                              ? "border-indigo-500 ring-2 ring-indigo-500/20"
+                              : "border-white/10 hover:border-white/20"
+                          } ${
+                            ["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))
+                              ? "opacity-50 cursor-not-allowed"
+                              : ""
+                          }`}
                         >
-                          Cancel Repair
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                    <p className="text-sm font-bold text-slate-200">{selectedRepair.technician || "Unassigned"}</p>
-                  </div>
-                </section>
-
-                <section className="space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Parts Used</p>
-                  <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                    <div className="flex gap-2">
-                      <Select
-                        className="h-10 flex-1"
-                        value={selectedPart.item_id}
-                        onChange={(e) => setSelectedPart({ ...selectedPart, item_id: e.target.value })}
-                        disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
-                      >
-                        <option value="">Select part...</option>
-                        {inventory.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name} ({item.quantity} in stock)
-                          </option>
-                        ))}
-                      </Select>
-                      <Input
-                        type="number"
-                        className="h-10 w-16 text-center"
-                        value={selectedPart.quantity}
-                        onChange={(e) => setSelectedPart({ ...selectedPart, quantity: Number(e.target.value) })}
-                        disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
-                      />
-                      <Button
-                        className="h-10 px-3"
-                        onClick={addPart}
-                        disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
-                      >
-                        <Plus size={14} />
-                      </Button>
-                    </div>
-                    {["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status)) && (
-                      <p className="text-[10px] text-amber-500 font-semibold mt-1">
-                        Parts can only be consumed once estimate is approved (status In Progress / Repairing).
-                      </p>
-                    )}
-
-                    <div className="overflow-x-auto">
-                      <Table className="table-sm w-full">
-                        <thead>
-                          <tr>
-                            <th>Part</th>
-                            <th className="text-center">Qty</th>
-                            <th className="text-right">Price</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {parts.slice(0, 5).map((part, index) => (
-                            <tr key={`${part.item_name}-${index}`}>
-                              <td className="text-xs text-slate-300">{part.item_name}</td>
-                              <td className="text-center text-xs text-slate-400">{part.quantity}</td>
-                              <td className="text-right text-xs font-bold text-slate-200">LKR {(Number(part.quantity || 0) * Number(part.unit_cost || 0)).toLocaleString()}</td>
-                            </tr>
-                          ))}
-                          {!parts.length && (
-                            <tr>
-                              <td colSpan={3} className="py-4 text-center text-xs text-slate-500">
-                                No parts added yet
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </Table>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Estimate & Charges</p>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-2 text-sm">
-                    <div className="flex items-center justify-between text-slate-400"><span>Labor</span><span>LKR {selectedLabor.toLocaleString()}</span></div>
-                    <div className="flex items-center justify-between text-slate-400"><span>Parts</span><span>LKR {selectedPartsTotal.toLocaleString()}</span></div>
-                    <div className="flex items-center justify-between text-slate-400"><span>Advance</span><span>- LKR {selectedDeposit.toLocaleString()}</span></div>
-                    <div className="h-px bg-white/10" />
-                    <div className="flex items-center justify-between text-base font-black text-indigo-300"><span>Total Due</span><span>LKR {selectedBalanceDue.toLocaleString()}</span></div>
-                    <div className="pt-2 flex flex-wrap gap-2">
-                      <Button className="h-8 px-3 text-xs" onClick={collectRepairAdvance}>Collect Advance</Button>
-                      <Button className="h-8 px-3 text-xs" variant="secondary" onClick={refundRepairAdvance}>Refund Advance</Button>
-                    </div>
-                  </div>
-                </section>
-
-                {!!repairAdvances.length && (
-                  <section className="space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Advance History</p>
-                    <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                      {repairAdvances.slice(0, 4).map((row) => (
-                        <div key={row.id} className="border-b border-white/5 pb-2 last:border-b-0 last:pb-0">
-                          <p className="text-xs font-bold text-sky-300">{row.advance_number}</p>
-                          <p className="text-xs text-slate-300">
-                            Paid: LKR {Number(row.amount || 0).toLocaleString()} | Remaining: LKR {Number(row.remaining_amount || 0).toLocaleString()}
-                          </p>
-                          <p className="text-[10px] text-slate-500">{row.status} | {row.payment_method}</p>
-                          <div className="mt-1">
-                            <Button className="h-7 px-2 text-[10px]" variant="secondary" onClick={() => printAdvanceReceipt(row.id)}>
-                              Print Receipt
-                            </Button>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Search size={14} className="text-slate-400 shrink-0" />
+                            {selectedPart.item_id ? (
+                              (() => {
+                                const sel = inventory.find((i) => String(i.id) === String(selectedPart.item_id));
+                                return sel ? (
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span className="font-bold text-white truncate">{sel.name}</span>
+                                    <span className="text-[11px] text-emerald-400 font-mono">
+                                      (LKR {Number(sel.sale_price || sel.cost_price || 0).toLocaleString()})
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400">Select replacement part...</span>
+                                );
+                              })()
+                            ) : (
+                              <span className="text-slate-400">Search replacement part from inventory...</span>
+                            )}
                           </div>
+                          {selectedPart.item_id ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPart({ item_id: "", quantity: 1 });
+                                setPartSearchQuery("");
+                              }}
+                              className="text-slate-400 hover:text-white p-0.5 rounded"
+                            >
+                              <X size={14} />
+                            </button>
+                          ) : (
+                            <ChevronDown size={14} className="text-slate-400 shrink-0" />
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
 
-                {!!timeline.length && (
-                  <section className="space-y-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Recent Activity</p>
-                    <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                      {timeline.slice(0, 4).map((event, index) => (
-                        <div key={`${event.created_at}-${index}`} className="border-b border-white/5 pb-2 last:border-b-0 last:pb-0">
-                          <p className="text-xs font-bold text-slate-200">{event.status}</p>
-                          {event.note && <p className="mt-0.5 text-xs text-slate-400">{event.note}</p>}
-                          <p className="mt-1 text-[10px] text-slate-500">{new Date(event.created_at).toLocaleString()}</p>
+                        {/* Dropdown Floating Menu */}
+                        {isPartDropdownOpen && (
+                          <div className="absolute left-0 right-0 top-full mt-1.5 z-50 rounded-xl border border-indigo-500/30 bg-[#0c1222]/95 backdrop-blur-md shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                            <div className="p-2 border-b border-white/10 bg-black/30 flex items-center gap-2">
+                              <Search size={13} className="text-indigo-400 shrink-0 ml-1" />
+                              <input
+                                type="text"
+                                autoFocus
+                                placeholder="Type part name, SKU, or category to filter..."
+                                value={partSearchQuery}
+                                onChange={(e) => setPartSearchQuery(e.target.value)}
+                                className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none"
+                              />
+                              {partSearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPartSearchQuery("")}
+                                  className="text-slate-400 hover:text-white"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="max-h-60 overflow-y-auto custom-scrollbar divide-y divide-white/5">
+                              {filteredInventoryParts.map((item) => {
+                                const isSelected = String(selectedPart.item_id) === String(item.id);
+                                const stock = item.quantity || 0;
+                                return (
+                                  <div
+                                    key={item.id}
+                                    onClick={() => {
+                                      setSelectedPart({ ...selectedPart, item_id: item.id });
+                                      setIsPartDropdownOpen(false);
+                                    }}
+                                    className={`flex items-center justify-between p-3 cursor-pointer transition text-xs ${
+                                      isSelected ? "bg-indigo-600/25 text-white" : "hover:bg-white/5 text-slate-200"
+                                    }`}
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <p className="font-bold text-white truncate">{item.name}</p>
+                                      <p className="text-[11px] text-slate-400 font-mono">
+                                        {item.sku ? `SKU: ${item.sku} • ` : ""}
+                                        {item.category || "General"}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                      <span
+                                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                          stock > 5
+                                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                            : stock > 0
+                                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                            : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                        }`}
+                                      >
+                                        {stock} in stock
+                                      </span>
+                                      <span className="font-mono font-bold text-indigo-300">
+                                        LKR {Number(item.sale_price || item.cost_price || 0).toLocaleString()}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {!filteredInventoryParts.length && (
+                                <div className="p-4 text-center text-xs text-slate-400 space-y-2">
+                                  <p>No inventory parts match "{partSearchQuery}"</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPartSourceMode("manual");
+                                      setManualPart({ ...manualPart, name: partSearchQuery });
+                                      setIsPartDropdownOpen(false);
+                                    }}
+                                    className="text-xs font-bold text-indigo-400 hover:text-indigo-300 underline"
+                                  >
+                                    + Add as Manual / Custom Part instead
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="p-2 border-t border-white/10 bg-black/40 flex justify-between items-center text-[11px]">
+                              <span className="text-slate-400">Showing {filteredInventoryParts.length} parts</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPartSourceMode("manual");
+                                  setIsPartDropdownOpen(false);
+                                }}
+                                className="text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus size={12} /> Add custom part
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Qty:</span>
+                          <Input
+                            type="number"
+                            min="1"
+                            className="h-10 w-20 text-center font-bold"
+                            value={selectedPart.quantity}
+                            onChange={(e) => setSelectedPart({ ...selectedPart, quantity: Math.max(1, Number(e.target.value)) })}
+                            disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
+                          />
+                        </div>
+                        <Button
+                          className="h-10 px-4 flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 shrink-0"
+                          onClick={addInventoryPart}
+                          disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
+                        >
+                          <Plus size={14} /> <span>Add Part</span>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode 2: Manual / Custom Part Entry */}
+                  {partSourceMode === "manual" && (
+                    <div className="rounded-xl border border-indigo-500/20 bg-indigo-950/20 p-3.5 space-y-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-indigo-300 flex items-center gap-1.5">
+                          <Plus size={14} /> Manual / Custom Part Entry
+                        </span>
+                        <span className="text-[11px] text-slate-400">Non-inventory items & third-party materials</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                        <div className="sm:col-span-6">
+                          <Input
+                            placeholder="Part / Material Name (e.g. OLED Screen Replacement)"
+                            value={manualPart.name}
+                            onChange={(e) => setManualPart({ ...manualPart, name: e.target.value })}
+                            disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
+                          />
+                        </div>
+                        <div className="sm:col-span-3">
+                          <Input
+                            type="number"
+                            placeholder="Unit Price (LKR)"
+                            value={manualPart.unit_cost}
+                            onChange={(e) => setManualPart({ ...manualPart, unit_cost: e.target.value })}
+                            disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
+                          />
+                        </div>
+                        <div className="sm:col-span-1">
+                          <Input
+                            type="number"
+                            min="1"
+                            className="text-center font-bold"
+                            value={manualPart.quantity}
+                            onChange={(e) => setManualPart({ ...manualPart, quantity: Math.max(1, Number(e.target.value)) })}
+                            disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Button
+                            className="w-full h-10 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                            onClick={addManualPart}
+                            disabled={["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status))}
+                          >
+                            <Plus size={14} /> <span>Add</span>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {["pending", "diagnosing"].includes(normalizeStatus(selectedRepair?.status)) && (
+                    <div className="flex items-center gap-2 text-xs text-amber-300 font-medium bg-amber-500/10 border border-amber-500/20 p-3 rounded-xl">
+                      <AlertCircle size={14} className="shrink-0 text-amber-400" />
+                      <span>Spare parts can only be consumed once diagnosis is approved and repair work is underway (In Progress / Repairing).</span>
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/25">
+                    <Table className="table-sm w-full">
+                      <thead>
+                        <tr>
+                          <th>Part / Material</th>
+                          <th className="text-center">Quantity</th>
+                          <th className="text-right">Unit Price</th>
+                          <th className="text-right">Total</th>
+                          <th className="text-center w-12">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parts.map((part, index) => (
+                          <tr key={`${part.item_name}-${index}`}>
+                            <td className="text-xs font-medium text-slate-200">
+                              <div className="flex items-center gap-2">
+                                <span>{part.item_name}</span>
+                                {part.is_manual && (
+                                  <span className="rounded bg-indigo-500/20 px-1.5 py-0.5 text-[10px] font-bold text-indigo-300 border border-indigo-500/30">
+                                    Manual
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="text-center text-xs text-slate-400">{part.quantity}</td>
+                            <td className="text-right text-xs text-slate-400">LKR {Number(part.unit_cost || 0).toLocaleString()}</td>
+                            <td className="text-right text-xs font-bold text-slate-100">
+                              LKR {(Number(part.quantity || 0) * Number(part.unit_cost || 0)).toLocaleString()}
+                            </td>
+                            <td className="text-center">
+                              <button
+                                type="button"
+                                onClick={() => removePart(part)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                                title="Remove part & return to stock"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {!parts.length && (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-xs text-slate-500">
+                              No spare parts or materials consumed for this job yet.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </Table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Financials */}
+            {detailTab === "financials" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Financial Breakdown Card */}
+                <div className="rounded-2xl border border-white/10 bg-[#121929]/80 p-5 space-y-4 shadow-lg">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                      <DollarSign size={15} className="text-emerald-400" />
+                      <span>Charges & Cost Breakdown</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2.5 text-sm">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Labor & Service Charge</span>
+                      <span className="font-semibold text-slate-200 font-mono">LKR {selectedLabor.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Parts & Materials</span>
+                      <span className="font-semibold text-slate-200 font-mono">LKR {selectedPartsTotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Advance Payments Paid</span>
+                      <span className="font-semibold text-emerald-400 font-mono">- LKR {selectedDeposit.toLocaleString()}</span>
+                    </div>
+                    <div className="h-px bg-white/10 my-2" />
+                    <div className="flex items-center justify-between text-lg font-black text-indigo-300">
+                      <span>Balance Payable</span>
+                      <span className="font-mono">LKR {selectedBalanceDue.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div className="pt-3 flex flex-wrap gap-2.5 border-t border-white/5">
+                    {selectedBalanceDue > 0 && (
+                      <Button
+                        className="h-9 px-4 text-xs font-bold flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg"
+                        onClick={() => {
+                          setDetailsVisible(false);
+                          navigate(`/pos?mode=repair&ticket=${encodeURIComponent(selectedRepair.ticket_no || selectedRepair.id)}`);
+                        }}
+                      >
+                        <CreditCard size={14} /> <span>Settle & Pay in POS</span>
+                      </Button>
+                    )}
+                    <Button className="h-9 px-4 text-xs font-bold flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500" onClick={collectRepairAdvance}>
+                      <DollarSign size={14} /> <span>Collect Advance</span>
+                    </Button>
+                    <Button className="h-9 px-4 text-xs font-bold flex items-center gap-1.5" variant="secondary" onClick={refundRepairAdvance}>
+                      <RotateCcw size={14} /> <span>Refund Advance</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Advance Payments History */}
+                <div className="rounded-2xl border border-white/10 bg-[#121929]/80 p-5 space-y-4 shadow-lg">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                      <CreditCard size={15} className="text-sky-400" />
+                      <span>Advance Receipt History</span>
+                    </div>
+                  </div>
+                  {repairAdvances.length > 0 ? (
+                    <div className="space-y-2.5 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                      {repairAdvances.map((row) => (
+                        <div key={row.id} className="rounded-xl border border-white/5 bg-black/30 p-3.5 flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-bold text-sky-300 font-mono">{row.advance_number}</p>
+                            <p className="text-xs text-slate-200 font-medium">LKR {Number(row.amount || 0).toLocaleString()} • <span className="text-slate-400">{row.payment_method}</span></p>
+                            <p className="text-[10px] text-slate-500">{formatDate(row.payment_date || row.created_at)}</p>
+                          </div>
+                          <Button className="h-7 px-2.5 text-[11px] font-bold flex items-center gap-1" variant="secondary" onClick={() => printAdvanceReceipt(row.id)}>
+                            <Printer size={12} /> <span>Print</span>
+                          </Button>
                         </div>
                       ))}
                     </div>
-                  </section>
+                  ) : (
+                    <p className="text-xs text-slate-500 py-10 text-center">No advance payments recorded for this job.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 4: Timeline */}
+            {detailTab === "timeline" && (
+              <div className="rounded-2xl border border-white/10 bg-[#121929]/80 p-5 space-y-4 shadow-lg">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+                    <History size={15} className="text-indigo-400" />
+                    <span>Repair Progress & Event History</span>
+                  </div>
+                </div>
+                {timeline.length > 0 ? (
+                  <div className="space-y-2.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
+                    {timeline.map((event, index) => (
+                      <div key={`${event.created_at}-${index}`} className="rounded-xl border border-white/5 bg-black/30 p-3.5 flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="inline-block rounded-md border border-indigo-400/20 bg-indigo-500/10 px-2 py-0.5 text-xs font-bold text-indigo-300">
+                            {statusLabel(event.status)}
+                          </span>
+                          {event.note && <p className="text-xs text-slate-200 mt-1 leading-relaxed">{event.note}</p>}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-mono whitespace-nowrap">{formatDateTime(event.created_at)}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 py-10 text-center">No activity history recorded yet.</p>
                 )}
-              </>
+              </div>
             )}
           </div>
-
-          {selectedRepair && (
-            <div className="border-t border-white/5 bg-white/[0.02] p-4">
-              <Button onClick={() => printTicket(selectedRepair)} className="w-full h-11 bg-indigo-500 hover:bg-indigo-600 shadow-lg shadow-indigo-500/25">
-                Print Job Card
-              </Button>
-            </div>
-          )}
-        </aside>
         )}
-      </div>
+      </AppModal>
 
       <AppModal
         open={!!statusUpdateRepair}
@@ -1545,20 +2117,29 @@ export default function Repairs() {
 
                     {imeiIntelligence.warranty && (
                       <div className="flex items-center gap-1.5">
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${imeiIntelligence.warranty.is_active ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-rose-500/20 text-rose-300"}`}>
-                          {imeiIntelligence.warranty.is_active ? `✓ Warranty Active (${imeiIntelligence.warranty.days_remaining} days left)` : "Expired Warranty"}
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold inline-flex items-center gap-1 ${imeiIntelligence.warranty.is_active ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-rose-500/20 text-rose-300"}`}>
+                          {imeiIntelligence.warranty.is_active ? (
+                            <>
+                              <CheckCircle2 size={11} /> Warranty Active ({imeiIntelligence.warranty.days_remaining} days left)
+                            </>
+                          ) : (
+                            "Expired Warranty"
+                          )}
                         </span>
                       </div>
                     )}
 
                     {imeiIntelligence.repair_count > 0 && (
-                      <div className="text-amber-300 font-medium">
-                        ⚠️ <strong>{imeiIntelligence.repair_count} Previous Repair(s)</strong> logged for this IMEI!
-                        {imeiIntelligence.past_repairs[0] && (
-                          <div className="text-[11px] text-slate-400 pl-3">
-                            • Last repair: {imeiIntelligence.past_repairs[0].ticket_number} ({imeiIntelligence.past_repairs[0].status}) - {imeiIntelligence.past_repairs[0].problem}
-                          </div>
-                        )}
+                      <div className="text-amber-300 font-medium flex items-start gap-1.5">
+                        <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <strong>{imeiIntelligence.repair_count} Previous Repair(s)</strong> logged for this IMEI!
+                          {imeiIntelligence.past_repairs[0] && (
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              Last repair: {imeiIntelligence.past_repairs[0].ticket_number} ({imeiIntelligence.past_repairs[0].status}) - {imeiIntelligence.past_repairs[0].problem}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

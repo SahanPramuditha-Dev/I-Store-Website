@@ -39,8 +39,11 @@ def _role_key(user: User | None) -> str:
     return canonical_role_name(getattr(user, "role", None) if user else None)
 
 
-def _is_manager_or_higher(user: User | None) -> bool:
+def is_manager_or_higher(user: User | None) -> bool:
     return _role_key(user) in {"owner", "admin", "manager"}
+
+
+_is_manager_or_higher = is_manager_or_higher
 
 
 def enforce_pos_checkout_policy(

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../lib/api";
 import { Badge, Button } from "../components/UI";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Printer, MessageSquare } from "lucide-react";
+import { ReceiptShareModal } from "../components/ReceiptShareModal";
 
 export default function InvoiceView() {
   const { id } = useParams();
@@ -14,6 +15,8 @@ export default function InvoiceView() {
   const [error, setError] = useState(null);
   const [invoiceTemplate, setInvoiceTemplate] = useState("");
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [saleData, setSaleData] = useState(null);
+  const [showShareModal, setShowShareModal] = useState(false);
   const autoPrint = ["1", "true"].includes(String(searchParams.get("autoprint") || "").toLowerCase());
 
   useEffect(() => {
@@ -66,6 +69,16 @@ export default function InvoiceView() {
         setLoading(false);
       });
 
+    // Fetch sale metadata for sharing
+    api.get(`/pos/sales/${id}`)
+      .then(res => {
+        if (mounted) setSaleData(res.data);
+      })
+      .catch(() => {
+        // Fallback to basic invoice
+        if (mounted) setSaleData({ id, invoice_number: id });
+      });
+
     return () => {
       mounted = false;
     };
@@ -103,6 +116,12 @@ export default function InvoiceView() {
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="green">Store Default Template</Badge>
           <Button variant="secondary" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</Button>
+          <Button
+            onClick={() => setShowShareModal(true)}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-950/30"
+          >
+            <MessageSquare size={14} /> Share WhatsApp
+          </Button>
           <Button onClick={handlePrint}><Printer size={14} /> Print</Button>
         </div>
       </div>
@@ -117,6 +136,12 @@ export default function InvoiceView() {
           onLoad={() => setIframeLoaded(true)}
         />
       </div>
+
+      <ReceiptShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        invoice={saleData || { id, invoice_number: id }}
+      />
     </div>
   );
 }

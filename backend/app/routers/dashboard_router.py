@@ -15,7 +15,7 @@ from app.constants import (
     normalize_repair_status,
 )
 from app.models import Sale, RepairTicket, InventoryItem, ActivityLog, Customer, SaleItem
-from app.utils.time import utcnow
+from app.utils.time import utcnow, format_iso_utc
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -116,7 +116,7 @@ def _dashboard_impl(period: str, db):
     product_revenue = (
         db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.price), 0))
         .join(Sale, Sale.id == SaleItem.sale_id)
-        .filter(*period_sales_filter, SaleItem.line_type == "product")
+        .filter(*period_sales_filter, (SaleItem.line_type == "product") | (SaleItem.line_type.is_(None)))
         .scalar()
         or 0
     )
@@ -137,6 +137,16 @@ def _dashboard_impl(period: str, db):
         .scalar()
         or 0
     )
+    # Fallback: If no sale items are recorded for sales in the period, fallback to total sales amount
+    if product_revenue == 0 and spare_part_revenue == 0 and repair_revenue == 0:
+        total_period_sales = (
+            db.query(func.coalesce(func.sum(Sale.total), 0))
+            .filter(*period_sales_filter)
+            .scalar()
+            or 0
+        )
+        if total_period_sales > 0:
+            product_revenue = total_period_sales
 
     try:
         outstanding_balance = (
@@ -346,9 +356,9 @@ def _dashboard_impl(period: str, db):
         
     if not activity_feed:
         for r in recent_repairs[:3]:
-            activity_feed.append({"id": f"r{r.id}", "action": f"Repair ticket {r.ticket_no} created", "module": "REPAIR", "timestamp": r.created_at.isoformat(), "details": r.issue})
+            activity_feed.append({"id": f"r{r.id}", "action": f"Repair ticket {r.ticket_no} created", "module": "REPAIR", "timestamp": format_iso_utc(r.created_at), "details": r.issue})
         for s in recent_sales[:3]:
-            activity_feed.append({"id": f"s{s.id}", "action": f"Sale completed LKR {s.total:,.0f}", "module": "POS", "timestamp": s.created_at.isoformat(), "details": s.payment_method})
+            activity_feed.append({"id": f"s{s.id}", "action": f"Sale completed LKR {s.total:,.0f}", "module": "POS", "timestamp": format_iso_utc(s.created_at), "details": s.payment_method})
         activity_feed.sort(key=lambda x: x["timestamp"], reverse=True)
 
     return {
@@ -393,10 +403,10 @@ def _dashboard_impl(period: str, db):
                 "id": s.id,
                 "invoice_no": (s.invoice_no or f"INV-{s.id:05d}"),
                 "total": s.total,
-                "customer": s.customer.name if s.customer else (s.customer_name or "Walk-in"),
-                "customer_phone": s.customer.phone if s.customer else (s.customer_phone or ""),
+                "customer": s.customer.name if getattr(s, "customer", None) else (getattr(s, "customer_name", None) or "Walk-in"),
+                "customer_phone": s.customer.phone if getattr(s, "customer", None) else (getattr(s, "customer_phone", None) or ""),
                 "payment_method": s.payment_method or "Cash",
-                "date": s.created_at.isoformat()
+                "date": format_iso_utc(s.created_at)
             } for s in recent_sales
         ],
         "recent_repairs": [{

@@ -25,6 +25,8 @@ const ALLOWED_INVOKE = new Set([
   "db:auth:setToken",
   "db:sync:push", "db:sync:pull",
   "updater:check", "updater:download", "updater:install", "updater:setOperationsActive", "updater:getVersion", "updater:getState",
+  "updater:snooze", "updater:getUpdateLog",
+  "app:getAutoLaunch", "app:setAutoLaunch",
 ]);
 
 // ── Whitelist of valid "on" event channels ────────────────────────────────
@@ -75,6 +77,8 @@ contextBridge.exposeInMainWorld("istore", {
     downloadUpdate:  () => safeInvoke("updater:download"),
     installUpdate:   () => safeInvoke("updater:install"),
     setOperationsActive: (active, detail) => safeInvoke("updater:setOperationsActive", active, detail),
+    snooze:          (duration) => safeInvoke("updater:snooze", duration),
+    getUpdateLog:    (maxLines) => safeInvoke("updater:getUpdateLog", maxLines),
     onStatus: (callback) => {
       const handler = (_e, data) => callback(data);
       ipcRenderer.on("updater:status", handler);

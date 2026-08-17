@@ -27,11 +27,13 @@ import {
   RotateCcw,
   Wallet,
   RefreshCw,
+  MessageSquare,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFetch } from "../hooks/useFetch";
+import { useCachedQuery } from "../hooks/useCachedQuery";
 import { canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions, NAV_PERMISSION_MAP } from "../lib/rbac";
-import { isRepairDelivered } from "../lib/repairStatus";
+import { normalizeRepairStatus, isRepairDelivered } from "../lib/repairStatus";
 import api from "../lib/api";
 import { useStoreProfile } from "../hooks/useStoreProfile";
 import { Button, WorkstationNotice } from "./UI";
@@ -86,6 +88,7 @@ const navGroups = [
       ["/permissions", "Permissions", Shield],
       ["/audit", "Audit Trail", History],
       ["/notifications", "Notifications", Bell],
+      ["/whatsapp", "WhatsApp Hub", MessageSquare],
       ["/backup", "Backup", Database],
       ["/settings", "Settings", Settings],
     ],
@@ -114,16 +117,22 @@ export default function Layout() {
   const [backendStatus, setBackendStatus] = useState({ available: true });
   const [checkingBackend, setCheckingBackend] = useState(false);
   const [queueLength, setQueueLength] = useState(0);
-  const { data: repairs } = useFetch("/repairs");
+  const { data: repairs } = useCachedQuery("repairs", () => api.get("/repairs").then((res) => res.data));
   const { data: dashboardData } = useFetch("/dashboard");
   const { data: apiNotifications, refresh: refreshNotifications } = useFetch("/notifications");
   const { identity } = useStoreProfile();
 
   const permissions = useMemo(() => loadPermissions(), [location.pathname]);
   const pendingRepairs = useMemo(() => {
-    const rows = Array.isArray(repairs) ? repairs : [];
-    return rows.filter((r) => r.status && !isRepairDelivered(r.status)).length;
-  }, [repairs]);
+    const rows = Array.isArray(repairs) ? repairs : (repairs?.items || []);
+    if (rows.length > 0) {
+      return rows.filter((r) => normalizeRepairStatus(r.status) === "pending").length;
+    }
+    if (dashboardData?.repair_stats?.pending !== undefined) {
+      return Number(dashboardData.repair_stats.pending || 0);
+    }
+    return 0;
+  }, [repairs, dashboardData]);
 
   const notifications = useMemo(() => {
     return [...(apiNotifications || [])];
@@ -175,7 +184,7 @@ export default function Layout() {
   const notificationsAllowed = canOpenPath("/notifications");
   const settingsAllowed = canOpenPath("/settings");
   const shopName = identity?.shopName || "I Point";
-  const softwareName = identity?.softwareName || "I Store";
+  const softwareName = identity?.softwareName || "E Store";
   const brandInitials = initials(shopName);
   const displayName = localStorage.getItem("username") || "Store Admin";
   const roleLabel = localStorage.getItem("login_role_label") || localStorage.getItem("login_role") || "Staff";

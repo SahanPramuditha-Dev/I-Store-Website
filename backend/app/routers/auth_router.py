@@ -11,6 +11,9 @@ from app.core.limiter import limiter
 from app.database import get_db
 from app.models import AppSetting, Role, User
 from app.schemas import TokenResponse, UserOut
+from app.models import AuthSession, LoginAttempt
+import hashlib
+from datetime import datetime
 from app.services.security_service import (
     build_session_payload,
     canonical_role_name,
@@ -168,6 +171,14 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     user = db.query(User).filter(User.username.ilike(username)).first()
 
     if not user:
+        attempt = LoginAttempt(
+            username=username,
+            ip_address=request.client.host if request and request.client else None,
+            attempted_at=datetime.utcnow(),
+            failure_reason='User not found'
+        )
+        db.add(attempt)
+        db.commit()
         record_login_failed(db, None, username, request, "Unknown username", login_method="password")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -193,6 +204,14 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         raise HTTPException(status_code=423, detail=f"Account locked. Try again in {remaining} seconds")
 
     if not verify_password(form_data.password, user.password_hash):
+        attempt = LoginAttempt(
+            username=username,
+            ip_address=request.client.host if request and request.client else None,
+            attempted_at=datetime.utcnow(),
+            failure_reason='Invalid password'
+        )
+        db.add(attempt)
+        db.commit()
         record_login_failed(db, user, username, request, "Invalid password", login_method="password")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -227,6 +246,19 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         },
         expires_delta=timedelta(minutes=expiry_minutes),
     )
+    
+    session_record = AuthSession(
+        user_id=user.id,
+        session_token_hash=hashlib.sha256(token.encode()).hexdigest()[:64],
+        ip_address=request.client.host if request and request.client else None,
+        device_info=request.headers.get('user-agent', '')[:255] if request else None,
+        created_at=datetime.utcnow(),
+        expires_at=expires_at,
+        is_active=True
+    )
+    db.add(session_record)
+    db.commit()
+
     record_login_success(db, user, request, login_method="password")
     return {"access_token": token, "token_type": "bearer", "expires_at": expires_at, "session_id": session_code}
 
@@ -324,6 +356,16 @@ def logout(
         target = payload.session_id or (session.session_code if session else None)
         if target and revoke_session(db, target, revoked_by_user_id=user.id, reason="Logout"):
             terminated = 1
+            
+    # Mark AuthSession as is_active=False
+    auth_header = request.headers.get('Authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        token_hash = hashlib.sha256(token.encode()).hexdigest()[:64]
+        auth_sess = db.query(AuthSession).filter(AuthSession.session_token_hash == token_hash).first()
+        if auth_sess:
+            auth_sess.is_active = False
+            db.commit()
     record_security_audit(
         db,
         action="logout",
@@ -495,3 +537,30 @@ def reset_password(
         result="success",
     )
     return {"ok": True}
+
+
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role not in ["admin", "owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    session = db.query(AuthSession).filter(AuthSession.id == session_id).first()
+    if session:
+        session.is_active = False
+        db.commit()
+    return {"ok": True}
+
+
+@router.get("/login-attempts")
+def get_login_attempts(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if user.role not in ["admin", "owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    attempts = db.query(LoginAttempt).order_by(LoginAttempt.attempted_at.desc()).limit(50).all()
+    return [{
+        "id": a.id,
+        "username": a.username,
+        "ip_address": a.ip_address,
+        "device_info": a.device_info,
+        "attempted_at": a.attempted_at,
+        "success": a.success,
+        "failure_reason": a.failure_reason
+    } for a in attempts]

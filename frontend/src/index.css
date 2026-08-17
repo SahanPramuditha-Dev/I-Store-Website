@@ -4372,3 +4372,34 @@ html:not(.dark) .repairs-table-shell {
   }
 }
 
+/* Global Recharts Dark Theme Tooltip Contrast Overrides */
+.recharts-default-tooltip {
+  background-color: #0f172a !important;
+  border: 1px solid rgba(6, 182, 212, 0.4) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7) !important;
+  padding: 8px 12px !important;
+}
+
+.recharts-tooltip-label {
+  color: #38bdf8 !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  margin-bottom: 4px !important;
+}
+
+.recharts-tooltip-item {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+}
+
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-value,
+.recharts-tooltip-item-unit {
+  color: #ffffff !important;
+}
+
+

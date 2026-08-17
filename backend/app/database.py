@@ -25,6 +25,7 @@ if is_sqlite:
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.execute("PRAGMA cache_size=-4000")  # Cap SQLite in-memory page cache to 4MB
             try:
                 cursor.execute("PRAGMA journal_mode=WAL")
             except Exception:

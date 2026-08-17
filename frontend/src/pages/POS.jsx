@@ -4,11 +4,12 @@ import { runWithApproval } from "../lib/approvalFlow";
 import { openPrintCenter } from "../lib/printCenter";
 import { printHtmlDocument } from "../lib/printBridge";
 import { useFetch } from "../hooks/useFetch";
-import { Input, Select, SearchableSelect } from "../components/UI";
-import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag } from "lucide-react";
+import { Input, Select, SearchableSelect, CustomerSelect, ProductSelect } from "../components/UI";
+import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, MessageSquare, Share2, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag, PackagePlus, FileText, ShoppingCart } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
+import { ShiftModal } from "../components/ShiftModal";
 
 export default function POS() {
   const { toast, confirm, prompt } = useFeedback();
@@ -73,7 +74,26 @@ export default function POS() {
   const [availableCredits, setAvailableCredits] = useState([]);
   const [selectedCreditMap, setSelectedCreditMap] = useState({});
   const [showRecentSales, setShowRecentSales] = useState(false);
+  const [shiftModalOpen, setShiftModalOpen] = useState(false);
+  const [currentShiftData, setCurrentShiftData] = useState(null);
   const [rightPanelTab, setRightPanelTab] = useState("checkout");
+
+  const fetchShiftStatus = useCallback(async () => {
+    try {
+      const res = await api.get("/shifts/current");
+      if (res.data?.has_active_shift) {
+        setCurrentShiftData(res.data.shift);
+      } else {
+        setCurrentShiftData(null);
+      }
+    } catch {
+      setCurrentShiftData(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchShiftStatus();
+  }, [fetchShiftStatus]);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddLoading, setQuickAddLoading] = useState(false);
   const [quickAddOptional, setQuickAddOptional] = useState(false);
@@ -196,14 +216,9 @@ export default function POS() {
   const searchDebounceRef = useRef(null);
 
   useEffect(() => {
-    if (!showSaleCompleteModal) return;
     if (saleCompleteAutoCloseTimerRef.current) {
       window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
     }
-    saleCompleteAutoCloseTimerRef.current = window.setTimeout(() => {
-      setShowSaleCompleteModal(false);
-    }, 5000);
-    return () => window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
   }, [showSaleCompleteModal]);
   
   const netRemaining = useMemo(() => {
@@ -409,6 +424,25 @@ export default function POS() {
       mounted = false;
     };
   }, [searchParams, setSearchParams, toast]);
+
+  const lastHandledTicketRef = useRef(null);
+
+  useEffect(() => {
+    const targetMode = searchParams.get("mode");
+    const ticketParam = searchParams.get("ticket");
+    if (targetMode === "repair") {
+      setMode("repair");
+      if (ticketParam && lastHandledTicketRef.current !== ticketParam) {
+        lastHandledTicketRef.current = ticketParam;
+        setRepairTicketNo(ticketParam);
+        loadRepairTicketToCart(ticketParam);
+        const next = new URLSearchParams(searchParams);
+        next.delete("mode");
+        next.delete("ticket");
+        setSearchParams(next, { replace: true });
+      }
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     const cid = Number(customerId || 0);
@@ -686,7 +720,7 @@ export default function POS() {
           name: i.name,
           quantity: 1,
           price: i.sale_price || 0,
-          warranty_days: Number(i.warranty_days || 0),
+          warranty_days: Number(i.shop_warranty_days || i.warranty_days || 0),
           is_labor: Boolean(i.is_labor),
           line_type: resolvedLineType,
           description: i.description || i.name,
@@ -760,6 +794,12 @@ export default function POS() {
   const stepQty = (itemId, delta) => {
     const item = cart.find(i => i.item_id === itemId);
     if (!item) return;
+    if (String(item.item_id).startsWith("repair-") || item.repair_ticket_id) {
+      if (delta > 0) {
+        toast("Repair service ticket quantity is locked to 1", "info");
+        return;
+      }
+    }
     if (item.is_labor) {
       updateItem(itemId, 'quantity', Math.max(1, item.quantity + delta));
       return;
@@ -834,24 +874,63 @@ export default function POS() {
     toast(`Resumed ${token}`, "success");
   };
 
-  const loadRepairTicketToCart = () => {
-    const code = (repairTicketNo || "").trim().toLowerCase();
-    if (!code) return toast("Enter repair ticket no", "warning");
-    const hit = (repairsFetch.data || []).find((r) => String(r.ticket_no || "").toLowerCase() === code);
-    if (!hit) return toast("Repair ticket not found", "error");
-    const laborAmount = Number(hit.estimated_cost || 0) - Number(hit.advance_payment || 0);
-    if (laborAmount > 0) {
-      addItem({
-        id: `labor-${hit.id}-${Date.now()}`,
-        name: `Repair ${hit.ticket_no} - ${hit.device_model}`,
-        sale_price: laborAmount,
-        quantity: 999,
-        is_labor: true,
-        line_type: "service",
-        description: `Repair service charge for ${hit.ticket_no}`,
-      });
+  const loadRepairTicketToCart = async (targetCode) => {
+    const raw = (typeof targetCode === "string" ? targetCode : repairTicketNo) || "";
+    const cleanCode = raw.trim().replace(/^#+/, "").toLowerCase();
+    if (!cleanCode) return toast("Enter repair ticket no", "warning");
+
+    const localList = Array.isArray(repairsFetch.data) ? repairsFetch.data : (repairsFetch.data?.items || []);
+    let hit = localList.find((r) => {
+      const tNo = String(r.ticket_no || "").trim().replace(/^#+/, "").toLowerCase();
+      return tNo === cleanCode || String(r.id) === cleanCode;
+    });
+
+    if (!hit) {
+      try {
+        const res = await api.get(`/repairs?search=${encodeURIComponent(cleanCode)}`);
+        const fetched = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+        hit = fetched.find((r) => {
+          const tNo = String(r.ticket_no || "").trim().replace(/^#+/, "").toLowerCase();
+          return tNo === cleanCode || String(r.id) === cleanCode;
+        }) || fetched[0];
+      } catch (err) {
+        hit = null;
+      }
     }
-    toast(`Loaded ${hit.ticket_no} to cart`, "success");
+
+    if (!hit) return toast("Repair ticket not found", "error");
+
+    setRepairTicketNo(hit.ticket_no || `JOB-${hit.id}`);
+    if (hit.customer_id) {
+      setCustomerId(String(hit.customer_id));
+    }
+
+    const laborAmount = Math.max(0, Number(hit.estimated_cost || 0) - Number(hit.advance_payment || 0));
+    if (laborAmount > 0) {
+      setCart((prev) => {
+        const existingIndex = prev.findIndex((p) => String(p.item_id) === `repair-${hit.id}`);
+        const lineItem = {
+          item_id: `repair-${hit.id}`,
+          name: `Repair #${hit.ticket_no || hit.id} - ${hit.device_model || "Service"}`,
+          price: laborAmount,
+          quantity: 1,
+          warranty_days: 0,
+          is_labor: true,
+          line_type: "service",
+          description: `Repair settlement for #${hit.ticket_no || hit.id} (${hit.issue_description || hit.device_model || "Service"})`,
+          repair_ticket_id: hit.id,
+        };
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = lineItem;
+          return updated;
+        }
+        return [...prev, lineItem];
+      });
+      toast(`Loaded #${hit.ticket_no || hit.id} (LKR ${laborAmount.toLocaleString()}) to cart`, "success");
+    } else {
+      toast(`Ticket #${hit.ticket_no} has 0 balance due`, "info");
+    }
   };
 
   const loadReservationToCart = async () => {
@@ -1287,7 +1366,7 @@ export default function POS() {
     }
   };
 
-  const sendReceiptWhatsApp = () => {
+  const sendReceiptWhatsApp = async () => {
     if (!lastSale) return toast("No recent sale", "warning");
     window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
     
@@ -1296,9 +1375,7 @@ export default function POS() {
       return toast("No customer phone number attached to this invoice", "warning");
     }
 
-    // Clean phone number (strip spaces, dashes, plus)
     let cleanedPhone = rawPhone.replace(/[^\d]/g, "");
-    // Default Sri Lanka country code 94 if phone starts with 0
     if (cleanedPhone.startsWith("0")) {
       cleanedPhone = "94" + cleanedPhone.slice(1);
     }
@@ -1306,29 +1383,135 @@ export default function POS() {
     const saleId = lastSale.id || lastSale.sale_id;
     const invNo = lastSale.invoice_no || lastSale.invoice_number || `INV-${saleId}`;
     const custName = lastSale.customer?.name || lastSale.customer_name || "Valued Customer";
-    const totalAmt = (lastSale.grand_total || lastSale.total_amount || 0).toLocaleString();
-
-    const itemsSummary = (lastSale.items || lastSale.lines || [])
-      .map(i => `• ${i.product_name || i.description || i.item_name || "Item"} x${i.quantity || 1} - LKR ${(i.line_total || i.unit_price || 0).toLocaleString()}`)
-      .join("\n");
+    const totalAmt = Number(lastSale.grand_total || lastSale.total || lastSale.total_amount || 0);
+    const subtotalAmt = Number(lastSale.subtotal || totalAmt);
+    const discountAmt = Number(lastSale.discount_amount || lastSale.discount || 0);
+    const paidAmt = Number(lastSale.amount_paid || totalAmt);
+    const balAmt = Number(lastSale.balance_due || 0);
+    const payMethod = String(lastSale.payment_method || "Cash");
+    const dateStr = new Date(lastSale.created_at || Date.now()).toLocaleString();
 
     // ── Generate matching token deterministically ───────────────────────────
     const s = `${invNo}istore_secure_salt_2026`;
     let hashVal = 0;
     for (let i = 0; i < s.length; i++) {
       hashVal = (hashVal << 5) - hashVal + s.charCodeAt(i);
-      hashVal |= 0; // force 32-bit signed integer
+      hashVal = (hashVal + 2**31) % 2**32 - 2**31;
     }
     const token = `sec_${Math.abs(hashVal).toString(16).padStart(8, '0')}`.slice(0, 12);
     // ────────────────────────────────────────────────────────────────────────
 
+    const firstItemObj = (lastSale.items || lastSale.lines || [])[0] || {};
+    const firstItem = firstItemObj?.item_name || firstItemObj?.description || "Device / Retail Product";
+    const firstItemWarrantyDays = Number(firstItemObj?.warranty_days ?? firstItemObj?.warrantyDays ?? 0);
+    const firstItemWarrantyMonths = firstItemWarrantyDays > 0 ? Math.round(firstItemWarrantyDays / 30) : 0;
     const portalBase = "https://i-store-customer-portal-one.vercel.app";
-    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}`;
-    const message = `*Receipt from I-Store*\n\nHello ${custName},\nThank you for shopping with us!\n\n*Invoice No:* ${invNo}\n*Total Amount:* LKR ${totalAmt}\n\n*Items Purchased:*\n${itemsSummary}\n\n*View & Download Digital Bill:* ${billUrl}\n\nHave a great day!`;
+    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}&name=${encodeURIComponent(custName)}&total=${totalAmt.toFixed(2)}&subtotal=${subtotalAmt.toFixed(2)}&disc=${discountAmt.toFixed(2)}&phone=${encodeURIComponent(cleanedPhone)}&method=${encodeURIComponent(payMethod)}&item=${encodeURIComponent(firstItem)}&warranty=${firstItemWarrantyMonths}&warranty_days=${firstItemWarrantyDays}`;
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(billUrl)}&format=png&margin=12`;
 
-    const whatsappUrl = `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}`;
+    const message = `🧾 *OFFICIAL DIGITAL RECEIPT*\n━━━━━━━━━━━━━━━━━━━━\n👋 Hello *${custName}*,\n\nThank you for shopping with *I-Store*! Your transaction has been confirmed:\n\n📋 *Invoice No:* #${invNo}\n📅 *Date:* ${dateStr}\n💳 *Payment Method:* ${payMethod}\n\n💰 *Payment Breakdown:*\n• Subtotal: LKR ${subtotalAmt.toLocaleString()}\n• Discount: LKR ${discountAmt.toLocaleString()}\n• *Grand Total: LKR ${totalAmt.toLocaleString()}*\n• Amount Paid: LKR ${paidAmt.toLocaleString()}\n• *Balance Due: LKR ${balAmt.toLocaleString()}*\n\n📄 *View & Download Digital Bill:*\n${billUrl}\n\n🛡️ *Warranty & Digital Records:*\nYour warranty coverage and device serial numbers are digitally registered with your bill.\n\n📞 *Support Hotline:* +94 77 123 4567\n━━━━━━━━━━━━━━━━━━━━\n_Thank you for choosing I-Store! Have a wonderful day!_`;
+
+    try {
+      const res = await api.post("/api/whatsapp/send-direct", {
+        phone: cleanedPhone,
+        message,
+        invoice_no: invNo,
+        customer_id: lastSale.customer?.id || lastSale.customer_id || null,
+        category: "sales",
+        media_url: qrImageUrl
+      });
+      if (res.data?.success || res.data?.status === "SENT" || res.data?.status === "QUEUED") {
+        toast("WhatsApp receipt sent directly to customer!", "success");
+      } else {
+        toast(res.data?.error || "WhatsApp message queued", "info");
+      }
+    } catch (err) {
+      const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message;
+      toast(`Failed to send WhatsApp: ${errMsg}`, "error");
+    }
+  };
+
+  const shareOnWhatsAppWeb = () => {
+    if (!lastSale) return toast("No recent sale", "warning");
+    window.clearTimeout(saleCompleteAutoCloseTimerRef.current);
+
+    const rawPhone = lastSale.customer?.phone || lastSale.customer_phone || "";
+    let cleanedPhone = rawPhone.replace(/[^\d]/g, "");
+    if (cleanedPhone.startsWith("0")) {
+      cleanedPhone = "94" + cleanedPhone.slice(1);
+    }
+
+    const saleId = lastSale.id || lastSale.sale_id;
+    const invNo = lastSale.invoice_no || lastSale.invoice_number || `INV-${saleId}`;
+    const custName = lastSale.customer?.name || lastSale.customer_name || "Valued Customer";
+    const totalAmt = Number(lastSale.grand_total || lastSale.total || lastSale.total_amount || 0);
+    const subtotalAmt = Number(lastSale.subtotal || totalAmt);
+    const discountAmt = Number(lastSale.discount_amount || lastSale.discount || 0);
+    const paidAmt = Number(lastSale.amount_paid || totalAmt);
+    const balAmt = Number(lastSale.balance_due || 0);
+    const payMethod = String(lastSale.payment_method || "Cash");
+    const dateStr = new Date(lastSale.created_at || Date.now()).toLocaleString();
+
+    const s = `${invNo}istore_secure_salt_2026`;
+    let hashVal = 0;
+    for (let i = 0; i < s.length; i++) {
+      hashVal = (hashVal << 5) - hashVal + s.charCodeAt(i);
+      hashVal = (hashVal + 2**31) % 2**32 - 2**31;
+    }
+    const token = `sec_${Math.abs(hashVal).toString(16).padStart(8, '0')}`.slice(0, 12);
+
+    const firstItemObj = (lastSale.items || lastSale.lines || [])[0] || {};
+    const firstItem = firstItemObj?.item_name || firstItemObj?.description || "Device / Retail Product";
+    const firstItemWarrantyDays = Number(firstItemObj?.warranty_days ?? firstItemObj?.warrantyDays ?? 0);
+    const firstItemWarrantyMonths = firstItemWarrantyDays > 0 ? Math.round(firstItemWarrantyDays / 30) : 0;
+    const portalBase = "https://i-store-customer-portal-one.vercel.app";
+    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}&name=${encodeURIComponent(custName)}&total=${totalAmt.toFixed(2)}&subtotal=${subtotalAmt.toFixed(2)}&disc=${discountAmt.toFixed(2)}&phone=${encodeURIComponent(cleanedPhone)}&method=${encodeURIComponent(payMethod)}&item=${encodeURIComponent(firstItem)}&warranty=${firstItemWarrantyMonths}&warranty_days=${firstItemWarrantyDays}`;
+
+    const message = `🧾 *OFFICIAL DIGITAL RECEIPT*\n━━━━━━━━━━━━━━━━━━━━\n👋 Hello *${custName}*,\n\nThank you for shopping with *I-Store*! Your transaction has been confirmed:\n\n📋 *Invoice No:* #${invNo}\n📅 *Date:* ${dateStr}\n💳 *Payment Method:* ${payMethod}\n\n💰 *Payment Breakdown:*\n• Subtotal: LKR ${subtotalAmt.toLocaleString()}\n• Discount: LKR ${discountAmt.toLocaleString()}\n• *Grand Total: LKR ${totalAmt.toLocaleString()}*\n• Amount Paid: LKR ${paidAmt.toLocaleString()}\n• *Balance Due: LKR ${balAmt.toLocaleString()}*\n\n📄 *View & Download Digital Bill:*\n${billUrl}\n\n🛡️ *Warranty & Digital Records:*\nYour warranty coverage and device serial numbers are digitally registered with your bill.\n\n📞 *Support Hotline:* +94 77 123 4567\n━━━━━━━━━━━━━━━━━━━━\n_Thank you for choosing I-Store! Have a wonderful day!_`;
+    const whatsappUrl = cleanedPhone ? `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}` : `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
-    toast("Opening WhatsApp with Digital Bill link...", "info");
+    toast("Opening WhatsApp Web link...", "info");
+  };
+
+  const shareRecentSaleWhatsApp = (sale) => {
+    if (!sale) return;
+    const rawPhone = sale.customer?.phone || sale.customer_phone || "";
+    let cleanedPhone = rawPhone.replace(/[^\d]/g, "");
+    if (cleanedPhone.startsWith("0")) {
+      cleanedPhone = "94" + cleanedPhone.slice(1);
+    }
+
+    const invNo = sale.invoice_no || `INV-${sale.id}`;
+    const custName = sale.customer?.name || sale.customer_name || "Valued Customer";
+    const totalAmt = Number(sale.grand_total || sale.total || sale.total_amount || 0);
+    const subtotalAmt = Number(sale.subtotal || totalAmt);
+    const discountAmt = Number(sale.discount_amount || sale.discount || 0);
+    const paidAmt = Number(sale.amount_paid || totalAmt);
+    const balAmt = Number(sale.balance_due || 0);
+    const payMethod = String(sale.payment_method || "Cash");
+    const dateStr = new Date(sale.created_at || Date.now()).toLocaleString();
+
+    // Deterministic signature matching backend
+    const s = `${invNo}istore_secure_salt_2026`;
+    let hashVal = 0;
+    for (let i = 0; i < s.length; i++) {
+      hashVal = (hashVal << 5) - hashVal + s.charCodeAt(i);
+      hashVal = (hashVal + 2**31) % 2**32 - 2**31;
+    }
+    const token = `sec_${Math.abs(hashVal).toString(16).padStart(8, '0')}`.slice(0, 12);
+
+    const firstItemObj = (sale.items || sale.lines || [])[0] || {};
+    const firstItem = firstItemObj?.item_name || firstItemObj?.description || "Device / Retail Product";
+    const firstItemWarrantyDays = Number(firstItemObj?.warranty_days ?? firstItemObj?.warrantyDays ?? 0);
+    const firstItemWarrantyMonths = firstItemWarrantyDays > 0 ? Math.round(firstItemWarrantyDays / 30) : 0;
+    const portalBase = "https://i-store-customer-portal-one.vercel.app";
+    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}&name=${encodeURIComponent(custName)}&total=${totalAmt.toFixed(2)}&subtotal=${subtotalAmt.toFixed(2)}&disc=${discountAmt.toFixed(2)}&phone=${encodeURIComponent(cleanedPhone)}&method=${encodeURIComponent(payMethod)}&item=${encodeURIComponent(firstItem)}&warranty=${firstItemWarrantyMonths}&warranty_days=${firstItemWarrantyDays}`;
+
+    const message = `🧾 *OFFICIAL DIGITAL RECEIPT*\n━━━━━━━━━━━━━━━━━━━━\n👋 Hello *${custName}*,\n\nThank you for shopping with *I-Store*! Your transaction has been confirmed:\n\n📋 *Invoice No:* #${invNo}\n📅 *Date:* ${dateStr}\n💳 *Payment Method:* ${payMethod}\n\n💰 *Payment Breakdown:*\n• Subtotal: LKR ${subtotalAmt.toLocaleString()}\n• Discount: LKR ${discountAmt.toLocaleString()}\n• *Grand Total: LKR ${totalAmt.toLocaleString()}*\n• Amount Paid: LKR ${paidAmt.toLocaleString()}\n• *Balance Due: LKR ${balAmt.toLocaleString()}*\n\n📄 *View & Download Digital Bill:*\n${billUrl}\n\n🛡️ *Warranty & Digital Records:*\nYour warranty coverage and device serial numbers are digitally registered with your bill.\n\n📞 *Support Hotline:* +94 77 123 4567\n━━━━━━━━━━━━━━━━━━━━\n_Thank you for choosing I-Store! Have a wonderful day!_`;
+
+    const whatsappUrl = cleanedPhone ? `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}` : `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, "_blank");
+    toast("Opening WhatsApp Web...", "info");
   };
 
 
@@ -1438,6 +1621,34 @@ export default function POS() {
             Return / Exchange
           </button>
         </div>
+
+        {/* REGISTER SHIFT STATUS PILL */}
+        <div className="flex items-center gap-2">
+          {currentShiftData ? (
+            <button
+              type="button"
+              onClick={() => setShiftModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs font-bold transition shadow-sm"
+              title="Click to view Drawer Float or Close Register Shift"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Shift Open (#{currentShiftData.recon_code})</span>
+              <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded">
+                LKR {Number(currentShiftData.sales_summary?.expected_drawer_cash || currentShiftData.opening_float || 0).toLocaleString()}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShiftModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition shadow-sm animate-pulse"
+              title="Click to open register shift with starting float"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span>Open Register Shift</span>
+            </button>
+          )}
+        </div>
         
         <div className="flex items-center shrink-0 gap-4 2xl:gap-6 px-3 2xl:px-5">
           <div className="flex flex-col items-end justify-center whitespace-nowrap">
@@ -1511,76 +1722,171 @@ export default function POS() {
             
             <button 
               onClick={() => setQuickAddOpen((open) => !open)}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl py-2 text-xs font-bold transition-all"
+              className={`w-full flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all shadow-sm ${
+                quickAddOpen 
+                  ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-indigo-500/10" 
+                  : "bg-gradient-to-r from-indigo-600/15 via-purple-600/15 to-indigo-600/15 hover:from-indigo-600/25 hover:to-purple-600/25 text-indigo-200 border border-indigo-500/30 hover:border-indigo-400/50"
+              }`}
             >
-              <Plus size={14} /> {quickAddOpen ? "Hide Quick Add" : "Quick Add / Manual Sale"}
+              {quickAddOpen ? <X size={14} /> : <Zap size={14} className="text-indigo-400 animate-pulse" />}
+              <span>{quickAddOpen ? "Hide Quick Add Form" : "Quick Add / Manual Sale"}</span>
             </button>
           </div>
 
           {quickAddOpen ? (
-            <div className="border-b border-white/5 bg-slate-950/70 p-3 shrink-0 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold text-white">Quick Add Manual Item</div>
-                  <div className="text-[11px] text-slate-400">Inline entry keeps focus stable and works for POS cashiers.</div>
+            <div className="relative border border-indigo-500/20 bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-slate-950 p-3.5 shrink-0 space-y-3.5 rounded-2xl mx-1 my-1 shadow-2xl shadow-indigo-950/50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-400 border border-indigo-500/30 shadow-inner shrink-0">
+                    <Zap size={16} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-white flex items-center gap-2">
+                      Quick Add Manual Item
+                      <span className="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Express</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400">Inline entry keeps focus stable for POS cashiers.</div>
+                  </div>
                 </div>
-                <button type="button" onClick={() => { setQuickAddOpen(false); resetQuickAdd(); }} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-slate-300 hover:text-white">
-                  Close
+                <button 
+                  type="button" 
+                  onClick={() => { setQuickAddOpen(false); resetQuickAdd(); }} 
+                  className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Close"
+                >
+                  <X size={14} />
                 </button>
               </div>
 
-              <div className="grid gap-2 xl:grid-cols-[1.3fr,0.9fr]">
-                <Input label="Product Name *" name="name" value={quickAddForm.name} onChange={handleQuickAddChange} placeholder="e.g. Generic Phone Case" />
+              {/* Form Grid */}
+              <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Input label="Product Name *" name="name" value={quickAddForm.name} onChange={handleQuickAddChange} placeholder="e.g. Generic Phone Case" />
+                </div>
                 <Input label="Selling Price (LKR) *" type="text" inputMode="decimal" autoComplete="off" name="sale_price" value={quickAddForm.sale_price} onChange={handleQuickAddChange} placeholder="0.00" />
                 <Input label="Quantity *" type="text" inputMode="numeric" autoComplete="off" name="quantity" value={quickAddForm.quantity} onChange={handleQuickAddChange} />
-                <Select
-                  label="Category"
-                  name="category"
-                  value={quickAddForm.category}
-                  onChange={handleQuickAddChange}
-                  options={quickAddCategoryOptions.map((category) => ({ value: category, label: category }))}
-                />
+                <div className="sm:col-span-2">
+                  <Select
+                    label="Category"
+                    name="category"
+                    value={quickAddForm.category}
+                    onChange={handleQuickAddChange}
+                    options={quickAddCategoryOptions.map((category) => ({ value: category, label: category }))}
+                  />
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Matches: {quickAddStats.matches}</span>
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Stock hint: {quickAddStats.stockHint ?? "-"}</span>
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">Price hint: {quickAddStats.priceHint ? `LKR ${Math.round(quickAddStats.priceHint).toLocaleString()}` : "-"}</span>
+              {/* Stats & Live Total Preview */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-0.5 text-[10px] font-medium text-indigo-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                    Matches: {quickAddStats.matches}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-0.5 text-[10px] font-medium text-slate-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                    Stock hint: {quickAddStats.stockHint ?? "-"}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-0.5 text-[10px] font-medium text-slate-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    Price hint: {quickAddStats.priceHint ? `LKR ${Math.round(quickAddStats.priceHint).toLocaleString()}` : "-"}
+                  </span>
+                </div>
+
+                {Number(quickAddForm.sale_price || 0) > 0 && (
+                  <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 font-bold text-xs flex items-center gap-1.5 ml-auto">
+                    <span className="text-[11px] font-normal text-emerald-400/80">Item Total:</span>
+                    <span className="text-emerald-300 font-extrabold text-xs">
+                      LKR {(Number(quickAddForm.sale_price || 0) * Number(quickAddForm.quantity || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <button type="button" onClick={() => setQuickAddOptional((v) => !v)} className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 font-bold transition-colors">
-                <ChevronDown size={16} className={quickAddOptional ? "rotate-180 transition-transform" : "transition-transform"} />
-                {quickAddOptional ? "Hide Optional Fields" : "Show Optional Fields"}
-              </button>
+              {/* Optional Toggle */}
+              <div>
+                <button 
+                  type="button" 
+                  onClick={() => setQuickAddOptional((v) => !v)} 
+                  className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-semibold transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/20"
+                >
+                  <ChevronDown size={14} className={quickAddOptional ? "rotate-180 transition-transform duration-200" : "transition-transform duration-200"} />
+                  {quickAddOptional ? "Hide Optional Details" : "+ More Item Details (SKU, Cost, Tax, Discount)"}
+                </button>
+              </div>
 
+              {/* Optional Fields */}
               {quickAddOptional ? (
-                <div className="grid gap-2 xl:grid-cols-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <Input label="SKU / Product Code" name="sku" value={quickAddForm.sku} onChange={handleQuickAddChange} placeholder="Leave blank to auto-generate" />
+                <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 p-3 bg-black/40 rounded-xl border border-white/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <Input label="SKU / Product Code" name="sku" value={quickAddForm.sku} onChange={handleQuickAddChange} placeholder="Auto-generated if empty" />
                   <Input label="Cost Price (LKR)" type="text" inputMode="decimal" autoComplete="off" name="cost_price" value={quickAddForm.cost_price} onChange={handleQuickAddChange} placeholder="0.00" />
                   <Input label="Tax Rate (%)" type="text" inputMode="decimal" autoComplete="off" name="tax_rate" value={quickAddForm.tax_rate} onChange={handleQuickAddChange} placeholder="0" />
                   <Input label="Discount (%)" type="text" inputMode="decimal" autoComplete="off" name="discount" value={quickAddForm.discount} onChange={handleQuickAddChange} placeholder="0" />
-                  <textarea
-                    name="description"
-                    value={quickAddForm.description}
-                    onChange={handleQuickAddChange}
-                    placeholder="Brief details about the item..."
-                    className="min-h-[88px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none xl:col-span-2"
-                  />
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Item Description / Notes</label>
+                    <textarea
+                      name="description"
+                      value={quickAddForm.description}
+                      onChange={handleQuickAddChange}
+                      placeholder="Brief details about the item..."
+                      className="w-full min-h-[64px] rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none transition-all"
+                    />
+                  </div>
                 </div>
               ) : null}
 
-              <div className="grid gap-2 sm:grid-cols-3">
-                <button type="button" disabled={quickAddLoading} onClick={() => submitQuickAdd("temporary")} className="rounded-xl border border-slate-600/50 bg-slate-700/50 px-3 py-3 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60">
-                  Temporary Item
-                  <span className="block text-[10px] font-normal text-slate-400">This transaction only</span>
+              {/* Action Cards */}
+              <div className="grid gap-2 sm:grid-cols-3 pt-1">
+                <button 
+                  type="button" 
+                  disabled={quickAddLoading} 
+                  onClick={() => submitQuickAdd("temporary")} 
+                  className="relative overflow-hidden group border border-slate-700 hover:border-slate-500 bg-gradient-to-b from-slate-800/90 to-slate-900 hover:from-slate-800 hover:to-slate-850 px-3 py-2.5 rounded-xl text-left transition-all shadow-md disabled:opacity-60"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-slate-700/60 text-slate-300 group-hover:text-white transition-colors">
+                      <Clock size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white group-hover:text-indigo-200 transition-colors">Temporary Item</div>
+                      <div className="text-[10px] text-slate-400">This transaction only</div>
+                    </div>
+                  </div>
                 </button>
-                <button type="button" disabled={quickAddLoading} onClick={() => submitQuickAdd("draft")} className="rounded-xl border border-amber-500/30 bg-amber-600/20 px-3 py-3 text-sm font-bold text-amber-400 hover:bg-amber-600/30 disabled:opacity-60">
-                  Save as Draft
-                  <span className="block text-[10px] font-normal text-amber-500/70">Finish details later</span>
+
+                <button 
+                  type="button" 
+                  disabled={quickAddLoading} 
+                  onClick={() => submitQuickAdd("draft")} 
+                  className="relative overflow-hidden group border border-amber-500/40 hover:border-amber-400/80 bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-950 px-3 py-2.5 rounded-xl text-left transition-all shadow-md disabled:opacity-60"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 group-hover:bg-amber-500/30 transition-colors">
+                      <FileText size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-amber-300 group-hover:text-amber-200 transition-colors">Save as Draft</div>
+                      <div className="text-[10px] text-amber-400/70">Finish details later</div>
+                    </div>
+                  </div>
                 </button>
-                <button type="button" disabled={quickAddLoading} onClick={() => submitQuickAdd("inventory")} className="rounded-xl border border-indigo-500/30 bg-indigo-600 px-3 py-3 text-sm font-bold text-white hover:bg-indigo-500 disabled:opacity-60">
-                  Save to Inventory
-                  <span className="block text-[10px] font-normal text-indigo-200">Permanent product</span>
+
+                <button 
+                  type="button" 
+                  disabled={quickAddLoading} 
+                  onClick={() => submitQuickAdd("inventory")} 
+                  className="relative overflow-hidden group border border-indigo-400/40 hover:border-indigo-300 bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-3 py-2.5 rounded-xl text-left transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-60"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-white/20 text-white shadow-sm">
+                      <PackagePlus size={16} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">Save to Inventory</div>
+                      <div className="text-[10px] text-indigo-100/80">Permanent product</div>
+                    </div>
+                  </div>
                 </button>
               </div>
             </div>
@@ -1862,19 +2168,13 @@ export default function POS() {
               <div className="space-y-3 min-w-0">
                 <div className="flex items-center gap-2">
                   <User size={16} className="text-slate-500 shrink-0" />
-                  <Select
+                  <CustomerSelect
                     size="sm"
                     className="min-w-0 flex-1"
                     value={customerId} 
                     onChange={(e) => setCustomerId(e.target.value)}
+                    customers={customersFetch.data || []}
                     placeholder="Walk-in Customer"
-                    options={[
-                      { value: "", label: "Walk-in Customer" },
-                      ...(customersFetch.data || []).map((c) => ({
-                        value: String(c.id),
-                        label: `${c.name} - ${c.phone}`,
-                      })),
-                    ]}
                   />
                   <button onClick={() => setShowNewCustomerModal(true)} className="px-2.5 py-2 rounded-lg bg-white/10 border border-white/10 text-[11px] font-bold hover:bg-white/20 whitespace-nowrap shrink-0">+New</button>
                 </div>
@@ -2120,32 +2420,37 @@ export default function POS() {
         </div>
 
         {/* RIGHT PANEL: CHECKOUT RAIL + QUICK ACTIONS */}
-        <div className="min-h-0 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
-          <div className="rounded-2xl border border-indigo-400/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-md">
-            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-200">
-                  <Wallet size={13} /> {rightPanelTab === "checkout" ? "Payment / Checkout" : "Return / Exchange"}
-                </h3>
-                <p className="mt-1 text-[10px] text-slate-500">
-                  {rightPanelTab === "checkout"
-                    ? "Always visible on desktop workstations"
-                    : "Manage return and exchange items for the current sale"}
-                </p>
+        <div className="min-h-0 flex flex-col gap-3 overflow-y-auto custom-scrollbar sticky top-0">
+          <div className="rounded-2xl border border-indigo-500/20 bg-slate-950/95 p-3.5 shadow-2xl backdrop-blur-xl space-y-4">
+            
+            {/* Header & Tab Switcher */}
+            <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  <Wallet size={15} />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-white">
+                    {rightPanelTab === "checkout" ? "Billing & Checkout" : "Return / Exchange"}
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    {rightPanelTab === "checkout" ? "Express Cashier Terminal" : "Return lookup and exchange processing"}
+                  </p>
+                </div>
               </div>
-              <div className="inline-flex rounded-full border border-white/10 bg-slate-900/70 p-1">
+              <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 shrink-0">
                 {[
                   { key: "checkout", label: "Checkout" },
-                  { key: "return", label: "Return / Exchange" },
+                  { key: "return", label: "Returns" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
                     type="button"
                     onClick={() => setRightPanelTab(tab.key)}
-                    className={`rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+                    className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
                       rightPanelTab === tab.key
-                        ? "bg-indigo-500/20 text-indigo-100 border border-indigo-400/40"
-                        : "bg-transparent text-slate-400 hover:text-slate-200"
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/40"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     {tab.label}
@@ -2155,99 +2460,56 @@ export default function POS() {
             </div>
 
             {rightPanelTab === "checkout" ? (
-              <>
-                <div className="mb-3 rounded-xl border border-amber-400/25 bg-amber-500/10 p-3">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-200/70">Due now</p>
-                      <p className="mt-1 text-2xl font-black leading-none text-amber-200">
-                        LKR {Math.round(dueAfterCredits).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="text-right text-[10px] text-slate-400">
-                      <div>Items: <span className="font-bold text-slate-200">{cart.length}</span></div>
-                      <div>Total: <span className="font-bold text-indigo-200">LKR {Math.round(grandTotal).toLocaleString()}</span></div>
-                    </div>
-                  </div>
-                  {(appliedAdvanceTotal > 0 || appliedStoreCreditTotal > 0) && (
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
-                      <div className="rounded-lg bg-black/20 px-2 py-1 text-emerald-200">Advance: LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</div>
-                      <div className="rounded-lg bg-black/20 px-2 py-1 text-cyan-200">Credit: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</div>
-                    </div>
-                  )}
-                </div>
+              <div className="space-y-3.5">
 
-                <div className="mb-3 space-y-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
+                {/* 1. CUSTOMER SELECTION */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] uppercase font-bold tracking-widest text-slate-400">
+                    <span className="flex items-center gap-1.5"><User size={12} className="text-indigo-400" /> Customer</span>
+                    {customerId && <span className="text-emerald-400 text-[10px] lowercase font-medium">customer selected</span>}
+                  </div>
                   <div className="flex items-center gap-2">
-                    <User size={14} className="shrink-0 text-slate-500" />
-                    <SearchableSelect
+                    <CustomerSelect
                       size="sm"
                       className="min-w-0 flex-1"
                       value={customerId}
                       onChange={(e) => setCustomerId(e.target.value)}
+                      customers={customersFetch.data || []}
                       placeholder="Walk-in Customer"
                       searchPlaceholder="Search customer by name or phone..."
-                      options={[
-                        { value: "", label: "Walk-in Customer" },
-                        ...(customersFetch.data || []).map((c) => ({
-                          value: String(c.id),
-                          label: `${c.name} (${c.phone || "No phone"})`,
-                          subText: `${c.name} ${c.phone || ""}`,
-                        })),
-                      ]}
                     />
-                    <button onClick={() => setShowNewCustomerModal(true)} className="shrink-0 rounded-lg border border-white/10 bg-white/10 px-2.5 py-2 text-[10px] font-black text-slate-200 hover:bg-white/20">+New</button>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCustomerModal(true)}
+                      className="shrink-0 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-2 text-[11px] font-bold text-indigo-300 hover:bg-indigo-500/20 transition flex items-center gap-1"
+                      title="Add new customer (Alt+N)"
+                    >
+                      +New <span className="text-[8px] opacity-70 bg-indigo-950 px-1 py-0.5 rounded border border-indigo-400/20">Alt+N</span>
+                    </button>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <Percent size={14} className="text-indigo-300" />
-                      <span className="text-xs font-semibold text-slate-200">Discount</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1 rounded-md bg-white/5 p-0.5">
-                        <button type="button" onClick={() => setDiscountMode('amount')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'amount' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
-                          LKR
-                        </button>
-                        <button type="button" onClick={() => setDiscountMode('percent')} className={`px-2 py-0.5 text-[11px] font-bold rounded ${discountMode === 'percent' ? 'bg-indigo-500 text-white' : 'text-slate-300'}`}>
-                          %
-                        </button>
-                      </div>
-                      <div>
-                        <input
-                          aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
-                          type="number"
-                          className="w-20 bg-transparent text-right text-sm font-bold outline-none"
-                          placeholder={discountMode === 'percent' ? 'Enter %' : 'Enter LKR'}
-                          value={discountValue}
-                          onChange={e => updateDiscountValue(e.target.value)}
-                        />
-                        <div className="text-[11px]">{discountError ? <span className="text-rose-400">{discountError}</span> : <span className="text-slate-500">{discountMode === 'percent' ? `Max ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max LKR ${Math.round(maxDiscountAllowed)}`}</span>}</div>
-                      </div>
-                    </div>
-                  </div>
-
+                  {/* Customer Advances & Store Credits */}
                   {customerId && (
-                    <div className="grid grid-cols-1 gap-2">
-                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
+                    <div className="grid grid-cols-1 gap-2 pt-1">
+                      {/* Advances Card */}
+                      <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/20 p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-200/80">Advances</p>
-                          <span className="text-[10px] font-bold text-emerald-300">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Advances</p>
+                          <span className="text-[10px] font-bold text-emerald-200 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">Applied: LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
                         </div>
-                        {availableAdvances.length === 0 && (
-                          <p className="mt-1 text-[10px] text-slate-500">No available advances.</p>
-                        )}
-                        {availableAdvances.length > 0 && (
+                        {availableAdvances.length === 0 ? (
+                          <p className="mt-1 text-[10px] text-slate-500">No available advances for this customer.</p>
+                        ) : (
                           <div className="mt-2 max-h-24 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
                             {availableAdvances.map((row) => (
                               <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
                                 <div className="min-w-0">
                                   <div className="truncate text-[10px] font-bold text-emerald-200">{row.advance_number}</div>
-                                  <div className="truncate text-[10px] text-slate-500">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
+                                  <div className="truncate text-[10px] text-slate-400">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
                                 </div>
                                 <input
                                   type="number"
-                                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-right text-[11px]"
+                                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-right text-[11px] text-white outline-none focus:border-emerald-400"
                                   min={0}
                                   max={Number(row.remaining_amount || 0)}
                                   value={selectedAdvanceMap[row.id] || ""}
@@ -2258,7 +2520,8 @@ export default function POS() {
                                   }}
                                 />
                                 <button
-                                  className="rounded border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
+                                  type="button"
+                                  className="rounded-lg border border-emerald-400/30 bg-emerald-500/20 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/30 transition"
                                   onClick={() => {
                                     const maxAmount = Number(row.remaining_amount || 0);
                                     setSelectedAdvanceMap((prev) => ({ ...prev, [row.id]: maxAmount }));
@@ -2272,25 +2535,25 @@ export default function POS() {
                         )}
                       </div>
 
-                      <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-2">
+                      {/* Store Credits Card */}
+                      <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan-200/80">Store Credits</p>
-                          <span className="text-[10px] font-bold text-cyan-300">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan-300">Store Credits</p>
+                          <span className="text-[10px] font-bold text-cyan-200 bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/30">Applied: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
                         </div>
-                        {availableCredits.length === 0 && (
+                        {availableCredits.length === 0 ? (
                           <p className="mt-1 text-[10px] text-slate-500">No available store credits.</p>
-                        )}
-                        {availableCredits.length > 0 && (
+                        ) : (
                           <div className="mt-2 max-h-24 space-y-1.5 overflow-y-auto pr-1 custom-scrollbar">
                             {availableCredits.map((row) => (
                               <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
                                 <div className="min-w-0">
                                   <div className="truncate text-[10px] font-bold text-cyan-200">{row.credit_number}</div>
-                                  <div className="truncate text-[10px] text-slate-500">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
+                                  <div className="truncate text-[10px] text-slate-400">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
                                 </div>
                                 <input
                                   type="number"
-                                  className="rounded border border-cyan-500/20 bg-black/40 px-2 py-1 text-right text-[11px]"
+                                  className="rounded-lg border border-cyan-500/30 bg-black/40 px-2 py-1 text-right text-[11px] text-white outline-none focus:border-cyan-400"
                                   min={0}
                                   max={Number(row.remaining_amount || 0)}
                                   value={selectedCreditMap[row.id] || ""}
@@ -2301,7 +2564,8 @@ export default function POS() {
                                   }}
                                 />
                                 <button
-                                  className="rounded border border-cyan-400/20 bg-cyan-500/10 py-1 text-[10px] font-bold text-cyan-200 hover:bg-cyan-500/20"
+                                  type="button"
+                                  className="rounded-lg border border-cyan-400/30 bg-cyan-500/20 py-1 text-[10px] font-bold text-cyan-200 hover:bg-cyan-500/30 transition"
                                   onClick={() => {
                                     const maxAmount = Number(row.remaining_amount || 0);
                                     setSelectedCreditMap((prev) => ({ ...prev, [row.id]: maxAmount }));
@@ -2318,137 +2582,334 @@ export default function POS() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {["Cash", "Card", "Bank Transfer", "Store Credit", "Mixed"].map(m => (
-                      <button
-                        key={`rail-${m}`}
-                        onClick={() => setPaymentMethod(m)}
-                        className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[10px] font-black uppercase tracking-wider transition ${
-                          paymentMethod === m
-                            ? "border-indigo-400/60 bg-indigo-500/20 text-indigo-100"
-                            : "border-white/10 bg-black/20 text-slate-400 hover:border-white/20 hover:text-slate-200"
-                        }`}
-                      >
-                        {m === "Cash" ? <Banknote size={12} /> : m === "Card" ? <CreditCard size={12} /> : m === "Store Credit" ? <Wallet size={12} /> : m === "Bank Transfer" ? <Banknote size={12} /> : <Wallet size={12} />}
-                        {m === "Bank Transfer" ? "Bank" : m === "Store Credit" ? "Credit" : m}
-                      </button>
-                    ))}
+                {/* 2. ORDER SUMMARY & DUE NOW HERO */}
+                <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-950/20 via-slate-900/90 to-slate-950 p-3.5 shadow-xl shadow-amber-950/20 space-y-2.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Subtotal ({cart.reduce((sum, item) => sum + Number(item.quantity || 1), 0)} items)</span>
+                    <span className="font-semibold text-slate-200">LKR {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
+                  {discountAmount > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-emerald-400">
+                      <span>Discount ({discountMode === 'percent' ? `${discountValue}%` : 'Flat'})</span>
+                      <span className="font-semibold">- LKR {discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  {Number(taxAmount || 0) > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-sky-400">
+                      <span>Tax</span>
+                      <span className="font-semibold">+ LKR {Number(taxAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-white/10 pt-2 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-300">Total Amount</span>
+                    <span className="text-sm font-black text-indigo-200">LKR {Math.round(grandTotal).toLocaleString()}</span>
+                  </div>
+
+                  {(appliedAdvanceTotal > 0 || appliedStoreCreditTotal > 0) && (
+                    <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
+                      {appliedAdvanceTotal > 0 && (
+                        <div className="rounded-lg bg-black/40 px-2.5 py-1 text-emerald-300 border border-emerald-500/20 flex justify-between">
+                          <span>Advance:</span>
+                          <strong>-LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</strong>
+                        </div>
+                      )}
+                      {appliedStoreCreditTotal > 0 && (
+                        <div className="rounded-lg bg-black/40 px-2.5 py-1 text-cyan-300 border border-cyan-500/20 flex justify-between">
+                          <span>Credit:</span>
+                          <strong>-LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* PROMINENT DUE NOW HERO BOX */}
+                  <div className="rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent p-3 flex items-center justify-between shadow-inner mt-2">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-300/90">DUE NOW</p>
+                      <p className="text-2xl sm:text-3xl font-black leading-none text-white tracking-tight mt-0.5">
+                        LKR {Math.round(dueAfterCredits).toLocaleString()}
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-200 text-[10px] font-extrabold uppercase">
+                      {cart.length} {cart.length === 1 ? 'Item' : 'Items'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. DISCOUNT BAR */}
+                <div className="rounded-xl border border-white/10 bg-black/30 p-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                      <Percent size={13} className="text-indigo-400" />
+                      <span>Discount</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1 rounded-lg bg-black/50 p-0.5 border border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setDiscountMode('amount')}
+                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'amount' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                        >
+                          LKR
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiscountMode('percent')}
+                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'percent' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                        >
+                          %
+                        </button>
+                      </div>
+                      <input
+                        aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
+                        type="number"
+                        className="w-24 bg-black/40 border border-white/10 rounded-lg px-2.5 py-1 text-right text-xs font-bold text-white outline-none focus:border-indigo-500"
+                        placeholder={discountMode === 'percent' ? '0 %' : '0 LKR'}
+                        value={discountValue}
+                        onChange={e => updateDiscountValue(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-right">
+                    {discountError ? (
+                      <span className="text-rose-400 font-semibold">{discountError}</span>
+                    ) : (
+                      <span className="text-slate-500">
+                        {discountMode === 'percent' ? `Max allowed: ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max allowed: LKR ${Math.round(maxDiscountAllowed)}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. PAYMENT METHOD SELECTOR */}
+                <div className="space-y-2">
+                  <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 flex items-center justify-between">
+                    <span>Payment Method</span>
+                    <span className="text-indigo-400 font-bold text-[10px]">{paymentMethod}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {[
+                      { id: "Cash", label: "Cash", icon: Banknote, key: "F4" },
+                      { id: "Card", label: "Card", icon: CreditCard, key: "F5" },
+                      { id: "Bank Transfer", label: "Bank", icon: Banknote, key: "F6" },
+                      { id: "Store Credit", label: "Credit", icon: Wallet, key: "F7" },
+                      { id: "Mixed", label: "Mixed", icon: Wallet, key: "F8" },
+                    ].map((item) => {
+                      const IconComponent = item.icon;
+                      const isActive = paymentMethod === item.id;
+                      return (
+                        <button
+                          key={`rail-${item.id}`}
+                          type="button"
+                          onClick={() => setPaymentMethod(item.id)}
+                          className={`flex items-center justify-between rounded-xl border px-2.5 py-2 text-[11px] font-extrabold transition-all shadow-sm ${
+                            isActive
+                              ? "border-indigo-400/90 bg-gradient-to-r from-indigo-600/30 to-purple-600/30 text-white shadow-indigo-950/40 ring-1 ring-indigo-400/50"
+                              : "border-white/10 bg-black/30 text-slate-400 hover:border-white/20 hover:text-white hover:bg-black/50"
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <IconComponent size={13} className={isActive ? "text-indigo-300" : "text-slate-500"} />
+                            {item.label}
+                          </span>
+                          <span className={`rounded px-1 py-0.5 text-[8px] font-bold border ${isActive ? "bg-indigo-500/30 border-indigo-400/40 text-indigo-200" : "bg-black/40 border-white/5 text-slate-500"}`}>
+                            {item.key}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* DYNAMIC PAYMENT INPUTS */}
                   {paymentMethod === "Cash" && (
-                    <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-slate-400 flex items-center gap-2"><Banknote size={12} /> Cash Given</span>
-                        <input
-                          aria-label="Cash given amount"
-                          ref={cashInputRef}
-                          type="number"
-                          className="w-36 bg-transparent text-right text-sm font-black text-emerald-300 outline-none"
-                          placeholder="Enter amount or use quick buttons"
-                          value={cashReceived}
-                          onChange={e => setCashReceived(e.target.value)}
-                        />
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5 shrink-0">
+                          <Banknote size={14} className="text-emerald-400" /> Cash Received
+                        </span>
+                        <div className="relative">
+                          <input
+                            aria-label="Cash given amount"
+                            ref={cashInputRef}
+                            type="number"
+                            className="w-32 bg-black/60 border border-emerald-500/40 rounded-lg px-2.5 py-1 text-right text-base font-black text-emerald-300 outline-none focus:border-emerald-400 placeholder:text-slate-600"
+                            placeholder="0.00"
+                            value={cashReceived}
+                            onChange={e => setCashReceived(e.target.value)}
+                          />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        {[dueAfterCredits, 1000, 1500].map((amt, i) => (
-                          <button
-                            key={`rail-cash-${i}`}
-                            onClick={() => setCashReceived(i === 0 ? Math.round(dueAfterCredits) : Math.round(amt))}
-                            className="rounded-md border border-white/10 bg-white/5 py-1 text-[10px] font-bold text-slate-300 hover:bg-white/10"
-                          >
-                            {i === 0 ? "Exact" : `${amt}`}
-                          </button>
-                        ))}
+
+                      {/* Quick Presets */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        {(() => {
+                          const exact = Math.round(dueAfterCredits);
+                          let presets = [exact];
+                          if (exact > 0) {
+                            let p1 = exact <= 500 ? 500 : exact <= 1000 ? 1000 : exact <= 2000 ? 2000 : Math.ceil(exact / 1000) * 1000;
+                            let p2 = exact <= 1000 ? 2000 : exact <= 5000 ? 5000 : Math.ceil(exact / 5000) * 5000;
+                            if (p1 <= exact) p1 = exact + 500;
+                            if (p2 <= p1) p2 = p1 + 1000;
+                            presets = [exact, p1, p2];
+                          } else {
+                            presets = [0, 1000, 5000];
+                          }
+                          return presets.map((amt, i) => (
+                            <button
+                              key={`rail-cash-${i}`}
+                              type="button"
+                              onClick={() => setCashReceived(amt)}
+                              className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 py-1.5 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/25 transition"
+                            >
+                              {i === 0 ? "EXACT" : `LKR ${amt.toLocaleString()}`}
+                            </button>
+                          ));
+                        })()}
                       </div>
+
+                      {/* Change / Balance Banner */}
+                      {cashReceived !== "" && (
+                        signedChange >= 0 ? (
+                          <div className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-2 text-center shadow-inner">
+                            <div className="text-[10px] font-black uppercase tracking-wider text-emerald-300">CHANGE TO RETURN</div>
+                            <div className="text-xl font-black text-emerald-200 mt-0.5">LKR {change.toLocaleString()}</div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-2 text-center shadow-inner">
+                            <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">BALANCE DUE</div>
+                            <div className="text-xl font-black text-amber-200 mt-0.5">LKR {Math.abs(signedChange).toLocaleString()}</div>
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
+
                   {paymentMethod === "Mixed" && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
-                        <span className="block text-[10px] text-slate-500">Cash</span>
-                        <input ref={cashInputRef} type="number" className="w-full bg-transparent text-sm font-bold text-emerald-300 outline-none" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
-                      </label>
-                      <label className="rounded-lg border border-white/10 bg-black/25 px-2 py-1.5">
-                        <span className="block text-[10px] text-slate-500">Card</span>
-                        <input type="number" className="w-full bg-transparent text-sm font-bold text-sky-300 outline-none" value={cardAmount} onChange={e => setCardAmount(e.target.value)} />
-                      </label>
-                      <div className={`col-span-2 text-right text-xs font-bold ${netRemaining <= 0 ? "text-emerald-300" : "text-amber-300"}`}>
-                        Remaining: LKR {Math.round(Math.max(0, netRemaining)).toLocaleString()}
+                    <div className="rounded-xl border border-white/10 bg-black/40 p-3 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase text-slate-400">Cash Amount</span>
+                          <input ref={cashInputRef} type="number" className="w-full rounded-lg border border-emerald-500/30 bg-black/50 px-2.5 py-1 text-sm font-bold text-emerald-300 outline-none focus:border-emerald-400" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-bold uppercase text-slate-400">Card Amount</span>
+                          <input type="number" className="w-full rounded-lg border border-sky-500/30 bg-black/50 px-2.5 py-1 text-sm font-bold text-sky-300 outline-none focus:border-sky-400" value={cardAmount} onChange={e => setCardAmount(e.target.value)} />
+                        </label>
+                      </div>
+                      <div className={`text-right text-xs font-bold pt-1 ${netRemaining <= 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                        {netRemaining <= 0 ? "Fully Paid" : `Remaining Due: LKR ${Math.round(Math.max(0, netRemaining)).toLocaleString()}`}
                       </div>
                     </div>
                   )}
+
                   {(paymentMethod === "Card" || paymentMethod === "Bank Transfer" || paymentMethod === "Mixed") && (
-                    <label className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                      <span className="text-xs font-semibold text-slate-400">Ref No.</span>
+                    <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-400 shrink-0">Ref / Transaction #</span>
                       <input
                         ref={paymentRefInputRef}
                         type="text"
-                        className="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold text-sky-300 outline-none"
-                        placeholder="Card / Bank ref"
+                        className="w-full max-w-[180px] bg-transparent text-right text-xs font-bold text-sky-300 outline-none placeholder:text-slate-600"
+                        placeholder="Card/Bank reference..."
                         value={paymentReference}
                         onChange={(e) => setPaymentReference(e.target.value)}
                       />
-                    </label>
+                    </div>
                   )}
+
                   {paymentMethod === "Store Credit" && (
-                    <div className="text-right text-xs font-bold text-cyan-300">
+                    <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-2.5 text-right text-xs font-bold text-cyan-300">
                       Credit Applied: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()} | Remaining Due: LKR {Math.round(dueAfterCredits).toLocaleString()}
                     </div>
                   )}
-                  <div className="flex gap-1.5">
-                    <button onClick={clearCart} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-rose-500/10 text-rose-300 hover:bg-rose-500/20" title="Clear Cart">
+                </div>
+
+                {/* 5. MAIN CHECKOUT CTA BUTTON */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={checkout}
+                    disabled={checkoutDisabled}
+                    className={`w-full py-3.5 px-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+                      checkoutDisabled
+                        ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
+                        : "bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-600/30 border border-indigo-400/40"
+                    }`}
+                    title={
+                      mode === "return"
+                        ? "Return mode does not support standard checkout"
+                        : hasNegativeMargin
+                          ? "Fix negative margins before checkout"
+                          : cart.length === 0
+                            ? "Add an item to the cart first"
+                            : "Complete Sale (Ctrl+Enter)"
+                    }
+                  >
+                    <ShoppingCart size={16} />
+                    <span>
+                      {mode === "return"
+                        ? "RETURN MODE ACTIVE"
+                        : cart.length === 0
+                          ? "ADD ITEMS TO BEGIN"
+                          : `COMPLETE SALE · LKR ${Math.round(dueAfterCredits).toLocaleString()}`}
+                    </span>
+                  </button>
+                </div>
+
+                {/* 6. SECONDARY QUICK ACTIONS TOOLBAR */}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <button
+                      type="button"
+                      onClick={clearCart}
+                      className="p-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors"
+                      title="Clear Cart (ESC)"
+                    >
                       <Trash2 size={16} />
                     </button>
-                    <button onClick={printReceipt} disabled={!lastSale} className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${lastSale ? "bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20" : "bg-white/5 text-slate-600 cursor-not-allowed"}`} title="Print last receipt">
+                    <button
+                      type="button"
+                      onClick={printReceipt}
+                      disabled={!lastSale}
+                      className={`p-2.5 rounded-xl border transition-colors ${lastSale ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20' : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed'}`}
+                      title="Print Last Receipt (Ctrl+P)"
+                    >
                       <Printer size={16} />
                     </button>
-                    <button onClick={suspendCurrentCart} className="relative grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/5 text-slate-300 hover:bg-white/10" title="Suspend cart">
+                    <button
+                      type="button"
+                      onClick={suspendCurrentCart}
+                      className="relative p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors"
+                      title="Suspend Cart"
+                    >
                       <Save size={16} />
-                      {pendingSync && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-amber-400" title="Auto-saving..." />}
-                    </button>
-                    <button onClick={() => setShowSuspendPicker(true)} className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/5 text-slate-300 hover:bg-white/10" title="Resume cart">
-                      <FolderOpen size={16} />
+                      {pendingSync && <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full animate-pulse" title="Auto-saving..." />}
                     </button>
                     <button
-                      onClick={checkout}
-                      disabled={checkoutDisabled}
-                      className={`min-h-10 flex-1 rounded-lg text-sm font-black uppercase tracking-wider shadow-lg transition active:scale-[0.98] ${
-                        checkoutDisabled
-                          ? "bg-slate-600/50 text-slate-400 cursor-not-allowed opacity-50"
-                          : "bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-950/40"
-                      }`}
-                      title={
-                        mode === "return"
-                          ? "Return mode does not support standard checkout"
-                          : hasNegativeMargin
-                            ? "Fix negative margins before checkout"
-                            : cart.length === 0
-                              ? "Add an item to the cart first"
-                              : "Complete Sale"
-                      }
+                      type="button"
+                      onClick={() => setShowSuspendPicker(true)}
+                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors"
+                      title="Resume Cart"
                     >
-                      {mode === "return" ? "Return mode active" : cart.length === 0 ? "Add items to begin" : "Complete Sale"}
+                      <FolderOpen size={16} />
                     </button>
                   </div>
-                  {paymentMethod === "Cash" && cashReceived !== "" && (
-                    signedChange >= 0 ? (
-                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-center">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/70">Change</div>
-                        <div className="text-base font-black text-emerald-300">LKR {change.toLocaleString()}</div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-amber-600/20 bg-amber-600/10 px-3 py-2 text-center">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/70">Balance Due</div>
-                        <div className="text-base font-black text-amber-300">LKR {Math.abs(signedChange).toLocaleString()}</div>
-                      </div>
-                    )
-                  )}
                 </div>
-                <div className="text-center mt-2 text-[9px] text-slate-500/70 space-y-1">
-                  <div>F2: Product Search | F3: Customer | F4: Payment | Ctrl+R: Repair | Ctrl+I: Invoice | Ctrl+P: Print</div>
-                  <div>Enter: Add first result | Ctrl+Enter: Checkout | Ctrl+Backspace/Delete: Remove line | Esc: Close modal</div>
+
+                {/* Keyboard Shortcut Summary */}
+                <div className="text-center text-[9px] font-medium text-slate-400/80 pt-1 space-y-0.5">
+                  <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+                    <span><strong className="text-slate-300">F2</strong> Search</span>
+                    <span>•</span>
+                    <span><strong className="text-slate-300">F3</strong> Customer</span>
+                    <span>•</span>
+                    <span><strong className="text-slate-300">F4-F8</strong> Payments</span>
+                    <span>•</span>
+                    <span><strong className="text-slate-300">Ctrl+Enter</strong> Checkout</span>
+                  </div>
                 </div>
-              </>
+
+              </div>
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-rose-500/20 bg-rose-950/20 p-3 shadow-inner">
@@ -2723,14 +3184,17 @@ export default function POS() {
                     </span>
                   </div>
                   {!s.is_voided && !s.is_return && (
-                    <div className="mt-2 grid grid-cols-3 gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); openReturnModal(s.id); }} className="w-full flex items-center justify-center gap-1 py-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[10px] font-bold transition-colors">
+                    <div className="mt-2 grid grid-cols-4 gap-1">
+                      <button onClick={(e) => { e.stopPropagation(); openReturnModal(s.id); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[9px] font-bold transition-colors">
                         <CornerUpLeft size={10} /> Return
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); quickReprint(s.id); }} className="w-full flex items-center justify-center gap-1 py-1 rounded bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 text-[10px] font-bold transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); quickReprint(s.id); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 text-[9px] font-bold transition-colors">
                         <Printer size={10} /> Print
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); voidSale(s); }} className="w-full flex items-center justify-center gap-1 py-1 rounded bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-[10px] font-bold transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); shareRecentSaleWhatsApp(s); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-[9px] font-bold transition-colors">
+                        <Share2 size={10} /> Share
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); voidSale(s); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-[9px] font-bold transition-colors">
                         Void
                       </button>
                     </div>
@@ -2896,13 +3360,30 @@ export default function POS() {
           )}
 
           <div className="grid gap-2">
-            {(lastSale?.customer?.phone || lastSale?.customer_phone) && (
+            {(lastSale?.customer?.phone || lastSale?.customer_phone) ? (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={sendReceiptWhatsApp}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-3 py-3 text-xs font-black uppercase tracking-wider text-slate-900 shadow-lg shadow-emerald-500/10 transition hover:bg-emerald-400"
+                >
+                  <MessageCircle size={15} /> Auto Send
+                </button>
+                <button
+                  type="button"
+                  onClick={shareOnWhatsAppWeb}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 px-3 py-3 text-xs font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-500/30"
+                >
+                  <Share2 size={15} /> Share Web
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
-                onClick={sendReceiptWhatsApp}
-                className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black uppercase tracking-[0.12em] text-slate-900 shadow-lg shadow-emerald-500/10 transition hover:bg-emerald-400"
+                onClick={shareOnWhatsAppWeb}
+                className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 px-4 py-3 text-xs font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-500/30"
               >
-                <MessageCircle size={16} /> WhatsApp Invoice
+                <Share2 size={15} /> Share on WhatsApp Web
               </button>
             )}
             <button
@@ -2963,6 +3444,14 @@ export default function POS() {
               <button onClick={createCustomerQuick} className="w-full py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-all">Create & Attach</button>
             </div>
       </AppModal>
+
+      {/* CASHIER SHIFT & DRAWER FLOAT RECONCILIATION MODAL */}
+      <ShiftModal
+        open={shiftModalOpen}
+        onClose={() => setShiftModalOpen(false)}
+        currentShift={currentShiftData}
+        onShiftUpdated={fetchShiftStatus}
+      />
 
     </div>
   );

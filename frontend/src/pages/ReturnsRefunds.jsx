@@ -539,7 +539,7 @@ export default function ReturnsRefunds() {
         <PageHeader
           eyebrow="Sales & Stock Policy"
           title="Returns & Refunds Management"
-          subtitle="I Store workflow for returns, refunds, exchanges, warranty replacements, damaged stock, and store credits."
+          subtitle="E Store workflow for returns, refunds, exchanges, warranty replacements, damaged stock, and store credits."
           action={
             <Button size="sm" variant="secondary" onClick={loadAll} disabled={busy}>
               Refresh

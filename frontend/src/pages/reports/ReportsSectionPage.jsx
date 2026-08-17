@@ -26,6 +26,7 @@ const TaxFinancialReportsContent = lazy(() => import("./components/TaxFinancialR
 const RefundsReturnsContent = lazy(() => import("./components/RefundsReturnsContent"));
 const AuditReportsContent = lazy(() => import("./components/AuditReportsContent"));
 const ExportCenterContent = lazy(() => import("./components/ExportCenterContent"));
+const TechnicianPerformanceContent = lazy(() => import("./components/TechnicianPerformanceContent"));
 
 const money = (value) => `LKR ${Math.round(Number(value || 0)).toLocaleString("en-LK")}`;
 
@@ -107,6 +108,7 @@ export default function ReportsSectionPage({ sectionKey }) {
   const [refundsReturnsSnapshot, setRefundsReturnsSnapshot] = useState(null);
   const [auditSnapshot, setAuditSnapshot] = useState(null);
   const [exportCenterSnapshot, setExportCenterSnapshot] = useState(null);
+  const [technicianPerformanceSnapshot, setTechnicianPerformanceSnapshot] = useState(null);
   const meta = REPORT_SECTION_MAP[sectionKey] || REPORT_SECTION_MAP.overview;
   const {
     salesRows,
@@ -215,6 +217,9 @@ export default function ReportsSectionPage({ sectionKey }) {
   }, []);
   const handleExportCenterPrepared = useCallback((payload) => {
     setExportCenterSnapshot(payload);
+  }, []);
+  const handleTechnicianPerformancePrepared = useCallback((payload) => {
+    setTechnicianPerformanceSnapshot(payload);
   }, []);
 
   let exportColumns = [];
@@ -407,92 +412,14 @@ export default function ReportsSectionPage({ sectionKey }) {
       />
     );
   } else if (sectionKey === "technician-performance") {
-    const groupedRows = Object.values(
-      repairTicketRows.reduce((acc, repair) => {
-        const technician = repair.technician || "Unassigned";
-        if (!acc[technician]) {
-          acc[technician] = {
-            technician,
-            total: 0,
-            completed: 0,
-            open: 0,
-            revenue: 0,
-            turnaroundDays: [],
-          };
-        }
-        acc[technician].total += 1;
-        if (isCompletedRepair(repair.status)) {
-          acc[technician].completed += 1;
-          acc[technician].revenue += Number(repair.invoice_amount ?? repair.estimated_cost ?? 0);
-          if (repair.delivered_at) {
-            acc[technician].turnaroundDays.push(daysBetween(repair.created_at, repair.delivered_at));
-          }
-        } else {
-          acc[technician].open += 1;
-        }
-        return acc;
-      }, {}),
-    )
-      .map((row) => ({
-        ...row,
-        completionRate: row.total > 0 ? (row.completed / row.total) * 100 : 0,
-        avgTurnaround:
-          row.turnaroundDays.length > 0
-            ? row.turnaroundDays.reduce((acc, value) => acc + value, 0) / row.turnaroundDays.length
-            : 0,
-      }))
-      .sort((a, b) => b.revenue - a.revenue);
-
-    exportColumns = [
-      { label: "Technician", value: "technician" },
-      { label: "Total Tickets", value: (row) => row.total },
-      { label: "Completed", value: (row) => row.completed },
-      { label: "Open", value: (row) => row.open },
-      { label: "Completion Rate %", value: (row) => Number(row.completionRate.toFixed(2)) },
-      { label: "Revenue", value: (row) => Number(row.revenue || 0) },
-      { label: "Avg Turnaround Days", value: (row) => Number(row.avgTurnaround.toFixed(2)) },
-    ];
-    exportRows = groupedRows;
+    exportColumns = technicianPerformanceSnapshot?.exportColumns || [];
+    exportRows = technicianPerformanceSnapshot?.exportRows || [];
 
     content = (
-      <>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <KpiCard title="Technicians" value={groupedRows.length.toLocaleString()} icon={<UserCog size={18} />} />
-          <KpiCard
-            title="Completed Repairs"
-            value={groupedRows.reduce((acc, row) => acc + row.completed, 0).toLocaleString()}
-            icon={<ClipboardList size={18} />}
-            tone="green"
-          />
-          <KpiCard
-            title="Open Repairs"
-            value={groupedRows.reduce((acc, row) => acc + row.open, 0).toLocaleString()}
-            icon={<AlertTriangle size={18} />}
-            tone="amber"
-          />
-          <KpiCard
-            title="Revenue Attributed"
-            value={money(groupedRows.reduce((acc, row) => acc + row.revenue, 0))}
-            icon={<TrendingUp size={18} />}
-            tone="indigo"
-          />
-        </div>
-        <SectionCard title="Technician Performance Table">
-          <SimpleTable
-            columns={[
-              { label: "Technician", value: "technician" },
-              { label: "Total", value: (row) => row.total.toLocaleString() },
-              { label: "Completed", value: (row) => row.completed.toLocaleString() },
-              { label: "Open", value: (row) => row.open.toLocaleString() },
-              { label: "Completion", value: (row) => `${row.completionRate.toFixed(1)}%` },
-              { label: "Avg Days", value: (row) => row.avgTurnaround.toFixed(1) },
-              { label: "Revenue", value: (row) => money(row.revenue) },
-            ]}
-            rows={groupedRows}
-            emptyLabel="No technician data found."
-          />
-        </SectionCard>
-      </>
+      <TechnicianPerformanceContent
+        repairTicketRows={repairTicketRows}
+        onPrepared={handleTechnicianPerformancePrepared}
+      />
     );
   } else if (sectionKey === "product-performance") {
     exportColumns = productPerformanceSnapshot?.exportColumns || [

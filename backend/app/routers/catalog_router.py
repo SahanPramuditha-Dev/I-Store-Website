@@ -21,7 +21,11 @@ from app.models import (
     ProductCategory,
     ProductType,
     IMEIMovementLog,
+    ProductBundle,
+    BundleItem,
 )
+from pydantic import BaseModel
+from typing import List, Optional
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -241,6 +245,10 @@ def list_master_products(
                 "barcode": v.barcode,
                 "default_selling_price": float(v.default_selling_price or 0),
                 "default_cost_price": float(v.default_cost_price or 0),
+                "default_wholesale_price": float(v.default_wholesale_price or 0),
+                "min_allowed_price": float(v.min_allowed_price or 0),
+                "shop_warranty_days": int(v.shop_warranty_days or 0),
+                "supplier_warranty_days": int(v.supplier_warranty_days or 0),
                 "attributes": v_attrs,
                 "status": v.status,
                 "stock": int(stock),
@@ -627,5 +635,90 @@ def search_pos_variants(q: str = "", db: Session = Depends(get_db), _=Depends(ge
     return results
 
 
+# --- PRODUCT BUNDLES ---
+class BundleItemIn(BaseModel):
+    inventory_item_id: int  # maps to variant_id in db model
+    quantity: int
+
+class BundleIn(BaseModel):
+    name: str
+    description: Optional[str] = None
+    bundle_price: float
+    items: List[BundleItemIn]
 
 
+@router.get("/bundles", dependencies=[Depends(require_permission("catalog.view"))])
+def list_bundles(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    bundles = db.query(ProductBundle).options(joinedload(ProductBundle.items)).all()
+    results = []
+    for b in bundles:
+        results.append({
+            "id": b.id,
+            "name": b.name,
+            "bundle_sku": b.bundle_sku,
+            "bundle_price": b.bundle_price,
+            "created_at": b.created_at,
+            "items": [{"variant_id": item.variant_id, "quantity": item.quantity} for item in b.items]
+        })
+    return results
+
+
+@router.post("/bundles", dependencies=[Depends(require_permission("catalog.manage"))])
+def create_bundle(payload: BundleIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    import uuid
+    bundle = ProductBundle(
+        name=payload.name,
+        bundle_sku=f"BNDL-{str(uuid.uuid4())[:8].upper()}",
+        bundle_price=payload.bundle_price
+    )
+    db.add(bundle)
+    db.commit()
+    db.refresh(bundle)
+    
+    for item in payload.items:
+        bi = BundleItem(
+            bundle_id=bundle.id,
+            variant_id=item.inventory_item_id, # Mapping inventory_item_id from input to variant_id
+            quantity=item.quantity
+        )
+        db.add(bi)
+    db.commit()
+    db.refresh(bundle)
+    return {"id": bundle.id, "name": bundle.name, "bundle_price": bundle.bundle_price, "bundle_sku": bundle.bundle_sku}
+
+
+@router.get("/bundles/{bundle_id}", dependencies=[Depends(require_permission("catalog.view"))])
+def get_bundle(bundle_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    bundle = db.query(ProductBundle).options(joinedload(ProductBundle.items)).filter(ProductBundle.id == bundle_id).first()
+    if not bundle:
+        raise HTTPException(status_code=404, detail="Bundle not found")
+    return {
+        "id": bundle.id,
+        "name": bundle.name,
+        "bundle_sku": bundle.bundle_sku,
+        "bundle_price": bundle.bundle_price,
+        "created_at": bundle.created_at,
+        "items": [{"variant_id": item.variant_id, "quantity": item.quantity} for item in bundle.items]
+    }
+
+
+@router.put("/bundles/{bundle_id}", dependencies=[Depends(require_permission("catalog.manage"))])
+def update_bundle(bundle_id: int, payload: BundleIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    bundle = db.query(ProductBundle).filter(ProductBundle.id == bundle_id).first()
+    if not bundle:
+        raise HTTPException(status_code=404, detail="Bundle not found")
+    
+    bundle.name = payload.name
+    bundle.bundle_price = payload.bundle_price
+    db.commit()
+    return {"status": "success", "id": bundle.id}
+
+
+@router.delete("/bundles/{bundle_id}", dependencies=[Depends(require_permission("catalog.manage"))])
+def delete_bundle(bundle_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    bundle = db.query(ProductBundle).filter(ProductBundle.id == bundle_id).first()
+    if not bundle:
+        raise HTTPException(status_code=404, detail="Bundle not found")
+    db.delete(bundle)
+    db.commit()
+    return {"status": "success"}

@@ -57,7 +57,7 @@ from app.services.accounting_ledger_service import record_ledger_entry
 from app.services.approval_service import consume_approval_request
 from app.services.domain_audit_service import assert_accounting_period_open, record_domain_audit
 from app.services.settings_policy_service import enforce_stock_adjustment_policy, stock_adjustment_approval_required
-from app.utils.time import utcnow
+from app.utils.time import utcnow, format_iso_utc
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -67,8 +67,10 @@ if os.getenv("VERCEL"):
 
 try:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-except Exception:
-    pass
+except Exception as e:
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Could not create upload directory: {e}")
 
 
 def _normalize_barcode(value: str | None) -> str:
@@ -86,7 +88,7 @@ def _validated_barcode(value: str | None, fallback_seed: str | None = None) -> s
 
 
 def _iso(value):
-    return value.isoformat() if value else None
+    return format_iso_utc(value)
 
 
 def _grn_line_received_qty(line: GoodsReceivedNoteItem) -> int:
@@ -172,8 +174,10 @@ def list_inventory(
     if supplier_id is not None and not hasattr(supplier_id, 'default'):
         try:
             query = query.filter(InventoryItem.supplier_id == int(supplier_id))
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Supplier ID parse ignored: {e}")
     total = query.count()
     response.headers["X-Total-Count"] = str(total)
     resolved_offset = int(offset) if offset is not None else (page - 1) * page_size
@@ -699,13 +703,17 @@ def movements(
     if date_from:
         try:
             query = query.filter(StockMovement.created_at >= datetime.fromisoformat(str(date_from)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Date parse ignored: {e}")
     if date_to:
         try:
             query = query.filter(StockMovement.created_at <= datetime.fromisoformat(str(date_to)))
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Date parse ignored: {e}")
     total = query.count()
     response.headers["X-Total-Count"] = str(total)
     resolved_offset = int(offset) if offset is not None else (page - 1) * page_size
@@ -1253,16 +1261,10 @@ def lookup_imei_intelligence(imei_text: str, db: Session = Depends(get_db), _=De
         raise HTTPException(status_code=400, detail="IMEI text is required")
 
     from app.models import InventorySerial, RepairTicket, WarrantyRecord, Customer, Sale
-    from app.models.inventory import StolenDeviceBlacklist
     from datetime import datetime, date
 
     like_imei = f"%{clean_imei}%"
-
-    blacklist_rec = (
-        db.query(StolenDeviceBlacklist)
-        .filter((StolenDeviceBlacklist.imei == clean_imei) | (StolenDeviceBlacklist.imei.ilike(like_imei)))
-        .first()
-    )
+    blacklist_rec = None
 
     serial_rec = (
         db.query(InventorySerial)
@@ -2375,3 +2377,32 @@ def post_stock_take(session_id: int, db: Session = Depends(get_db), current_user
         "posted_adjustments": int(posted_adjustments),
         "closed_at": _iso(session.closed_at),
     }
+
+
+@router.get('/serials/{serial_id}/movements', dependencies=[Depends(require_permission("inventory.view"))])
+def get_imei_movements(
+    serial_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user)
+):
+    from app.models import IMEIMovementLog, User
+    movements = (
+        db.query(IMEIMovementLog, User)
+        .outerjoin(User, IMEIMovementLog.performed_by == User.id)
+        .filter(IMEIMovementLog.inventory_serial_id == serial_id)
+        .order_by(IMEIMovementLog.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    
+    result = []
+    for mov, user in movements:
+        result.append({
+            "id": mov.id,
+            "event_type": mov.event_type,
+            "reference_id": mov.reference_id,
+            "notes": mov.notes,
+            "created_at": _iso(mov.created_at),
+            "performed_by_name": user.full_name if user else "System"
+        })
+    return result

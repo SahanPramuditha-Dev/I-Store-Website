@@ -25,9 +25,11 @@ from app.models import (
 from app.services.activity_service import log_activity
 from app.services.approval_service import consume_approval_request
 from app.services.domain_audit_service import assert_accounting_period_open, record_domain_audit
-from app.services.print_rendering_service import get_store_profile_print_data, render_invoice_html_from_store
-from app.services.settings_policy_service import enforce_void_refund_policy, void_refund_approval_required
-from app.utils.time import utcnow
+from app.services.settings_policy_service import (
+    enforce_void_refund_policy,
+    is_manager_or_higher,
+    void_refund_approval_required,
+)
 
 router = APIRouter(tags=["invoices"])
 
@@ -80,7 +82,7 @@ def _store_profile_payload(db: Session) -> dict:
     address = (store or {}).get("address", {})
     branding = (store or {}).get("logo_branding", {})
     return {
-        "software_name": "I Store",
+        "software_name": "E Store",
         "shop_name": business.get("shop_name") or print_profile.get("store_name") or "I Point",
         "shop_logo": branding.get("shop_logo") or print_profile.get("logo_data") or "",
         "address": address.get("address_line_1") or print_profile.get("store_address") or "",
@@ -316,7 +318,7 @@ def void_invoice(
     if len(reason) < 5:
         raise HTTPException(status_code=400, detail="Void reason must be at least 5 characters")
     void_amount = abs(_safe_float(row.total))
-    if void_refund_approval_required(db, action="void", amount=void_amount):
+    if not is_manager_or_higher(current_user) and void_refund_approval_required(db, action="void", amount=void_amount):
         consume_approval_request(
             db,
             request_code=str((payload or {}).get("approval_request_code") or ""),
@@ -449,3 +451,50 @@ def print_invoice_thermal(
     invoice = _invoice_detail(db, row)
     store = get_store_profile_print_data(db)
     return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=True, preview=False))
+
+
+@router.get("/invoices/public/{invoice_no}")
+def get_public_invoice(invoice_no: str, token: str = Query(""), db: Session = Depends(get_db)):
+    from app.services.supabase_pos_sync import generate_invoice_token
+    clean_no = invoice_no.strip().upper()
+    expected_token = generate_invoice_token(clean_no)
+    if token != expected_token:
+        raise HTTPException(status_code=403, detail="Invalid security token")
+
+    sale = db.query(Sale).filter(Sale.invoice_no == clean_no, Sale.is_deleted == False).first()
+    if not sale and clean_no.startswith("INV-"):
+        try:
+            num = int(clean_no.replace("INV-", "").lstrip("0") or "0")
+            sale = db.query(Sale).filter(Sale.id == num, Sale.is_deleted == False).first()
+        except Exception:
+            pass
+    if not sale:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    customer = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
+    items = db.query(SaleItem).filter(SaleItem.sale_id == sale.id).all()
+
+    return {
+        "id": _invoice_label(sale),
+        "token": expected_token,
+        "created_at": sale.created_at.isoformat() if sale.created_at else None,
+        "customer_name": customer.name if customer else "Walk-in Customer",
+        "customer_phone": customer.phone if customer else "",
+        "customer_email": customer.email if customer else "",
+        "subtotal": float(sale.subtotal or sale.total_amount or 0),
+        "discount": float(sale.discount_amount or 0),
+        "tax": float(sale.tax_amount or 0),
+        "total": float(sale.total_amount or 0),
+        "payment_method": str(sale.payment_method or "Cash").capitalize(),
+        "status": "Paid" if (sale.paid or (sale.balance_due or 0) <= 0) else "Pending",
+        "invoice_items": [
+            {
+                "item_name": item.item_name or "Product",
+                "quantity": item.quantity or 1,
+                "unit_price": float(item.unit_price or 0),
+                "warranty_months": round((item.warranty_days or 0) / 30) if hasattr(item, "warranty_days") else 0,
+                "imei_or_serial": getattr(item, "serial_number", None),
+            }
+            for item in items
+        ]
+    }

@@ -23,7 +23,7 @@ from app.models import (
     User,
 )
 from app.services.security_service import canonical_role_name, get_request_device_info, get_request_ip, record_security_audit
-from app.utils.time import utcnow
+from app.utils.time import utcnow, format_iso_utc
 
 router = APIRouter(prefix="/audit-trail", tags=["audit-trail"])
 
@@ -93,7 +93,7 @@ def _safe_json(value: str | None) -> Any:
 
 
 def _to_iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value else None
+    return format_iso_utc(value)
 
 
 def _format_invoice_id(sale_id: int | None) -> str | None:

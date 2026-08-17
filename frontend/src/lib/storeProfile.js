@@ -1,4 +1,4 @@
-export const SOFTWARE_NAME = "I Store";
+export const SOFTWARE_NAME = "E Store";
 export const DEFAULT_SHOP_NAME = "I Point";
 
 export function normalizeStoreProfile(profile = {}, printProfile = {}) {

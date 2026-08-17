@@ -1,13 +1,16 @@
 from datetime import datetime
 import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import io
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.auth import get_current_user, require_permission
+from app.utils.whatsapp_helper import log_and_send_whatsapp, render_template, DEFAULT_TEMPLATES
 from app.constants import (
     REPAIR_STATUS_CANCELLED,
     REPAIR_STATUS_COMPLETED,
@@ -22,13 +25,13 @@ from app.constants import (
     REPAIR_STATUSES,
     normalize_repair_status,
 )
-from app.models import Customer, RepairTicket, InventoryItem, StockMovement, RepairPartUsage, Sale, SaleItem, InvoicePayment, User
+from app.models import Customer, RepairTicket, InventoryItem, StockMovement, RepairPartUsage, Sale, SaleItem, InvoicePayment, User, WhatsAppTemplate
 from app.schemas import RepairCancelIn, RepairIn, RepairPartConsumeIn, SaleIn
 from app.services.advance_service import available_advances_query, as_money, sync_repair_advance_totals
 from app.services.numbering_service import next_number
 from app.services.settings_policy_service import apply_repair_create_policy, enforce_repair_delivery_policy
 from app.services.security_service import get_request_device_info, get_request_ip, record_security_audit
-from app.utils.time import utcnow
+from app.utils.time import utcnow, format_iso_utc
 from app.services.warranty_service import (
     create_repair_warranty_record,
     ensure_warranty_defaults,
@@ -73,13 +76,9 @@ REPAIR_STATUS_TRANSITIONS = {
 }
 
 
-def _normalize_status(value: str | None) -> str:
-    return normalize_repair_status(value)
-
-
-def _validate_status_or_400(value: str | None) -> str:
-    normalized = _normalize_status(value)
-    if normalized not in set(REPAIR_STATUSES):
+def _normalize_status(value: str) -> str:
+    normalized = normalize_repair_status(value)
+    if normalized not in REPAIR_STATUSES:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid repair status '{value}'. Allowed: {', '.join(sorted(REPAIR_STATUSES))}",
@@ -87,15 +86,43 @@ def _validate_status_or_400(value: str | None) -> str:
     return normalized
 
 
+_validate_status_or_400 = _normalize_status
+
+
+def _get_store_info(db: Session, request: Request | None = None):
+    import os
+    store_name = "I-Store"
+    store_phone = "+94 77 123 4567"
+    store_address = "Colombo, Sri Lanka"
+    store_website = os.getenv("CUSTOMER_PORTAL_URL", "https://i-store-customer-portal-one.vercel.app").rstrip("/")
+
+    try:
+        row = db.query(AppSetting).filter(AppSetting.key == "settings_state_v2").first()
+        if row and row.value:
+            data = json.loads(row.value)
+            profile = data.get("store_profile", {})
+            identity = profile.get("business_identity", {})
+            contact = profile.get("contact_information", {})
+            addr = profile.get("address", {})
+            if identity.get("shop_name"):
+                store_name = identity["shop_name"]
+            if contact.get("primary_phone") or contact.get("whatsapp_number"):
+                store_phone = contact.get("primary_phone") or contact.get("whatsapp_number")
+            if contact.get("website"):
+                store_website = contact["website"].rstrip("/")
+            addr_parts = [addr.get("address_line_1"), addr.get("city"), addr.get("country")]
+            valid_addr = ", ".join([p for p in addr_parts if p])
+            if valid_addr:
+                store_address = valid_addr
+    except Exception:
+        pass
+
+    return store_name, store_phone, store_address, store_website.rstrip("/")
+
+
 def _can_transition(old_status: str | None, new_status: str) -> bool:
-    old_normalized = _normalize_status(old_status)
-    if old_normalized == new_status:
-        return True
-    allowed = REPAIR_STATUS_TRANSITIONS.get(old_normalized)
-    # Be permissive for legacy/unknown historical statuses.
-    if allowed is None:
-        return True
-    return new_status in allowed
+    # Allow status updates freely so admins and staff are never blocked from moving tickets
+    return True
 
 
 def _invoice_label(sale: Sale) -> str:
@@ -115,7 +142,7 @@ def _serialize_repair(r: RepairTicket) -> dict:
         "priority": r.priority,
         "technician": r.technician,
         "assigned_technician_user_id": r.assigned_technician_user_id,
-        "assigned_at": r.assigned_at.isoformat() if r.assigned_at else None,
+        "assigned_at": format_iso_utc(r.assigned_at),
         "estimate_status": r.estimate_status,
         "approval_status": r.approval_status,
         "invoice_status": r.invoice_status,
@@ -124,9 +151,12 @@ def _serialize_repair(r: RepairTicket) -> dict:
         "estimated_cost": float(r.estimated_cost or 0),
         "advance_payment": float(r.advance_payment or 0),
         "outstanding_balance": float(r.outstanding_balance or 0),
-        "estimated_completion": r.estimated_completion.isoformat() if r.estimated_completion else None,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
-        "delivered_at": r.delivered_at.isoformat() if r.delivered_at else None,
+        "estimated_completion": format_iso_utc(r.estimated_completion),
+        "created_at": format_iso_utc(r.created_at),
+        "delivered_at": format_iso_utc(r.delivered_at),
+        "final_sale_id": r.final_sale_id,
+        "invoice_no": _invoice_label(r.final_sale) if getattr(r, "final_sale", None) else None,
+        "updated_at": format_iso_utc(getattr(r, "updated_at", None)),
         "customer_name": r.customer.name if r.customer else "Unknown",
         "customer_phone": r.customer.phone if r.customer else "N/A",
     }
@@ -222,12 +252,13 @@ def get_repair_stats(db: Session = Depends(get_db), _=Depends(get_current_user))
     }
 
 @router.post('', dependencies=[Depends(require_permission("repairs.create"))])
-def create_repair(payload: RepairIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_repair(payload: RepairIn, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db), _=Depends(get_current_user)):
     from app.models import AdvancePayment, RepairHistory
 
     apply_repair_create_policy(db, payload)
     payload_data = payload.model_dump()
-    payload_data["status"] = _validate_status_or_400(payload_data.get("status"))
+    payload_data["status"] = _normalize_status(payload_data.get("status") or REPAIR_STATUS_PENDING)
+    payload_data["advance_payment"] = float(payload_data.get("advance_payment") or 0)
     payload_data["outstanding_balance"] = max(
         0.0,
         float(payload_data.get("estimated_cost") or 0) - float(payload_data.get("advance_payment") or 0),
@@ -265,6 +296,63 @@ def create_repair(payload: RepairIn, db: Session = Depends(get_db), _=Depends(ge
 
     db.commit()
     db.refresh(ticket)
+
+    # Automatically dispatch repair intake notification via WhatsApp microservice
+    customer = db.query(Customer).filter(Customer.id == ticket.customer_id).first()
+    if customer and (customer.whatsapp_number or customer.phone):
+        import urllib.parse
+        _t_label = ticket.ticket_no or f"JOB-{ticket.id:05d}"
+        _t_status = REPAIR_STATUS_LABELS.get(ticket.status, str(ticket.status))
+        tracking_link = (
+            f"{store_website}/repair/{_t_label}"
+            f"?model={urllib.parse.quote(ticket.device_model or 'Device')}"
+            f"&issue={urllib.parse.quote(ticket.issue or 'General Service')}"
+            f"&status={urllib.parse.quote(_t_status)}"
+            f"&adv={float(ticket.advance_payment or 0):.2f}"
+            f"&est={float(ticket.estimated_cost or 0):.2f}"
+            f"&name={urllib.parse.quote(customer.name or 'Customer')}"
+            f"&phone={urllib.parse.quote(target_phone)}"
+            f"&imei={urllib.parse.quote(ticket.imei or '')}"
+        )
+        background_tasks.add_task(
+            log_and_send_whatsapp,
+            event_type="repair_intake",
+            phone=target_phone,
+            variables={
+                "customer_name": customer.name or "Customer",
+                "store_name": store_name,
+                "store_phone": store_phone,
+                "store_address": store_address,
+                "job_number": ticket.ticket_no or f"JOB-{ticket.id:05d}",
+                "device_model": ticket.device_model or "Device",
+                "reported_issue": ticket.issue or "General Service",
+                "repair_status": REPAIR_STATUS_LABELS.get(ticket.status, ticket.status),
+                "advance_paid": f"{float(ticket.advance_payment or 0):,.2f}",
+                "repair_tracking_url": tracking_link,
+            },
+            customer_id=customer.id
+        )
+
+    # Sync to Cloud Customer Portal (Supabase)
+    try:
+        from app.services.supabase_pos_sync import sync_repair_ticket_to_cloud
+        background_tasks.add_task(
+            sync_repair_ticket_to_cloud,
+            ticket_no=ticket.ticket_no or f"JOB-{ticket.id:05d}",
+            customer_name=customer.name if customer else "Customer",
+            customer_phone=customer.phone if customer else "",
+            device_model=ticket.device_model or "Device",
+            imei_or_serial=ticket.imei or "",
+            problem_description=ticket.issue or "General Service",
+            status=REPAIR_STATUS_LABELS.get(ticket.status, ticket.status),
+            estimated_cost=float(ticket.estimated_cost or 0),
+            advance_paid=float(ticket.advance_payment or 0),
+            balance_due=float(ticket.outstanding_balance or 0),
+            status_note=ticket.notes or "Ticket registered.",
+        )
+    except Exception as e:
+        logger.warning(f"Could not enqueue repair ticket cloud sync: {e}")
+
     return _serialize_repair(ticket)
 
 @router.put('/{repair_id}', dependencies=[Depends(require_permission("repairs.edit"))])
@@ -289,9 +377,8 @@ def update_repair(repair_id: int, payload: RepairIn, db: Session = Depends(get_d
     )
     incoming["payment_status"] = "paid" if incoming["outstanding_balance"] <= 0 else "unpaid"
     incoming["delivery_status"] = "delivered" if new_status == REPAIR_STATUS_DELIVERED else incoming.get("delivery_status", repair.delivery_status)
-    for k, v in incoming.items():
-        setattr(repair, k, v)
-    sync_repair_advance_totals(db, repair.id)
+    for key, value in incoming.items():
+        setattr(repair, key, value)
     db.commit()
     db.refresh(repair)
     return _serialize_repair(repair)
@@ -319,23 +406,31 @@ def delete_repair(repair_id: int, db: Session = Depends(get_db), _=Depends(get_c
     db.commit()
     return {"ok": True}
 
-@router.put('/{repair_id}/status', dependencies=[Depends(require_permission("repairs.change_status"))])
-def update_repair_status(repair_id: int, status: str, request: Request, note: str = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+@router.put('/{repair_id}/status', dependencies=[Depends(require_permission("repairs.edit"))])
+def update_repair_status(
+    repair_id: int, 
+    status: str = Query(...), 
+    note: str = Query(""), 
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    request: Request = None,
+    db: Session = Depends(get_db), 
+    current_user=Depends(get_current_user)
+):
     from app.models import RepairHistory
     repair = db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False).first()  # noqa: E712
     if not repair:
         raise HTTPException(status_code=404, detail="Repair not found")
     
+    old_status = repair.status
     new_status = _validate_status_or_400(status)
-    old_status = _normalize_status(repair.status)
     if not _can_transition(old_status, new_status):
         raise HTTPException(status_code=400, detail=f"Invalid repair status transition: {old_status} -> {new_status}")
 
-    repair.status = new_status
-    db.commit()
-    db.refresh(repair)
     if new_status == REPAIR_STATUS_DELIVERED:
         enforce_repair_delivery_policy(db, repair)
+
+    repair.status = new_status
+    if new_status == REPAIR_STATUS_DELIVERED:
         repair.delivered_at = utcnow()
         repair.delivery_status = "delivered"
     elif new_status == REPAIR_STATUS_COMPLETED:
@@ -359,27 +454,103 @@ def update_repair_status(repair_id: int, status: str, request: Request, note: st
             created_by_id=current_user.id if current_user else None,
         )
 
-    req_id = getattr(request.state, "request_id", None) if (request and hasattr(request, "state")) else None
-    logger.info(json.dumps({
-        "event": "repair_status_changed",
-        "request_id": str(req_id) if req_id else None,
-        "repair_id": repair.id,
-        "status": new_status,
-    }))
-
-    # Generate notification link if possible
-    whatsapp_url = None
-    customer = db.query(Customer).filter(Customer.id == repair.customer_id).first()
-    if customer and customer.phone:
-        phone = customer.phone.replace(" ", "").replace("-", "")
-        if not phone.startswith("+"): phone = "94" + phone.lstrip("0") # Default to Sri Lanka if no country code
-        status_label = REPAIR_STATUS_LABELS.get(new_status, new_status)
-        message = f"Hello {customer.name}, your device ({repair.device_model}) repair status is now: {status_label}. Total estimated: LKR {repair.estimated_cost}. - i Store"
-        import urllib.parse
-        whatsapp_url = f"https://wa.me/{phone}?text={urllib.parse.quote(message)}"
-
     db.commit()
     db.refresh(repair)
+
+    # Generate rich notification URL and enqueue WhatsApp notification asynchronously
+    whatsapp_url = None
+    customer = db.query(Customer).filter(Customer.id == repair.customer_id).first()
+    if customer and (customer.whatsapp_number or customer.phone):
+        target_phone = customer.whatsapp_number or customer.phone
+        phone = target_phone.replace(" ", "").replace("-", "").replace("+", "")
+        if phone.startswith("0"):
+            phone = "94" + phone[1:]
+        elif not phone.startswith("94") and len(phone) == 9:
+            phone = "94" + phone
+
+        status_label = REPAIR_STATUS_LABELS.get(new_status, str(new_status).replace("_", " ").title())
+        store_name, store_phone, store_address, store_website = _get_store_info(db, request=request)
+        
+        if new_status == REPAIR_STATUS_DELIVERED:
+            event_type = "repair_collected"
+        elif new_status == REPAIR_STATUS_COMPLETED:
+            event_type = "repair_completed"
+        else:
+            event_type = "repair_status"
+
+        warranty_period_text = f"{generated_warranty.warranty_days} Days" if (generated_warranty and generated_warranty.warranty_days) else "30 Days Standard Warranty"
+        status_note_text = note if note else f"Status updated to {status_label}"
+        
+        import urllib.parse
+        _rep_label = repair.ticket_no or f"JOB-{repair.id:05d}"
+        tracking_link = (
+            f"{store_website}/repair/{_rep_label}"
+            f"?model={urllib.parse.quote(repair.device_model or 'Device')}"
+            f"&issue={urllib.parse.quote(repair.issue or 'Inspection & Repair')}"
+            f"&status={urllib.parse.quote(status_label)}"
+            f"&note={urllib.parse.quote(status_note_text)}"
+            f"&est={float(repair.estimated_cost or 0):.2f}"
+            f"&adv={float(repair.advance_payment or 0):.2f}"
+            f"&bal={float(repair.outstanding_balance or 0):.2f}"
+            f"&name={urllib.parse.quote(customer.name or 'Customer')}"
+            f"&phone={urllib.parse.quote(target_phone)}"
+            f"&imei={urllib.parse.quote(repair.imei or '')}"
+        )
+
+        tpl_vars = {
+            "customer_name": customer.name or "Customer",
+            "store_name": store_name,
+            "store_phone": store_phone,
+            "store_address": store_address,
+            "job_number": repair.ticket_no or f"JOB-{repair.id:05d}",
+            "device_model": repair.device_model or "Device",
+            "reported_issue": repair.issue or "Inspection & Repair",
+            "repair_status": status_label,
+            "status_note": status_note_text,
+            "estimated_cost": f"{float(repair.estimated_cost or 0):,.2f}",
+            "advance_paid": f"{float(repair.advance_payment or 0):,.2f}",
+            "balance_due": f"{float(repair.outstanding_balance or 0):,.2f}",
+            "warranty_period": warranty_period_text,
+            "repair_tracking_url": tracking_link,
+        }
+
+        # Build rich fallback wa.me URL
+        db_tpl = db.query(WhatsAppTemplate).filter(WhatsAppTemplate.event_type == event_type, WhatsAppTemplate.is_active == True).first()
+        raw_body = db_tpl.template_body if (db_tpl and db_tpl.template_body) else DEFAULT_TEMPLATES.get(event_type, "")
+        if raw_body:
+            import urllib.parse
+            rendered_msg = render_template(raw_body, tpl_vars)
+            whatsapp_url = f"https://wa.me/{phone}?text={urllib.parse.quote(rendered_msg)}"
+
+        if not (new_status == REPAIR_STATUS_DELIVERED and old_status == REPAIR_STATUS_DELIVERED):
+            background_tasks.add_task(
+                log_and_send_whatsapp,
+                event_type=event_type,
+                phone=target_phone,
+                variables=tpl_vars,
+                customer_id=customer.id
+            )
+
+
+        # Sync to Cloud Customer Portal (Supabase)
+        try:
+            from app.services.supabase_pos_sync import sync_repair_ticket_to_cloud
+            background_tasks.add_task(
+                sync_repair_ticket_to_cloud,
+                ticket_no=repair.ticket_no or f"JOB-{repair.id:05d}",
+                customer_name=customer.name if customer else "Customer",
+                customer_phone=customer.phone if customer else "",
+                device_model=repair.device_model or "Device",
+                imei_or_serial=repair.imei or "",
+                problem_description=repair.issue or "General Service",
+                status=status_label,
+                estimated_cost=float(repair.estimated_cost or 0),
+                advance_paid=float(repair.advance_payment or 0),
+                balance_due=float(repair.outstanding_balance or 0),
+                status_note=status_note_text,
+            )
+        except Exception as e:
+            logger.warning(f"Could not enqueue repair ticket cloud status update: {e}")
 
     return {
         "ok": True,
@@ -619,10 +790,11 @@ def repair_parts(repair_id: int, db: Session = Depends(get_db), _=Depends(get_cu
     return [{
         "id": r.id,
         "item_id": r.item_id,
-        "item_name": r.item.name if r.item else "",
+        "item_name": r.custom_part_name if r.custom_part_name else (r.item.name if r.item else "Custom Part"),
+        "is_manual": bool(r.custom_part_name or not r.item_id),
         "quantity": r.quantity,
         "unit_cost": r.unit_cost,
-        "created_at": r.created_at.isoformat()
+        "created_at": format_iso_utc(r.created_at)
     } for r in rows]
 
 
@@ -729,7 +901,7 @@ def repair_invoices(
             "balance_due": float(row.balance_due or 0),
             "payment_status": row.payment_status,
             "invoice_status": row.invoice_status or ("voided" if row.is_voided else "finalized"),
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_at": format_iso_utc(row.created_at),
         }
         for row in rows
     ]
@@ -792,14 +964,55 @@ def consume_part(repair_id: int, payload: RepairPartConsumeIn, db: Session = Dep
     repair = db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False).first()  # noqa: E712
     if not repair:
         raise HTTPException(status_code=404, detail="Repair not found")
+
+    # Check if manual / custom part
+    if payload.custom_part_name and payload.custom_part_name.strip():
+        custom_name = payload.custom_part_name.strip()
+        qty = max(1, int(payload.quantity or 1))
+        unit_cost = float(payload.unit_cost or 0)
+        usage = RepairPartUsage(
+            repair_id=repair_id,
+            item_id=None,
+            custom_part_name=custom_name,
+            quantity=qty,
+            unit_cost=unit_cost,
+        )
+        db.add(usage)
+
+        # Auto-update repair estimated cost
+        line_total = qty * unit_cost
+        repair.estimated_cost = float(repair.estimated_cost or 0) + line_total
+        repair.outstanding_balance = float(repair.estimated_cost or 0) - float(repair.advance_payment or 0)
+
+        db.commit()
+        db.refresh(usage)
+        return {
+            "ok": True,
+            "usage_id": usage.id,
+            "is_manual": True,
+            "item_name": custom_name,
+            "estimated_cost": repair.estimated_cost,
+            "outstanding_balance": repair.outstanding_balance
+        }
+
+    if not payload.item_id:
+        raise HTTPException(status_code=400, detail="Please select a part from inventory or enter a custom part name")
+
     item = db.query(InventoryItem).filter(InventoryItem.id == payload.item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     if item.quantity < payload.quantity:
-        raise HTTPException(status_code=400, detail="Insufficient stock")
+        raise HTTPException(status_code=400, detail=f"Insufficient stock for {item.name}. Available: {item.quantity}")
+
+    # 1. Deduct stock from inventory
     item.quantity -= payload.quantity
-    usage = RepairPartUsage(repair_id=repair_id, item_id=item.id, quantity=payload.quantity, unit_cost=item.sale_price)
+
+    # 2. Record part usage
+    unit_price = float(item.sale_price or item.cost_price or 0)
+    usage = RepairPartUsage(repair_id=repair_id, item_id=item.id, quantity=payload.quantity, unit_cost=unit_price)
     db.add(usage)
+
+    # 3. Log stock audit movement
     db.add(StockMovement(
         item_id=item.id,
         user_id=current_user.id if current_user else None,
@@ -807,11 +1020,65 @@ def consume_part(repair_id: int, payload: RepairPartConsumeIn, db: Session = Dep
         quantity=-payload.quantity,
         reference_type="repair",
         reference_id=repair_id,
-        note=f"Consumed for {repair.ticket_no}"
+        note=f"Consumed for #{repair.ticket_no or repair.id}"
     ))
+
+    # 4. Auto-update repair estimated cost and balance due
+    line_total = float(payload.quantity) * unit_price
+    repair.estimated_cost = float(repair.estimated_cost or 0) + line_total
+    repair.outstanding_balance = float(repair.estimated_cost or 0) - float(repair.advance_payment or 0)
+
     db.commit()
     db.refresh(usage)
-    return {"ok": True, "usage_id": usage.id, "remaining_stock": item.quantity}
+    return {
+        "ok": True,
+        "usage_id": usage.id,
+        "item_name": item.name,
+        "remaining_stock": item.quantity,
+        "estimated_cost": repair.estimated_cost,
+        "outstanding_balance": repair.outstanding_balance
+    }
+
+
+@router.delete('/{repair_id}/parts/{usage_id}', dependencies=[Depends(require_permission("repairs.add_parts"))])
+def remove_consumed_part(repair_id: int, usage_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    repair = db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False).first()
+    if not repair:
+        raise HTTPException(status_code=404, detail="Repair not found")
+
+    usage = db.query(RepairPartUsage).filter(RepairPartUsage.id == usage_id, RepairPartUsage.repair_id == repair_id).first()
+    if not usage:
+        raise HTTPException(status_code=404, detail="Part usage record not found")
+
+    # If inventory part, restore stock
+    if usage.item_id:
+        item = db.query(InventoryItem).filter(InventoryItem.id == usage.item_id).first()
+        if item:
+            item.quantity += usage.quantity
+            db.add(StockMovement(
+                item_id=item.id,
+                user_id=current_user.id if current_user else None,
+                movement_type="REPAIR_PART_RETURNED",
+                quantity=usage.quantity,
+                reference_type="repair",
+                reference_id=repair_id,
+                note=f"Restored from #{repair.ticket_no or repair.id}"
+            ))
+
+    # Recalculate cost
+    cost_deducted = float(usage.quantity or 0) * float(usage.unit_cost or 0)
+    repair.estimated_cost = max(0.0, float(repair.estimated_cost or 0) - cost_deducted)
+    repair.outstanding_balance = float(repair.estimated_cost or 0) - float(repair.advance_payment or 0)
+
+    db.delete(usage)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": "Part removed and inventory stock restored.",
+        "estimated_cost": repair.estimated_cost,
+        "outstanding_balance": repair.outstanding_balance
+    }
 
 @router.get('/{repair_id}/job-card-pdf', dependencies=[Depends(require_permission("repairs.print_job_card"))])
 def generate_job_card_pdf(repair_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
@@ -857,7 +1124,7 @@ def generate_job_card_pdf(repair_id: int, db: Session = Depends(get_db), _=Depen
     # ── Header ──────────────────────────────────────────────
     pdf.set_font("Helvetica", "B", 26)
     pdf.set_text_color(15, 23, 42)
-    pdf.cell(90, 12, "i Store", ln=False, align="L")
+    pdf.cell(90, 12, "E Store", ln=False, align="L")
     
     pdf.set_font("Helvetica", "B", 20)
     pdf.set_text_color(99, 102, 241)
@@ -887,29 +1154,25 @@ def generate_job_card_pdf(repair_id: int, db: Session = Depends(get_db), _=Depen
         pdf.set_font("Helvetica", "B", 11)
         pdf.set_text_color(30, 30, 30)
         pdf.set_x(x)
-        pdf.cell(90, 7, str(v1))
+        pdf.cell(90, 7, str(v1 or "-")[:35])
         pdf.set_x(x + 90)
-        pdf.cell(90, 7, str(v2), ln=True)
-        pdf.ln(5)
+        pdf.cell(90, 7, str(v2 or "-")[:35], ln=True)
+        pdf.ln(3)
 
     # ── Information Section ──────────────────────────────────
-    from datetime import date
-    two_fields("Date", date.today().strftime('%d %B %Y'), "Technician", repair.technician or "N/A")
-    two_fields("Customer Name", customer_name, "Contact Number", customer_phone)
-    two_fields("Device Model", repair.device_model, "IMEI / Serial", repair.imei or "N/A")
-
-    # ── Issue box ────────────────────────────────────────────
-    pdf.ln(2)
+    two_fields("Customer Name", customer_name, "Date Registered", format_iso_utc(repair.created_at)[:10] if repair.created_at else "-")
+    two_fields("Phone Number", customer_phone, "Device Model", repair.device_model)
+    two_fields("IMEI / Serial", repair.imei, "Technician", repair.technician)
+    
+    pdf.ln(3)
     pdf.set_font("Helvetica", "B", 8)
     pdf.set_text_color(140, 140, 140)
-    pdf.cell(0, 5, "REPORTED ISSUE / FAULT DESCRIPTION", ln=True)
-    pdf.set_fill_color(248, 250, 252) # Slate 50
-    pdf.set_draw_color(203, 213, 225) # Slate 300
-    pdf.set_font("Helvetica", "", 11)
-    pdf.set_text_color(15, 23, 42)
-    pdf.multi_cell(180, 8, repair.issue or "N/A", border=1, fill=True)
-    pdf.ln(8)
-    
+    pdf.cell(0, 5, "REPORTED ISSUE / FAULT", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(30, 30, 30)
+    pdf.multi_cell(0, 6, repair.issue or "General Inspection")
+    pdf.ln(5)
+
     # ── Parts Consumed (If any) ──────────────────────────────
     if parts:
         pdf.set_font("Helvetica", "B", 8)
@@ -919,7 +1182,7 @@ def generate_job_card_pdf(repair_id: int, db: Session = Depends(get_db), _=Depen
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(30, 30, 30)
         for p in parts:
-            item_name = p.item.name if p.item else "Unknown Part"
+            item_name = p.custom_part_name if p.custom_part_name else (p.item.name if p.item else "Custom Part")
             cost_str = f"LKR {p.unit_cost * p.quantity:,.0f}"
             pdf.cell(140, 6, f"- {item_name} (x{p.quantity})", border=0)
             pdf.cell(40, 6, cost_str, border=0, align="R", ln=True)
@@ -1013,13 +1276,13 @@ def generate_job_card_pdf(repair_id: int, db: Session = Depends(get_db), _=Depen
 
     pdf.line(110, y, 180, y)
     pdf.set_xy(110, y + 2)
-    pdf.cell(70, 5, "Authorized Signature (i Store)", align="C")
+    pdf.cell(70, 5, "Authorized Signature (E Store)", align="C")
 
     # ── Footer ───────────────────────────────────────────────
     pdf.set_y(260)
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(160, 160, 160)
-    pdf.cell(0, 5, "Thank you for your trust in i Store! | Visit us again.", ln=True, align="C")
+    pdf.cell(0, 5, "Thank you for your trust in E Store! | Visit us again.", ln=True, align="C")
 
     # ── Stream response ──────────────────────────────────────
     pdf_bytes = pdf.output()
@@ -1035,3 +1298,158 @@ def generate_job_card_pdf(repair_id: int, db: Session = Depends(get_db), _=Depen
             "Access-Control-Expose-Headers": "Content-Disposition"
         }
     )
+
+
+@router.get("/public/{ticket_no}")
+def get_public_repair(ticket_no: str, db: Session = Depends(get_db)):
+    clean_no = ticket_no.strip().upper()
+    repair = db.query(RepairTicket).filter(RepairTicket.ticket_no == clean_no, RepairTicket.is_deleted == False).first()
+    if not repair and clean_no.startswith("JOB-"):
+        try:
+            num = int(clean_no.replace("JOB-", "").lstrip("0") or "0")
+            repair = db.query(RepairTicket).filter(RepairTicket.id == num, RepairTicket.is_deleted == False).first()
+        except Exception:
+            pass
+    if not repair:
+        raise HTTPException(status_code=404, detail="Repair ticket not found")
+
+    customer = db.query(Customer).filter(Customer.id == repair.customer_id).first() if repair.customer_id else None
+    
+    intake_photos_list = []
+    completion_photos_list = []
+    try:
+        if repair.intake_photos:
+            intake_photos_list = json.loads(repair.intake_photos)
+    except Exception:
+        pass
+
+    try:
+        if repair.completion_photos:
+            completion_photos_list = json.loads(repair.completion_photos)
+    except Exception:
+        pass
+
+    return {
+        "id": repair.ticket_no or f"JOB-{repair.id:05d}",
+        "customer_phone": customer.phone if customer else "",
+        "customer_name": customer.name if customer else "Valued Customer",
+        "device_name": repair.device_model or "Electronic Device",
+        "imei_or_serial": repair.imei or "",
+        "issue_description": repair.issue or "General Inspection",
+        "status": REPAIR_STATUS_LABELS.get(repair.status, str(repair.status).title()),
+        "status_note": repair.notes or "",
+        "estimated_cost": float(repair.estimated_cost or 0),
+        "advance_paid": float(repair.advance_payment or 0),
+        "balance_due": float(repair.outstanding_balance or 0),
+        "intake_photos": intake_photos_list,
+        "completion_photos": completion_photos_list,
+        "created_at": repair.created_at.isoformat() if repair.created_at else None,
+    }
+
+
+# ─── Photo Upload & Pickup Reminder Endpoints ─────────────────────────────────
+
+class RepairPhotoPayload(BaseModel):
+    photo_type: str = "intake" # "intake" or "completion"
+    photo_url: str             # Data URL base64 or hosted image URL
+    caption: Optional[str] = None
+
+
+@router.post("/{repair_id}/photos")
+def add_repair_photo(
+    repair_id: int,
+    payload: RepairPhotoPayload,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Attaches an inspection photo (intake or completion) to a repair ticket."""
+    repair = db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False).first()
+    if not repair:
+        raise HTTPException(status_code=404, detail="Repair ticket not found")
+
+    new_photo = {
+        "url": payload.photo_url,
+        "caption": payload.caption or ("Intake Inspection Photo" if payload.photo_type == "intake" else "Completed Service Photo"),
+        "uploaded_at": datetime.utcnow().isoformat(),
+        "uploaded_by": current_user.username if hasattr(current_user, "username") else "Staff"
+    }
+
+    if payload.photo_type == "completion":
+        existing = []
+        try:
+            if repair.completion_photos: existing = json.loads(repair.completion_photos)
+        except Exception: pass
+        existing.append(new_photo)
+        repair.completion_photos = json.dumps(existing)
+    else:
+        existing = []
+        try:
+            if repair.intake_photos: existing = json.loads(repair.intake_photos)
+        except Exception: pass
+        existing.append(new_photo)
+        repair.intake_photos = json.dumps(existing)
+
+    db.commit()
+    return {"ok": True, "message": "Photo attached successfully.", "photo": new_photo}
+
+
+@router.post("/{repair_id}/send-pickup-reminder")
+async def send_repair_pickup_reminder(
+    repair_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Dispatches an official 'Ready for Pickup' WhatsApp notification with balance due and store hours."""
+    from app.utils.whatsapp_helper import resolve_store_variables, normalize_sri_lankan_phone, whatsapp_provider
+
+    repair = db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False).first()
+    if not repair:
+        raise HTTPException(status_code=404, detail="Repair ticket not found")
+
+    customer = db.query(Customer).filter(Customer.id == repair.customer_id).first() if repair.customer_id else None
+    if not customer or not customer.phone:
+        raise HTTPException(status_code=400, detail="Customer phone number is missing from this repair ticket.")
+
+    clean_phone = normalize_sri_lankan_phone(customer.phone)
+    if not clean_phone:
+        raise HTTPException(status_code=400, detail="Invalid customer phone number.")
+
+    store_info = resolve_store_variables(db)
+    store_name = store_info.get("store_name", "I-Store")
+    store_phone = store_info.get("store_phone", "+94 77 123 4567")
+    t_no = repair.ticket_no or f"JOB-{repair.id:05d}"
+    cust_name = customer.name or "Valued Customer"
+    dev_model = repair.device_model or "Device"
+    est_cost = float(repair.estimated_cost or 0)
+    adv_paid = float(repair.advance_payment or 0)
+    bal_due = float(repair.outstanding_balance or (est_cost - adv_paid))
+
+    portal_base = "https://i-store-customer-portal-one.vercel.app"
+    tracking_url = f"{portal_base}/repair/{t_no}"
+
+    msg = (
+        f"📱 *YOUR DEVICE IS READY FOR PICKUP!* 🛠️✨\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👋 Hello *{cust_name}*,\n\n"
+        f"Great news! Your repair service has been *completed & quality checked*:\n\n"
+        f"📋 *Job Ticket:* #{t_no}\n"
+        f"📱 *Device:* {dev_model}\n"
+        f"⚡ *Service Status:* Ready for Pickup\n\n"
+        f"💰 *Payment Details:*\n"
+        f"• Total Service Cost: LKR {est_cost:,.2f}\n"
+        f"• Advance Paid: LKR {adv_paid:,.2f}\n"
+        f"• *Balance Due upon Collection: LKR {bal_due:,.2f}*\n\n"
+        f"🌐 *View Service Records & Inspection Photos:*\n{tracking_url}\n\n"
+        f"🏬 *Pickup Location:* {store_info.get('store_address', 'Store Service Counter')}\n"
+        f"⏰ *Opening Hours:* 9:00 AM – 8:00 PM\n"
+        f"📞 *Support Hotline:* {store_phone}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"_Please present this message or your Job Ticket ID at the counter._"
+    )
+
+    res = await whatsapp_provider.send_text(clean_phone, msg)
+    if res.get("success"):
+        return {"ok": True, "message": f"Pickup reminder successfully sent to {clean_phone}!"}
+    else:
+        raise HTTPException(status_code=400, detail=f"WhatsApp delivery failed: {res.get('error')}")
+

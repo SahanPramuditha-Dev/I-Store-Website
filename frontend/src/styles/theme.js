@@ -1,7 +1,7 @@
 import { tokens } from "./tokens";
 
 export const theme = {
-  name: "I Store Enterprise Dark",
+  name: "E Store Enterprise Dark",
   density: "compact",
   tokens,
 };

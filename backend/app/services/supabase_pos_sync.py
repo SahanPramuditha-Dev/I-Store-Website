@@ -21,6 +21,19 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv(
 CUSTOMER_PORTAL_BASE_URL = os.getenv("CUSTOMER_PORTAL_BASE_URL", "https://i-store-customer-portal-one.vercel.app")
 
 
+def generate_invoice_token(invoice_id: str) -> str:
+    """
+    Generates deterministic 12-char security token for public invoice links.
+    """
+    _s = f"{str(invoice_id).strip().upper()}istore_secure_salt_2026"
+    _hash_val = 0
+    for _char in _s:
+        _hash_val = (_hash_val << 5) - _hash_val + ord(_char)
+        # Force 32-bit integer range
+        _hash_val = (_hash_val + 2**31) % 2**32 - 2**31
+    return f"sec_{abs(_hash_val):08x}"[:12]
+
+
 def sync_checkout_invoice_to_cloud(
     invoice_id: str,
     customer_name: str,
@@ -43,17 +56,8 @@ def sync_checkout_invoice_to_cloud(
     """
     import urllib.request
     import json
-    # Deterministic token based on invoice ID + salt (32-bit signed integer hash)
-    # Matches the Javascript implementation exactly so POS front-end can predict it.
-    _s = f"{invoice_id}istore_secure_salt_2026"
-    _hash_val = 0
-    for _char in _s:
-        _hash_val = (_hash_val << 5) - _hash_val + ord(_char)
-        # Force 32-bit integer range
-        _hash_val = (_hash_val + 2**31) % 2**32 - 2**31
-    token = f"sec_{abs(_hash_val):08x}"[:12]
 
-
+    token = generate_invoice_token(invoice_id)
 
     invoice_payload = {
         "id": invoice_id,
@@ -142,11 +146,14 @@ def sync_repair_ticket_to_cloud(
     device_model: str,
     imei_or_serial: str,
     problem_description: str,
-    status: str = "Received",
+    status: str = "Submitted",
     estimated_cost: float = 0.0,
+    advance_paid: float = 0.0,
+    balance_due: float = 0.0,
+    status_note: str = "",
 ) -> Dict[str, Any]:
     """
-    Syncs a repair ticket to Supabase `repairs` table for Cloud Customer Portal tracking.
+    Syncs a repair ticket to Supabase `repair_tickets` table for Cloud Customer Portal live tracking.
     """
     import urllib.request
     import json
@@ -162,7 +169,11 @@ def sync_repair_ticket_to_cloud(
         "device_name": device_model,
         "imei_or_serial": imei_or_serial or "",
         "issue_description": problem_description,
-        "status": "Submitted" if status in ("Received", "Draft") else status,
+        "status": status,
+        "estimated_cost": estimated_cost,
+        "advance_paid": advance_paid,
+        "balance_due": balance_due,
+        "status_note": status_note,
     }
 
     headers = {

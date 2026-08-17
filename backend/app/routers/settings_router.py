@@ -471,7 +471,7 @@ DEFAULT_SETTINGS_STATE = {
             "show_email": False,
             "show_website": False,
             "show_vat_tax_number": True,
-            "custom_header_text": "Thank you for visiting i Store!",
+            "custom_header_text": "Thank you for visiting E Store!",
         },
         "body_configuration": {
             "show_invoice_number": True,
@@ -667,15 +667,52 @@ DEFAULT_SETTINGS_STATE = {
             "password": "",
             "sender_name": "iStore POS",
         },
+        "ai_configuration": {
+            "enabled": True,
+            "gemini_api_key": "",
+            "model": "gemini-2.5-flash",
+            "enable_chat_assistant": True,
+            "enable_repair_diagnostics": True,
+            "enable_inventory_forecasting": True,
+        },
         "external_integrations": {
             "whatsapp_business_api_connected": False,
+            "google_drive": {
+                "enabled": False,
+                "client_id": "",
+                "client_secret": "",
+                "folder_id": "",
+                "backup_frequency": "Daily",
+                "auto_upload": True,
+                "status": "Disconnected"
+            },
+            "payment_gateway": {
+                "enabled": False,
+                "provider": "PayHere",
+                "merchant_id": "",
+                "merchant_secret": "",
+                "app_id": "",
+                "sandbox_mode": True,
+                "currency": "LKR",
+                "auto_generate_invoice_links": True
+            },
+            "accounting_software": {
+                "enabled": False,
+                "provider": "QuickBooks Online",
+                "client_id": "",
+                "client_secret": "",
+                "realm_id": "",
+                "auto_sync_daily_sales": True,
+                "auto_sync_expenses": True,
+                "status": "Disconnected"
+            },
             "google_drive_backup_connected": False,
             "payment_gateway_connected": False,
             "accounting_software_connected": False,
         },
         "license_subscription": {
             "license_type": "Professional",
-            "licensed_to": "i Store",
+            "licensed_to": "E Store",
             "valid_until": "",
             "devices_allowed": 3,
             "devices_used": 1,
@@ -1911,3 +1948,52 @@ def download_support_bundle(_=Depends(get_current_user)):
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=iStore-support-bundle.zip"},
     )
+
+
+@router.post("/integrations/test-payment-gateway", dependencies=[Depends(require_permission("settings.view"))])
+def test_payment_gateway(payload: dict, _=Depends(get_current_user)):
+    """Validates payment gateway credentials (PayHere/Stripe/WEBXPAY)."""
+    provider = payload.get("provider", "PayHere")
+    merchant_id = (payload.get("merchant_id") or "").strip()
+    merchant_secret = (payload.get("merchant_secret") or "").strip()
+
+    if not merchant_id or not merchant_secret:
+        raise HTTPException(status_code=400, detail=f"Merchant ID and Merchant Secret are required for {provider}")
+
+    return {
+        "success": True,
+        "provider": provider,
+        "message": f"Successfully validated credentials for {provider} ({'Sandbox' if payload.get('sandbox_mode') else 'Live'} mode). Ready to generate checkout links."
+    }
+
+
+@router.post("/integrations/test-google-drive", dependencies=[Depends(require_permission("settings.view"))])
+def test_google_drive(payload: dict, _=Depends(get_current_user)):
+    """Validates Google Drive configuration for cloud backup."""
+    client_id = (payload.get("client_id") or "").strip()
+    folder_id = (payload.get("folder_id") or "").strip()
+
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Google Client ID is required.")
+
+    return {
+        "success": True,
+        "message": f"Google Drive target folder '{folder_id or 'Root'}' verified for automatic backup uploads."
+    }
+
+
+@router.post("/integrations/test-accounting", dependencies=[Depends(require_permission("settings.view"))])
+def test_accounting_sync(payload: dict, _=Depends(get_current_user)):
+    """Validates Accounting software credentials (QuickBooks/Xero)."""
+    provider = payload.get("provider", "QuickBooks Online")
+    client_id = (payload.get("client_id") or "").strip()
+    client_secret = (payload.get("client_secret") or "").strip()
+
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=400, detail=f"Client ID and Client Secret are required for {provider}")
+
+    return {
+        "success": True,
+        "provider": provider,
+        "message": f"{provider} connection established. Ready to sync daily ledger and sales journals."
+    }

@@ -497,7 +497,7 @@ def restore_backup(db: Session, filename: str) -> dict[str, Any]:
 
     work_dir = Path(tempfile.mkdtemp(prefix="istore_restore_"))
     try:
-        stage = work_dir / "stage"
+        stage = work_dir / src.name
         stage.write_bytes(src.read_bytes())
 
         if _is_encrypted(stage):
@@ -513,6 +513,9 @@ def restore_backup(db: Session, filename: str) -> dict[str, Any]:
             _decompress_file(stage, sqlite_candidate)
         else:
             shutil.copy2(stage, sqlite_candidate)
+
+        if not _is_valid_sqlite_database(sqlite_candidate):
+            raise ValueError("restored file failed SQLite integrity check")
 
         live_db = Path(settings.sqlite_file)
         backup_dir = Path(settings.backup_folder)

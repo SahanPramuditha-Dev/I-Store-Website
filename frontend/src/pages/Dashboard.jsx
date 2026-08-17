@@ -1,4 +1,4 @@
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useFetch } from "../hooks/useFetch";
 import { ErrorState, KpiCard, Loading, PageHeader, SectionCard, Table, Badge, Button } from "../components/UI";
 import {
@@ -24,17 +24,151 @@ import {
   Printer,
   MessageCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
+import { useFeedback } from "../components/FeedbackProvider";
 import { useSyncStatus } from "../hooks/useSyncStatus";
-import { X } from "lucide-react";
+import { X, RefreshCw } from "lucide-react";
+import api from "../lib/api";
 
 function ChartEmptyState({ message }) {
   return (
     <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700/70 bg-slate-950/20 px-4 text-center">
       <BarChart3 size={22} className="text-slate-500" aria-hidden="true" />
       <p className="text-xs text-slate-400">{message}</p>
+    </div>
+  );
+}
+
+function formatPercentage(value, total) {
+  const numValue = Number(value || 0);
+  const numTotal = Number(total || 0);
+  if (numTotal <= 0 || numValue <= 0) return "0%";
+  const ratio = (numValue / numTotal) * 100;
+  if (ratio >= 100) return "100%";
+  if (ratio > 99.9 && ratio < 100) return "99.9%";
+  if (ratio > 0 && ratio < 0.1) return "< 0.1%";
+  return ratio % 1 === 0 ? `${ratio.toFixed(0)}%` : `${ratio.toFixed(1)}%`;
+}
+
+function AnalyticsSection() {
+  const [isOpen, setIsOpen] = useState(true);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchAnalytics = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await Promise.all([
+        api.get('/api/analytics/today-sales'),
+        api.get('/api/analytics/low-stock'),
+        api.get('/api/analytics/unpaid-balances'),
+        api.get('/api/analytics/delayed-repairs'),
+        api.get('/api/analytics/peak-hours')
+      ]);
+      setData({
+        sales: results[0].data,
+        lowStock: results[1].data,
+        unpaid: results[2].data,
+        delayedRepairs: results[3].data,
+        peakHours: results[4].data
+      });
+    } catch (err) {
+      setError("Failed to fetch analytics.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, []);
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-slate-900/40 p-4 shadow-sm mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <button 
+          onClick={() => setIsOpen(!isOpen)} 
+          className="flex items-center gap-2 text-sm font-bold text-slate-200 hover:text-white"
+        >
+          <span>📊 Live Business Intelligence</span>
+          <span className="text-xs text-slate-400">({isOpen ? 'Hide' : 'Show'})</span>
+        </button>
+        <Button variant="ghost" size="sm" onClick={fetchAnalytics} disabled={loading}>
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+        </Button>
+      </div>
+
+      {isOpen && (
+        <>
+          {loading ? (
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+               {[1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton-shimmer h-[120px] rounded-xl" />)}
+             </div>
+          ) : error ? (
+            <div className="text-sm text-rose-400 p-2 bg-rose-950/20 rounded-lg">{error}</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="rounded-xl border border-slate-700/50 bg-slate-800/40 p-3">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Today's Sales</p>
+                <div className="flex flex-col gap-1">
+                  <span className="text-lg font-bold text-emerald-400">LKR {(data?.sales?.total_sales || 0).toLocaleString()}</span>
+                  <span className="text-xs text-slate-400">{data?.sales?.total_orders || 0} Orders</span>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-700/50 bg-amber-900/10 p-3">
+                <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider mb-2">Low Stock Alert</p>
+                <div className="flex flex-col gap-2">
+                  <span className="text-lg font-bold text-amber-300">{data?.lowStock?.count || 0} Items</span>
+                  <div className="flex flex-col gap-1 text-[10px] text-slate-400">
+                    {(data?.lowStock?.top_items || []).slice(0,3).map((item, i) => (
+                      <span key={i} className="truncate">• {item.name} ({item.stock})</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-rose-700/50 bg-rose-900/10 p-3">
+                <p className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider mb-2">Unpaid Balances</p>
+                <div className="flex flex-col gap-1">
+                  <span className="text-lg font-bold text-rose-400">LKR {(data?.unpaid?.total_amount || 0).toLocaleString()}</span>
+                  <span className="text-xs text-slate-400">{data?.unpaid?.total_customers || 0} Customers</span>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-sky-700/50 bg-sky-900/10 p-3">
+                <p className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider mb-2">Delayed Repairs</p>
+                <div className="flex flex-col gap-2">
+                  <span className="text-lg font-bold text-sky-300">{data?.delayedRepairs?.count || 0} Overdue</span>
+                  <div className="flex flex-col gap-1 text-[10px] text-slate-400">
+                    {(data?.delayedRepairs?.top_repairs || []).slice(0,3).map((repair, i) => (
+                      <span key={i} className="truncate">• {repair.job_number} ({repair.days_late}d)</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-indigo-700/50 bg-indigo-900/10 p-3">
+                <p className="text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-2">Peak Hours</p>
+                <div className="flex flex-col gap-2">
+                   <div className="flex flex-col gap-1 text-xs text-slate-300">
+                    {(data?.peakHours?.top_hours || []).slice(0,3).map((ph, i) => (
+                      <div key={i} className="flex justify-between">
+                         <span>{ph.hour}</span>
+                         <span className="font-mono text-indigo-300">{ph.count} tx</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -85,9 +219,36 @@ function DashboardSkeleton() {
 }
 
 export default function Dashboard() {
+  const { toast } = useFeedback();
   const navigate = useNavigate();
   const [showLowStockModal, setShowLowStockModal] = useState(false);
+  const [sendingZReport, setSendingZReport] = useState(false);
   const [salesRange, setSalesRange] = useState("12m");
+  const [activePieIndex, setActivePieIndex] = useState(null);
+
+  const handleSendZReport = async () => {
+    setSendingZReport(true);
+    try {
+      const res = await api.post("/api/whatsapp/send-daily-summary");
+      toast({
+        title: "Daily Closing Summary Dispatched",
+        description: res.data?.message || "Z-Report successfully sent to Owner's WhatsApp.",
+        tone: "success",
+        iconType: "whatsapp",
+        timeoutMs: 4500
+      });
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message || "Failed to dispatch Daily Summary.";
+      toast({
+        title: "Dispatch Failed",
+        description: detail,
+        tone: "error",
+        timeoutMs: 5000
+      });
+    } finally {
+      setSendingZReport(false);
+    }
+  };
   const { data, loading, error } = useFetch(`/dashboard?range=${salesRange}`);
   const role = localStorage.getItem("login_role") || "admin";
   const username = localStorage.getItem("username") || "Admin";
@@ -227,10 +388,10 @@ export default function Dashboard() {
     },
   ];
 
-  if (loading) return <DashboardSkeleton />;
-  if (error) return <ErrorState text={error} />;
+  if (loading && !data) return <DashboardSkeleton />;
+  if (error && !data) return <ErrorState text={error} />;
 
-  const piePalette = ["#22d3ee", "#3b82f6", "#8b5cf6", "#f97316", "#10b981", "#eab308"];
+  const piePalette = ["#06b6d4", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#a855f7"];
   const actionCenter = data?.action_center || {};
 
   return (
@@ -242,6 +403,17 @@ export default function Dashboard() {
           subtitle={`Welcome back, ${username}. Here's what's happening today.`}
           action={
             <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSendZReport}
+                disabled={sendingZReport}
+                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                title="Send today's financial and operational Z-Report to Owner's WhatsApp"
+              >
+                <MessageCircle size={14} className="text-emerald-400" />
+                {sendingZReport ? "Sending..." : "Z-Report (WhatsApp)"}
+              </Button>
               <div className="dashboard-date-pill inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-200">
                 <CalendarDays size={13} />
                 {new Date().toLocaleDateString()}
@@ -282,6 +454,8 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
+
+        <AnalyticsSection />
 
         {/* ACTION CENTER */}
         <div className="rounded-xl border border-rose-500/20 bg-slate-900/60 p-3 shadow-lg backdrop-blur-md">
@@ -356,7 +530,7 @@ export default function Dashboard() {
           <SectionCard
             title="Sales Overview"
             subtitle={`${data?.sales_period_label || "Sales trend"} · Click a bar to view reports`}
-            className="dashboard-chart-card xl:col-span-7 h-[250px] md:h-[280px] flex flex-col"
+            className="dashboard-chart-card xl:col-span-7 min-h-[340px] flex flex-col"
             bodyClassName="flex min-h-0 flex-1"
             right={
               <div className="dashboard-range-tabs" aria-label="Sales chart range">
@@ -377,40 +551,52 @@ export default function Dashboard() {
             <div className="mt-4 min-h-0 flex-1">
               {hasRevenueData ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={revData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="rgba(148,163,184,0.14)" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#9fb3d9", fontSize: 11 }} dy={8} interval={salesRange === "30d" ? 4 : 0} />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#9fb3d9", fontSize: 11 }}
-                    width={65}
-                    tickFormatter={(v) => (v >= 1000000 ? `LKR ${(v / 1000000).toFixed(1)}M` : `LKR ${(v / 1000).toFixed(0)}k`)}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "rgba(139,92,246,0.12)" }}
-                    contentStyle={{
-                      backgroundColor: "#0b1228",
-                      borderRadius: "12px",
-                      border: "1px solid rgba(129,140,248,0.36)",
-                      color: "#f8fafc",
-                      fontSize: "12px",
-                    }}
-                    formatter={(val) => [`LKR ${Number(val).toLocaleString()}`, "Revenue"]}
-                  />
-                  <Bar
-                    dataKey="value"
-                    fill="#8b5cf6"
-                    radius={[8, 8, 0, 0]}
-                    barSize={salesRange === "30d" ? 12 : 28}
-                    onClick={() => navigate("/reports")}
-                    style={{ cursor: "pointer" }}
-                  >
-                    {revData.map((entry, index) => (
-                      <Cell key={`rev-${index}`} fill={index === revData.length - 1 ? "#22d3ee" : "#7c3aed"} opacity={index === revData.length - 1 ? 1 : 0.78} />
-                    ))}
-                  </Bar>
-                  </BarChart>
+                  <AreaChart data={revData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="salesRevenueGlow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.45} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
+                      dy={8}
+                      interval={salesRange === "30d" ? 4 : 0}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
+                      width={65}
+                      tickFormatter={(v) => (v >= 1000000 ? `LKR ${(v / 1000000).toFixed(1)}M` : `LKR ${(v / 1000).toFixed(0)}k`)}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: "#06b6d4", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+                      contentStyle={{
+                        backgroundColor: "#0f172a",
+                        borderRadius: "12px",
+                        border: "1px solid rgba(6, 182, 212, 0.4)",
+                        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.7)",
+                        padding: "10px 14px",
+                      }}
+                      itemStyle={{ color: "#ffffff", fontWeight: 700, fontSize: "13px" }}
+                      labelStyle={{ color: "#38bdf8", fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}
+                      formatter={(val) => [`LKR ${Number(val).toLocaleString()}`, "Revenue"]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#06b6d4"
+                      strokeWidth={3}
+                      fillOpacity={1}
+                      fill="url(#salesRevenueGlow)"
+                      activeDot={{ r: 6, fill: "#22d3ee", stroke: "#0f172a", strokeWidth: 3 }}
+                    />
+                  </AreaChart>
                 </ResponsiveContainer>
               ) : (
                 <ChartEmptyState message="Sales will appear here once invoices are completed." />
@@ -420,55 +606,144 @@ export default function Dashboard() {
 
           <SectionCard
             title="Sales Breakdown"
-            subtitle={`${data?.sales_period_label || "Selected period"} · Click a category to open inventory`}
-            className="dashboard-chart-card xl:col-span-5 h-[250px] md:h-[280px] flex flex-col"
-            bodyClassName="flex min-h-0 flex-1 flex-col"
+            subtitle={`${data?.sales_period_label || "Selected period"} · Click category to inspect`}
+            className="dashboard-chart-card xl:col-span-5 min-h-[340px] flex flex-col justify-between"
+            bodyClassName="flex min-h-0 flex-1 flex-col justify-between"
           >
-            <div className="relative mt-2 min-h-[160px] flex-1">
-              {hasSalesBreakdown ? (
-                <>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                  <Pie
-                    data={activeSalesData}
-                    innerRadius="58%"
-                    outerRadius="82%"
-                    paddingAngle={4}
-                    dataKey="value"
-                    stroke="none"
-                    onClick={(entry) => navigate(`/inventory?q=${entry.name}`)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    {activeSalesData.map((entry, index) => (
-                      <Cell key={`mix-${index}`} fill={piePalette[index % piePalette.length]} />
-                    ))}
-                  </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                  <div className="rounded-xl border border-cyan-300/40 bg-slate-950/95 px-3.5 py-2 text-center shadow-xl shadow-cyan-950/50">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-cyan-300">Total sales</p>
-                    <p className="mt-0.5 text-base font-black tabular-nums text-white">LKR {totalSales.toLocaleString()}</p>
+            {hasSalesBreakdown ? (
+              <div className="mt-2 flex flex-col items-center justify-between gap-6 md:flex-row md:items-center">
+                {/* Donut Chart with Interactive Center Total Badge */}
+                <div className="relative flex h-[210px] w-full items-center justify-center md:w-1/2">
+                  <ResponsiveContainer width="100%" height={210}>
+                    <PieChart>
+                      <Pie
+                        data={activeSalesData}
+                        innerRadius="64%"
+                        outerRadius="88%"
+                        paddingAngle={activeSalesData.length > 1 ? 4 : 0}
+                        cornerRadius={activeSalesData.length > 1 ? 6 : 0}
+                        dataKey="value"
+                        stroke="none"
+                        onClick={(entry) => navigate(`/inventory?q=${entry.name}`)}
+                        onMouseEnter={(_, index) => setActivePieIndex(index)}
+                        onMouseLeave={() => setActivePieIndex(null)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {activeSalesData.map((entry, index) => {
+                          const isHovered = activePieIndex === index;
+                          const isOtherHovered = activePieIndex !== null && !isHovered;
+                          return (
+                            <Cell
+                              key={`mix-${index}`}
+                              fill={piePalette[index % piePalette.length]}
+                              opacity={isOtherHovered ? 0.35 : 1}
+                              className="transition-all duration-300"
+                            />
+                          );
+                        })}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+
+                  {/* Clean Dynamic Center Badge */}
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                    <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-slate-950/90 p-2 backdrop-blur-md border border-white/10 shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all duration-200">
+                      {activePieIndex !== null && activeSalesData[activePieIndex] ? (
+                        <>
+                          <span
+                            className="max-w-[78px] truncate text-[9px] font-black uppercase tracking-wider"
+                            style={{ color: piePalette[activePieIndex % piePalette.length] }}
+                          >
+                            {activeSalesData[activePieIndex].name}
+                          </span>
+                          <span className="mt-0.5 text-xs font-black text-white tabular-nums tracking-tight">
+                            LKR {Number(activeSalesData[activePieIndex].value || 0) >= 1000000
+                              ? `${(Number(activeSalesData[activePieIndex].value || 0) / 1000000).toFixed(1)}M`
+                              : Number(activeSalesData[activePieIndex].value || 0).toLocaleString()}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400">
+                            {formatPercentage(activeSalesData[activePieIndex].value, totalSales)} of sales
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[9px] font-black uppercase tracking-wider text-cyan-400">Total Sales</span>
+                          <span className="mt-0.5 text-xs font-black text-white tabular-nums tracking-tight">
+                            LKR {totalSales >= 1000000 ? `${(totalSales / 1000000).toFixed(1)}M` : totalSales.toLocaleString()}
+                          </span>
+                          <span className="text-[9px] font-medium text-slate-500">
+                            {activeSalesData.length} {activeSalesData.length === 1 ? "Category" : "Categories"}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
-                </>
-              ) : (
-                <ChartEmptyState message="Category sales will appear after your first sale." />
-              )}
-            </div>
-            {hasSalesBreakdown && <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-              {activeSalesData.map((s, i) => (
-                <div key={s.name} className="flex items-center justify-between rounded-md bg-slate-950/25 px-2 py-1 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full shadow-sm" style={{ backgroundColor: piePalette[i % piePalette.length] }} />
-                    <span className="font-medium text-slate-300">{s.name}</span>
-                  </div>
-                  <span className="font-bold tabular-nums text-slate-100">
-                    LKR {Number(s.value || 0).toLocaleString()} · {Math.round(((s.value || 0) / totalSales) * 100)}%
-                  </span>
+
+                {/* Interactive Category Legend List */}
+                <div className="w-full space-y-2.5 md:w-1/2">
+                  {activeSalesData.map((s, i) => {
+                    const color = piePalette[i % piePalette.length];
+                    const pctStr = formatPercentage(s.value, totalSales);
+                    const valNum = Number(s.value || 0);
+                    const barWidth = totalSales > 0 ? Math.min(100, Math.max((valNum / totalSales) * 100, valNum > 0 ? 2 : 0)) : 0;
+                    const isActive = activePieIndex === i;
+                    return (
+                      <div
+                        key={s.name}
+                        onClick={() => navigate(`/inventory?q=${s.name}`)}
+                        onMouseEnter={() => setActivePieIndex(i)}
+                        onMouseLeave={() => setActivePieIndex(null)}
+                        className={`group flex flex-col rounded-xl border p-3 transition-all duration-200 cursor-pointer shadow-sm ${
+                          isActive
+                            ? "border-cyan-400/60 bg-slate-800/90 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                            : "border-white/5 bg-slate-900/60 hover:border-white/20 hover:bg-slate-800/60"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className="h-3 w-3 shrink-0 rounded-full transition-transform duration-200 group-hover:scale-110"
+                              style={{
+                                backgroundColor: color,
+                                boxShadow: `0 0 10px ${color}80`,
+                              }}
+                            />
+                            <span className="truncate text-xs font-bold text-slate-200 group-hover:text-white">
+                              {s.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 text-xs">
+                            <span className="font-bold tabular-nums font-mono text-white">
+                              LKR {Number(s.value || 0).toLocaleString()}
+                            </span>
+                            <span
+                              className="rounded-md px-2 py-0.5 text-[10px] font-extrabold shadow-sm"
+                              style={{ backgroundColor: `${color}25`, color: color, border: `1px solid ${color}50` }}
+                            >
+                              {pctStr}
+                            </span>
+                          </div>
+                        </div>
+                        {/* Progress Bar */}
+                        <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-950/80">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${barWidth}%`,
+                              backgroundColor: color,
+                              boxShadow: `0 0 8px ${color}80`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>}
+              </div>
+            ) : (
+              <ChartEmptyState message="Category sales will appear after your first sale." />
+            )}
           </SectionCard>
 
           <SectionCard
@@ -560,6 +835,7 @@ export default function Dashboard() {
                   <tr>
                     <th>Invoice</th>
                     <th>Customer</th>
+                    <th>Time</th>
                     <th>Total</th>
                     <th>Method</th>
                     <th className="text-right">Actions</th>
@@ -568,7 +844,7 @@ export default function Dashboard() {
                 <tbody>
                   {tx.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-sm text-slate-400">No completed sales yet today.</td>
+                      <td colSpan={6} className="py-8 text-center text-sm text-slate-400">No completed sales yet today.</td>
                     </tr>
                   ) : tx.slice(0, 6).map((t, idx) => (
                     <tr key={t.id || idx}>
@@ -576,6 +852,16 @@ export default function Dashboard() {
                       <td className="font-bold text-slate-200">
                         <div>{t.customer || "Walk-in"}</div>
                         {t.customer_phone && <div className="text-[10px] text-slate-400 font-normal">{t.customer_phone}</div>}
+                      </td>
+                      <td className="text-xs text-slate-400 font-mono">
+                        {(() => {
+                          const dateVal = t.date || t.created_at || t.timestamp;
+                          if (!dateVal) return "-";
+                          const d = new Date(dateVal);
+                          return isNaN(d.getTime())
+                            ? "-"
+                            : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                        })()}
                       </td>
                       <td className="font-semibold text-emerald-300">LKR {(t.total || 0).toLocaleString()}</td>
                       <td>
@@ -596,7 +882,9 @@ export default function Dashboard() {
                           <button
                             type="button"
                             onClick={() => {
-                              const printUrl = `/invoice/${t.id}?autoprint=1`;
+                              const printUrl = window.location.protocol === "file:"
+                                ? `/#/invoice/${t.id}?autoprint=1`
+                                : `/invoice/${t.id}?autoprint=1`;
                               const printWindow = window.open(printUrl, "_blank");
                               if (printWindow) printWindow.focus();
                             }}
@@ -608,27 +896,87 @@ export default function Dashboard() {
                           {t.customer_phone && (
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 let phone = (t.customer_phone || "").replace(/[^\d]/g, "");
                                 if (phone.startsWith("0")) phone = "94" + phone.slice(1);
-                                const portalBase = "https://i-store-customer-portal-one.vercel.app";
+                                if (!phone) return;
 
-                                // ── Generate matching token deterministically ───────────────────────────
+                                const portalBase = "https://i-store-customer-portal-one.vercel.app";
                                 const s = `${t.invoice_no}istore_secure_salt_2026`;
                                 let hashVal = 0;
                                 for (let i = 0; i < s.length; i++) {
                                   hashVal = (hashVal << 5) - hashVal + s.charCodeAt(i);
-                                  hashVal |= 0; // force 32-bit signed integer
+                                  hashVal |= 0;
                                 }
                                 const token = `sec_${Math.abs(hashVal).toString(16).padStart(8, '0')}`.slice(0, 12);
-                                // ────────────────────────────────────────────────────────────────────────
-
                                 const billUrl = `${portalBase}/invoice/${t.invoice_no}?token=${token}`;
                                 const msg = `*Receipt from I-Store*\n\nHello ${t.customer || "Customer"},\nThank you for your purchase!\n\n*Invoice No:* ${t.invoice_no}\n*Total:* LKR ${(t.total || 0).toLocaleString()}\n\n*View & Download Digital Bill:* ${billUrl}\n\nHave a great day!`;
-                                window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+
+                                // Use the configured api client — routes to backend (:8000) with auth and error mapping
+                                try {
+                                  const res = await api.post("/api/whatsapp/send-direct", {
+                                    phone,
+                                    message: msg
+                                  });
+                                  if (res.data?.ok) {
+                                    toast({
+                                      title: "WhatsApp Invoice Dispatched",
+                                      description: `Invoice #${t.invoice_no} (LKR ${(t.total || 0).toLocaleString()}) sent to ${t.customer || "Customer"}`,
+                                      details: `Recipient: +${phone} • Message ID: ${res.data?.message_id || "sent"}`,
+                                      tone: "success",
+                                      iconType: "whatsapp",
+                                      timeoutMs: 4500
+                                    });
+                                  } else {
+                                    const detail = res.data?.detail || res.data?.error || "Unknown error";
+                                    toast({
+                                      title: "WhatsApp Dispatch Failed",
+                                      description: detail,
+                                      details: `Recipient: +${phone}`,
+                                      tone: "error",
+                                      iconType: "whatsapp",
+                                      timeoutMs: 4500
+                                    });
+                                  }
+                                } catch (err) {
+                                  const detail = err.response?.data?.detail || err.userMessage || err.message || "Unknown error";
+                                  if (typeof detail === "string" && (detail.toLowerCase().includes("not registered") || detail.includes("422"))) {
+                                    toast({
+                                      title: "Recipient Not On WhatsApp",
+                                      description: `The number +${phone} is not registered with an active WhatsApp account.`,
+                                      details: `Customer: ${t.customer || "Unknown"}`,
+                                      tone: "warning",
+                                      iconType: "whatsapp",
+                                      timeoutMs: 4500
+                                    });
+                                  } else if (typeof detail === "string" && (detail.toLowerCase().includes("not reachable") || detail.toLowerCase().includes("offline"))) {
+                                    toast({
+                                      title: "WhatsApp Microservice Offline",
+                                      description: "The background WhatsApp service is not responding. Please ensure node server.js is running.",
+                                      tone: "error",
+                                      timeoutMs: 5000
+                                    });
+                                  } else if (typeof detail === "string" && (detail.toLowerCase().includes("ack_error") || detail.toLowerCase().includes("rejected"))) {
+                                    toast({
+                                      title: "WhatsApp Message Rejected",
+                                      description: "WhatsApp server rejected the dispatch. The account may be rate-limited from multiple rapid sends.",
+                                      details: "Please wait a few minutes before trying again.",
+                                      tone: "warning",
+                                      iconType: "whatsapp",
+                                      timeoutMs: 5000
+                                    });
+                                  } else {
+                                    toast({
+                                      title: "WhatsApp Send Failed",
+                                      description: String(detail),
+                                      tone: "error",
+                                      timeoutMs: 4500
+                                    });
+                                  }
+                                }
                               }}
-                              className="rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 p-1.5 text-emerald-300 transition"
-                              title="Share on WhatsApp"
+                              className="rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 p-1.5 text-emerald-300 transition cursor-pointer"
+                              title="Send WhatsApp Invoice Directly"
                             >
                               <MessageCircle size={13} />
                             </button>
@@ -740,19 +1088,48 @@ export default function Dashboard() {
           >
             {(!data?.payment_methods || data.payment_methods.length === 0) ? (
               <div className="dashboard-empty-copy">No payment records found.</div>
-            ) : (
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {data.payment_methods.map((pm) => (
-                  <div key={pm.name} className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/40 p-3">
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{pm.name}</span>
-                      <p className="text-xs text-slate-400 mt-0.5">{pm.count} transactions</p>
-                    </div>
-                    <p className="text-sm font-black text-cyan-300">LKR {pm.amount.toLocaleString()}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+            ) : (() => {
+              const totalPmAmount = data.payment_methods.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+              const pmPalette = { Cash: "#10b981", Card: "#3b82f6", Transfer: "#8b5cf6", Credit: "#f59e0b" };
+              return (
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {data.payment_methods.map((pm) => {
+                    const pctStr = formatPercentage(pm.amount, totalPmAmount);
+                    const channelColor = pmPalette[pm.name] || "#06b6d4";
+                    return (
+                      <div key={pm.name} className="flex flex-col justify-between rounded-xl border border-white/5 bg-slate-900/60 p-3 transition-all hover:border-cyan-500/30">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">{pm.name}</span>
+                            <p className="text-[11px] text-slate-400 mt-0.5">{pm.count} transactions</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-black text-white tabular-nums">LKR {pm.amount.toLocaleString()}</p>
+                            <span
+                              className="mt-0.5 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-extrabold"
+                              style={{ backgroundColor: `${channelColor}25`, color: channelColor, border: `1px solid ${channelColor}40` }}
+                            >
+                              {pctStr} share
+                            </span>
+                          </div>
+                        </div>
+                        {/* Progress Bar */}
+                        <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-950/80">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: pctStr,
+                              backgroundColor: channelColor,
+                              boxShadow: `0 0 8px ${channelColor}80`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </SectionCard>
 
           {/* Dead Stock Intelligence Card */}

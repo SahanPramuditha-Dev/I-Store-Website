@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_permission
 from app.database import get_db
-from app.models import DamagedStockRecord, ExchangeRecord, RefundPayment, StoreCredit
+from app.models import DamagedStockRecord, ExchangeRecord, RefundPayment, StoreCredit, Return as ReturnCase, Sale, Customer
+from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.services.print_rendering_service import get_store_profile_print_data, render_return_receipt_html
 from app.schemas import (
     DamagedStockActionIn,
@@ -616,6 +617,7 @@ def approve_refund(
 def mark_refund_paid(
     refund_id: int,
     payload: RefundMarkPaidIn,
+    background_tasks: BackgroundTasks,
     request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -633,6 +635,30 @@ def mark_refund_paid(
     )
     db.commit()
     db.refresh(row)
+    
+    # WhatsApp Notification Trigger
+    customer = db.query(Customer).filter(Customer.id == row.customer_id).first()
+    if customer and (customer.whatsapp_number or customer.phone):
+        return_case = db.query(ReturnCase).filter(ReturnCase.id == row.return_id).first()
+        invoice_label = "N/A"
+        if return_case and return_case.original_invoice_id:
+            sale = db.query(Sale).filter(Sale.id == return_case.original_invoice_id).first()
+            if sale:
+                invoice_label = str(sale.invoice_no or f"INV-{sale.id:05d}")
+        
+        background_tasks.add_task(
+            log_and_send_whatsapp,
+            "refund_processed",
+            str(customer.whatsapp_number or customer.phone),
+            {
+                "customer_name": customer.name or "Customer",
+                "invoice_number": invoice_label,
+                "refund_amount": f"{row.refund_amount:.2f}",
+                "refund_method": row.refund_method.replace("_", " ").title()
+            },
+            customer_id=customer.id
+        )
+
     return _serialize_refund(row)
 
 

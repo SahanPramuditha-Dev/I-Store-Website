@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AppSetting
 
-SOFTWARE_NAME = "I Store"
+SOFTWARE_NAME = "E Store"
 DEFAULT_SHOP_NAME = "I Point"
 
 CUSTOMER_PORTAL_BASE_URL = "https://i-store-customer-portal-one.vercel.app"

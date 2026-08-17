@@ -1,81 +1,235 @@
-# I-Store Website (Inventory & POS System)
+# iStore ERP — Retail POS, Inventory & Repair Management System
 
-A web-based POS, inventory, and repair management application. This project has been optimized to deploy the frontend and backend separately on Vercel with a Postgres database on Neon.tech.
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18.x-61DAFB.svg?logo=react&logoColor=black)](https://reactjs.org)
+[![Vite](https://img.shields.io/badge/Vite-5.x-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev)
+[![Electron](https://img.shields.io/badge/Electron-Desktop-47848F.svg?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Database](https://img.shields.io/badge/Database-SQLite%20%7C%20PostgreSQL-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Screenshots
-
-The project includes a curated gallery of screenshots for the main workflows and administrative screens. A selection of featured images is shown below, and the full gallery is available in the `Screenshots` folder.
-
-### Featured workflow screenshots
-
-![Software update](Screenshots/software-update.png)
-![Secure cloud backups](Screenshots/secure-cloud-backups.png)
-![Role-based access control](Screenshots/role-based-access-control.png)
-![Repair tracking](Screenshots/repair-tracking.png)
-
-### Full screenshot gallery
-
-#### Feature workflows
-
-- [Dashboard overview](Screenshots/dashboard-overview.png)
-- [POS billing](Screenshots/pos-billing.png)
-- [Repair management](Screenshots/repair-management.png)
-- [Inventory management](Screenshots/inventory-management.png)
-- [Returns and refunds](Screenshots/returns-and-refunds.png)
-- [Warranty dashboard](Screenshots/warranty-dashboard.png)
-- [Reservations and orders](Screenshots/reservations-orders.png)
-- [Reports and analytics](Screenshots/reports-analytics.png)
-- [Print center](Screenshots/print-center.png)
-
-#### Administrative flows
-
-- [Software update](Screenshots/software-update.png)
-- [Secure cloud backups](Screenshots/secure-cloud-backups.png)
-- [Role-based access control](Screenshots/role-based-access-control.png)
-- [Permissions management](Screenshots/permissions-management.png)
-- [Audit trail](Screenshots/audit-trail.png)
-- [Notifications center](Screenshots/notifications-center.png)
-- [Backup center](Screenshots/backup-center.png)
-- [Settings system configuration](Screenshots/settings-system-configuration.png)
-
-## Architecture & Deployment Strategy
-
-*   **Frontend**: Built with React / Vite. Hosted on Vercel at `https://i-store-website.vercel.app`.
-*   **Backend**: Built with FastAPI. Hosted on Vercel Serverless at `https://i-store-website-by6z.vercel.app`.
-*   **Database**: PostgreSQL hosted on Neon.tech.
+A production-grade, all-in-one ERP system tailored for electronics stores, mobile repair shops, and modern retail businesses. Built with high performance in mind, **iStore ERP** runs seamlessly as a standalone **Windows desktop app (Electron)**, a **local networked POS**, or a **cloud-hosted web platform (Vercel + Neon PostgreSQL)**.
 
 ---
 
-## Deployment Configuration & Environment Setup
+## 📸 Visual Showcase
 
-### 1. Backend Environment Variables (Vercel)
+### Featured Workflows
 
-Add the following environment variables to your Vercel backend project (`i-store-website-by6z`):
+| POS & Quick Billing | Repair & Ticket Workflow |
+| :---: | :---: |
+| ![POS Billing](Screenshots/pos-billing.png) | ![Repair Management](Screenshots/repair-management.png) |
 
-*   **`SQLITE_URL`**: Your Neon PostgreSQL database connection string (e.g. `postgresql://neondb_owner:...@ep-...aws.neon.tech/neondb?sslmode=require`).
-*   **`CORS_ORIGINS`**: The origin allowed to connect to the backend (e.g. `https://i-store-website.vercel.app` - without a trailing slash).
+| Dashboard & Real-Time Analytics | Inventory & Low-Stock Alerts |
+| :---: | :---: |
+| ![Dashboard Overview](Screenshots/dashboard-overview.png) | ![Inventory Management](Screenshots/inventory-management.png) |
 
-### 2. Frontend Configuration
+<details>
+<summary><b>🔍 Expand Full Screenshot Gallery</b></summary>
 
-*   The frontend uses `vercel.json` SPA rewrites to ensure React Router client-side routing works without throwing 404 errors on refresh.
-*   Ensure that the frontend API target URL points to the Vercel backend deployment domain.
+#### Core Features
+- [📊 Dashboard Overview](Screenshots/dashboard-overview.png)
+- [💳 POS Billing & Split Checkout](Screenshots/pos-billing.png)
+- [🛠️ Repair Service Management](Screenshots/repair-management.png)
+- [📱 Repair Public Tracking](Screenshots/repair-tracking.png)
+- [📦 Inventory & Batch Control](Screenshots/inventory-management.png)
+- [🔄 Returns, Exchanges & Refunds](Screenshots/returns-and-refunds.png)
+- [🛡️ Warranty Center](Screenshots/warranty-dashboard.png)
+- [📑 Reservations & Customer Orders](Screenshots/reservations-orders.png)
+- [📈 Reports & Revenue Analytics](Screenshots/reports-analytics.png)
+- [🖨️ Thermal Label & Receipt Print Center](Screenshots/print-center.png)
+
+#### Administration & Security
+- [🔄 Auto Updates & Versioning](Screenshots/software-update.png)
+- [☁️ Cloud & Local Backup Management](Screenshots/secure-cloud-backups.png)
+- [👥 Role-Based Access Control (RBAC)](Screenshots/role-based-access-control.png)
+- [🔐 Fine-Grained Permissions Matrix](Screenshots/permissions-management.png)
+- [📝 Security Audit Trail](Screenshots/audit-trail.png)
+- [🔔 Notification Center](Screenshots/notifications-center.png)
+- [💾 Backup Center & Snapshots](Screenshots/backup-center.png)
+- [⚙️ System Configuration Settings](Screenshots/settings-system-configuration.png)
+
+</details>
 
 ---
 
-## Local Development
+## 🚀 Key Features & Modules
 
-### Backend Setup
+### 1. 💳 Point of Sale (POS)
+- Lightning-fast barcode scanning and product search.
+- Split payments across Cash, Credit/Debit Card, and Bank Transfer.
+- Customer loyalty points, immediate discounts, and quotation conversion.
+- Cashier shift management with cash float tracking, drawer verification, and day-end closing reconciliation.
+
+### 2. 📦 Inventory & Stock Control
+- Real-time stock level tracking with automated low-stock warnings.
+- Batch tracking, IMEI/Serial number logging, and expiry date management.
+- Multi-category organization and stock movement audit logs.
+
+### 3. 🛠️ Repair & Workshop Service Management
+- End-to-end device repair workflow: *Received → Diagnosing → Pending Parts → Completed → Delivered*.
+- Job sheet generation with issue diagnostics, customer signature capture, and technician assignments.
+- Customer self-service public status tracking link with QR code.
+
+### 4. 🤖 WhatsApp Bot & Automated Notifications
+- Embedded Node.js WhatsApp microservice for instant digital receipt delivery.
+- Automated repair status milestone updates sent straight to customer WhatsApp.
+- Scheduled daily sales, cashier performance, and inventory health reports broadcast to store owners.
+
+### 5. 🧠 Google Gemini AI Retail Assistant
+- Natural language store queries (*e.g., "What were our top 3 profit items this week?"*).
+- Intelligent re-ordering and stock replenishment suggestions based on sales velocity.
+
+### 6. 🖨️ Thermal Printing & Barcode Generator
+- Formatted thermal receipts (80mm & 58mm POS standards).
+- Custom thermal barcode and price sticker printing engine with live preview.
+
+### 7. 🛡️ Role-Based Access Control (RBAC) & Audit Logs
+- Granular permissions for *Admin*, *Manager*, *Cashier*, and *Technician*.
+- Tamper-evident activity logs capturing sensitive actions (price overrides, voids, manual stock adjustments).
+
+### 8. ☁️ Disaster Recovery & Hybrid Sync
+- Offline-first desktop operations with SQLite local persistence.
+- Automatic encrypted cloud snapshots (Firebase Storage / Cloudflare R2).
+- Real-time outbox synchronization to Cloud Customer Portal via Supabase.
+
+---
+
+## 🏗️ Architecture & Technology Stack
+
+```mermaid
+graph LR
+    subgraph Client Layer
+        A[React 18 + Vite SPA]
+        B[Electron Desktop Shell]
+    end
+
+    subgraph Backend Services
+        C[FastAPI REST Engine]
+        D[Node.js WhatsApp Microservice]
+        E[Google Gemini AI API]
+    end
+
+    subgraph Data & Storage
+        F[(SQLite / PostgreSQL)]
+        G[(Firebase / Cloudflare R2 Backups)]
+        H[(Supabase Cloud Sync)]
+    end
+
+    A -->|REST API| C
+    B --> A
+    C --> F
+    C -->|Internal IPC / HTTP| D
+    C -->|AI Analysis| E
+    C -->|Encrypted Snapshots| G
+    C -->|Public Portal Outbox| H
+```
+
+- **Frontend**: React 18, Vite, Lucide Icons, Custom Design System (Vanilla CSS).
+- **Backend API**: Python 3.10+, FastAPI, SQLAlchemy, Pydantic, Alembic, Uvicorn.
+- **Desktop Shell**: Electron, electron-updater, PyInstaller binary wrapper.
+- **Microservices**: Node.js WhatsApp bot (`whatsapp-web.js` / Puppeteer).
+- **Databases**: SQLite (Desktop / Edge) & PostgreSQL (Cloud / Neon.tech).
+- **Cloud & AI**: Google Gemini 1.5, Firebase Storage / Cloudflare R2, Supabase Sync.
+
+---
+
+## ⚡ Getting Started
+
+### Prerequisites
+- **Node.js** (v18 or higher) & **npm**
+- **Python** (v3.10 or higher)
+- **Git**
+
+### Quickstart (All-in-One Dev Launch)
+
+Clone the repository and run the startup script:
+
+```powershell
+# 1. Clone repo
+git clone https://github.com/SahanPramuditha-Dev/I-Store-Website.git
+cd I-Store-Website
+
+# 2. Copy environment variables
+copy .env.example .env
+
+# 3. Launch dev environment (Backend + Frontend + Services)
+.\start_dev.ps1
+```
+
+---
+
+### Manual Step-by-Step Setup
+
+#### 1. Backend Service
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
 
-### Frontend Setup
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+API Documentation will be available at: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+#### 2. Frontend Web App
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+Web application will be accessible at: [http://localhost:5173](http://localhost:5173)
+
+#### 3. WhatsApp Microservice (Optional)
+```bash
+cd whatsapp_service
+npm install
+npm start
+```
+
+---
+
+## 🐳 Docker Deployment
+
+To launch the full backend and PostgreSQL database with Docker:
+
+```bash
+docker-compose up -d --build
+```
+
+---
+
+## 📚 Documentation Directory
+
+Explore dedicated guides located in the [`docs/`](docs/) directory:
+
+| Document | Description |
+| :--- | :--- |
+| 🚀 [**Deployment Guide**](docs/DEPLOYMENT.md) | Windows Desktop packaging, Docker, and Vercel/Neon deployment. |
+| 🏗️ [**Architecture Overview**](docs/ARCHITECTURE.md) | Technical architecture, data flow, and IPC bridge specifications. |
+| 🔌 [**API Specification**](docs/API.md) | Comprehensive REST API endpoints and data models. |
+| 🗄️ [**Database Guide**](docs/DATABASE.md) | Schemas, relationship diagrams, and Alembic migrations. |
+| 🔄 [**Auto Update Mechanism**](docs/AUTO_UPDATE.md) | Electron desktop background update flow and release channels. |
+| 💾 [**Backup & Recovery**](docs/BACKUP_RESTORE.md) | Local snapshots, R2/Firebase cloud backups, and restore operations. |
+| 🚨 [**Disaster Recovery Guide**](docs/RECOVERY_GUIDE.md) | Step-by-step emergency database recovery and integrity checks. |
+| 🔒 [**Security Guide**](docs/SECURITY.md) | JWT auth, RBAC permissions matrix, encryption, and API policies. |
+| 🧪 [**Testing Guide**](docs/TESTING.md) | Running backend pytest suites and frontend build checks. |
+| 🤖 [**WhatsApp Integration**](docs/WHATSAPP_INTEGRATION_SPEC.md) | Node.js WhatsApp microservice and webhook specifications. |
+| 📋 [**Release Checklist**](docs/RELEASE_CHECKLIST.md) | Pre-flight production checks and release verification steps. |
+| 🔍 [**Production Readiness Audit**](docs/PRODUCTION_READINESS_AUDIT.md) | Comprehensive audit of system reliability, performance, and security. |
+
+---
+
+## 🤝 Contributing
+
+Contributions make the open-source community an amazing place to learn, inspire, and create.
+Please review our [Contributing Guide](CONTRIBUTING.md) and [Changelog](CHANGELOG.md) before submitting Pull Requests.
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.

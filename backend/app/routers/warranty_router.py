@@ -18,7 +18,14 @@ from app.models import (
     WarrantyCondition,
     WarrantyRecord,
     WarrantyRule,
+    SupplierWarrantyRecord,
+    WarrantyClaimEvent,
+    WarrantyReplacement,
 )
+from pydantic import BaseModel
+from typing import Optional
+from fastapi import BackgroundTasks
+from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.schemas import (
     WarrantyClaimIn,
     WarrantyClaimUpdateIn,
@@ -59,6 +66,32 @@ from app.services.warranty_service import (
 from app.services.numbering_service import next_number
 from app.services.print_rendering_service import get_store_profile_print_data, render_warranty_certificate_html
 from app.utils.time import utcnow
+
+class SupplierWarrantyRecordIn(BaseModel):
+    supplier_id: int
+    grn_id: int
+    product_id: int
+    serial_id: Optional[int] = None
+    supplier_warranty_start: Optional[datetime] = None
+    supplier_warranty_end: Optional[datetime] = None
+    supplier_invoice_number: Optional[str] = None
+    notes: Optional[str] = None
+
+class WarrantyClaimEventIn(BaseModel):
+    event_type: str
+    event_message: Optional[str] = None
+    old_status: Optional[str] = None
+    new_status: Optional[str] = None
+
+class WarrantyReplacementIn(BaseModel):
+    old_warranty_id: int
+    new_warranty_id: Optional[int] = None
+    claim_id: int
+    old_product_id: Optional[int] = None
+    new_product_id: Optional[int] = None
+    old_serial_id: Optional[int] = None
+    new_serial_id: Optional[int] = None
+    replacement_reason: Optional[str] = None
 
 router = APIRouter(prefix="/warranty", tags=["warranty"])
 
@@ -635,6 +668,35 @@ def create_warranty_record(
     row.warranty_number = row.warranty_code
     db.commit()
     db.refresh(row)
+    
+    # Trigger warranty_registered notification
+    customer = db.query(Customer).filter(Customer.id == row.customer_id).first() if row.customer_id else None
+    if customer and customer.phone:
+        try:
+            from fastapi import BackgroundTasks
+            bg = BackgroundTasks() # We can't inject BackgroundTasks easily here without changing the method signature, let's just do it directly or use import.
+            # wait, is BackgroundTasks injected in this method? No.
+        except Exception:
+            pass
+            
+        import threading
+        import asyncio
+        from app.utils.whatsapp_helper import log_and_send_whatsapp
+        
+        def run_whatsapp():
+            log_and_send_whatsapp(
+                event_type='warranty_registered',
+                phone=customer.phone,
+                variables={
+                    'customer_name': customer.name or 'Customer',
+                    'product_name': row.product_or_service_name or 'Product',
+                    'serial_number': row.serial_number or row.imei_or_serial or 'N/A',
+                    'expiry_date': row.end_date.strftime('%Y-%m-%d') if row.end_date else 'N/A'
+                },
+                customer_id=customer.id
+            )
+        threading.Thread(target=run_whatsapp, daemon=True).start()
+        
     return _serialize_record(row)
 
 
@@ -797,6 +859,108 @@ def list_warranty_claims(
         )
     rows = query.order_by(WarrantyClaim.created_at.desc()).limit(limit).all()
     return [_serialize_claim(row) for row in rows]
+
+@router.get("/supplier-records", dependencies=[Depends(require_permission("warranty.view"))])
+def list_supplier_warranty_records(
+    supplier_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    query = db.query(SupplierWarrantyRecord)
+    if supplier_id is not None:
+        query = query.filter(SupplierWarrantyRecord.supplier_id == supplier_id)
+    return query.all()
+
+@router.post("/supplier-records", dependencies=[Depends(require_permission("warranty.edit"))])
+def create_supplier_warranty_record(
+    payload: SupplierWarrantyRecordIn,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    row = SupplierWarrantyRecord(**payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+@router.put("/supplier-records/{id}", dependencies=[Depends(require_permission("warranty.edit"))])
+def update_supplier_warranty_record(
+    id: int,
+    payload: SupplierWarrantyRecordIn,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    row = db.query(SupplierWarrantyRecord).filter(SupplierWarrantyRecord.id == id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    for k, v in payload.model_dump().items():
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return row
+
+@router.delete("/supplier-records/{id}", dependencies=[Depends(require_permission("warranty.edit"))])
+def delete_supplier_warranty_record(
+    id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    row = db.query(SupplierWarrantyRecord).filter(SupplierWarrantyRecord.id == id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/claims/{claim_id}/events", dependencies=[Depends(require_permission("warranty.view"))])
+def list_warranty_claim_events(
+    claim_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return db.query(WarrantyClaimEvent).filter(WarrantyClaimEvent.claim_id == claim_id).all()
+
+@router.post("/claims/{claim_id}/events", dependencies=[Depends(require_permission("warranty.edit"))])
+def create_warranty_claim_event(
+    claim_id: int,
+    payload: WarrantyClaimEventIn,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    row = WarrantyClaimEvent(
+        claim_id=claim_id,
+        **payload.model_dump(),
+        performed_by=current_user.id if current_user else None
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/replacements", dependencies=[Depends(require_permission("warranty.view"))])
+def list_warranty_replacements(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return db.query(WarrantyReplacement).all()
+
+@router.post("/replacements", dependencies=[Depends(require_permission("warranty.edit"))])
+def create_warranty_replacement(
+    payload: WarrantyReplacementIn,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    row = WarrantyReplacement(
+        **payload.model_dump(),
+        created_by=current_user.id if current_user else None
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
 
 
 @router.post("/claims", dependencies=[Depends(require_permission("warranty.create_claim"))])

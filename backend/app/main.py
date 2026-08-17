@@ -2,6 +2,7 @@ import json
 import importlib
 import logging
 import os
+# Auto-reload trigger - repair sync update
 import re
 import time
 import uuid
@@ -48,6 +49,9 @@ from app.routers.advance_router import router as advance_router
 from app.routers.access_router import router as access_router
 from app.routers.print_center_router import router as print_center_router
 from app.routers.catalog_router import router as catalog_router
+from app.routers.whatsapp_router import router as whatsapp_router
+from app.routers.shifts_router import router as shifts_router
+from app.routers.sync_router import router as sync_router
 from app.config import settings
 from app.auth import require_admin, require_module_access, require_permission
 
@@ -186,7 +190,7 @@ async def app_lifespan(_app: FastAPI):
         _run_shutdown_tasks()
 
 
-app = FastAPI(title="i Store API", lifespan=app_lifespan)
+app = FastAPI(title="E Store API", lifespan=app_lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 from app.database import UPLOADS_DIR  # noqa: E402 - centralized path
@@ -402,14 +406,18 @@ app.include_router(warranty_router, dependencies=[Depends(require_module_access(
 app.include_router(financial_audit_router, dependencies=[Depends(require_module_access("financial_audit"))])
 app.include_router(labels_router, dependencies=[Depends(require_module_access("labels"))])
 app.include_router(audit_trail_router, dependencies=[Depends(require_module_access("audit_logs"))])
-from app.routers.analytics_ai_router import router as analytics_ai_router
+from app.routers.public_portal_router import router as public_portal_router
 
+app.include_router(public_portal_router)
 app.include_router(catalog_router, dependencies=[Depends(require_module_access("inventory"))])
 app.include_router(advance_router)
 app.include_router(access_router)
 app.include_router(print_center_router)
+app.include_router(whatsapp_router)
+app.include_router(shifts_router)
 app.include_router(analytics_ai_router)
 app.include_router(ai_router)
+app.include_router(sync_router, prefix="/api")
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 

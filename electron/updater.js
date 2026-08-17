@@ -29,6 +29,7 @@ let checkInProgress = false;
 let operationsState = { active: false, reason: null, route: null };
 let stopBackendFn = null;
 let lastUpdateInfo = null;
+let _periodicCheckInterval = null;
 let currentUpdaterState = {
   status: "idle",
   version: null,
@@ -38,6 +39,49 @@ let currentUpdaterState = {
   count: null,
   route: null,
 };
+
+// ── Snooze helpers ──────────────────────────────────────────────────────────
+function _getSnoozePrefsPath() {
+  try {
+    return path.join(app.getPath("userData"), "update-prefs.json");
+  } catch (_err) {
+    return null;
+  }
+}
+
+function _readSnoozePrefs() {
+  const p = _getSnoozePrefsPath();
+  if (!p || !fs.existsSync(p)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf-8"));
+  } catch (_err) {
+    return {};
+  }
+}
+
+function _writeSnoozePrefs(prefs) {
+  const p = _getSnoozePrefsPath();
+  if (!p) return;
+  try {
+    fs.writeFileSync(p, JSON.stringify(prefs, null, 2), "utf-8");
+  } catch (_err) {}
+}
+
+function _isSnoozed() {
+  const prefs = _readSnoozePrefs();
+  if (!prefs.snoozeUntil) return false;
+  if (prefs.snoozeUntil === "next-startup") return false; // consumed on startup
+  return Date.now() < prefs.snoozeUntil;
+}
+
+function _clearSnoozeIfExpired() {
+  const prefs = _readSnoozePrefs();
+  if (!prefs.snoozeUntil) return;
+  if (prefs.snoozeUntil !== "next-startup" && Date.now() >= prefs.snoozeUntil) {
+    delete prefs.snoozeUntil;
+    _writeSnoozePrefs(prefs);
+  }
+}
 
 function _updateState(state) {
   currentUpdaterState = {
@@ -290,12 +334,78 @@ function initAutoUpdater(win, options = {}) {
   });
 
   if (UPDATE_CHECKS_ENABLED && process.env.NODE_ENV !== "development" && require("electron").app.isPackaged) {
+    // Consume next-startup snooze now (it only blocked the previous session's auto-check)
+    const prefs = _readSnoozePrefs();
+    if (prefs.snoozeUntil === "next-startup") {
+      delete prefs.snoozeUntil;
+      _writeSnoozePrefs(prefs);
+    }
+
+    // Initial check 5 seconds after launch
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch((err) => {
-        _logEvent("background_check_failed", { error: err.message });
-      });
+      if (!_isSnoozed()) {
+        autoUpdater.checkForUpdates().catch((err) => {
+          _logEvent("background_check_failed", { error: err.message });
+        });
+      } else {
+        _logEvent("background_check_snoozed");
+      }
     }, 5_000);
+
+    // Periodic check every 6 hours
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    _periodicCheckInterval = setInterval(() => {
+      if (_isSnoozed()) {
+        _logEvent("periodic_check_snoozed");
+        return;
+      }
+      _clearSnoozeIfExpired();
+      _logEvent("periodic_check_started");
+      autoUpdater.checkForUpdates().catch((err) => {
+        _logEvent("periodic_check_failed", { error: err.message });
+      });
+    }, SIX_HOURS_MS);
+
+    app.on("before-quit", () => {
+      if (_periodicCheckInterval) {
+        clearInterval(_periodicCheckInterval);
+        _periodicCheckInterval = null;
+      }
+    });
   }
+
+  // ── Snooze IPC ────────────────────────────────────────────────────────────
+  ipcMain.handle("updater:snooze", (_e, duration) => {
+    // duration: number of hours, or 'next-startup'
+    const prefs = _readSnoozePrefs();
+    if (duration === "next-startup") {
+      prefs.snoozeUntil = "next-startup";
+    } else {
+      const hours = parseFloat(duration) || 4;
+      prefs.snoozeUntil = Date.now() + hours * 60 * 60 * 1000;
+    }
+    _writeSnoozePrefs(prefs);
+    _logEvent("update_snoozed", { duration });
+    return { snoozed: true, duration };
+  });
+
+  // ── Update Log IPC ────────────────────────────────────────────────────────
+  ipcMain.handle("updater:getUpdateLog", (_e, maxLines = 50) => {
+    try {
+      const logPath = path.join(app.getPath("userData"), "logs", "update.log");
+      if (!fs.existsSync(logPath)) return { lines: [] };
+      const raw = fs.readFileSync(logPath, "utf-8");
+      const lines = raw
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((l) => {
+          try { return JSON.parse(l); } catch (_err) { return { raw: l }; }
+        });
+      return { lines: lines.slice(-maxLines) };
+    } catch (err) {
+      return { lines: [], error: err.message };
+    }
+  });
 }
 
 function _sendToRenderer(channel, data) {

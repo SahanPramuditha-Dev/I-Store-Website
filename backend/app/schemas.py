@@ -250,7 +250,9 @@ class StockTakeIn(BaseModel):
     note: str | None = None
 
 class RepairPartConsumeIn(BaseModel):
-    item_id: int
+    item_id: int | None = None
+    custom_part_name: str | None = None
+    unit_cost: float | None = None
     quantity: int = 1
 
 class PrintProfileIn(BaseModel):

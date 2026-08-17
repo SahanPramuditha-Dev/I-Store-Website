@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppModal from "../layout/AppModal";
 import { Input, Select } from "../UI";
-import { Package, Store, Clock, X, ChevronDown, ChevronUp, Save, ShoppingCart } from "lucide-react";
+import { Package, Store, Clock, X, ChevronDown, ChevronUp, Save, ShoppingCart, PackagePlus, FileText, Zap } from "lucide-react";
 import api from "../../lib/api";
 import { useFeedback } from "../FeedbackProvider";
 import { useCachedQuery } from "../../hooks/useCachedQuery";
@@ -204,38 +204,47 @@ export default function QuickAddItemModal({ isOpen, onClose, onAddTemporary, onA
 
         <div className="pt-4 flex flex-col sm:flex-row gap-3">
           <button 
+            type="button"
             onClick={() => handleAction('temporary')} 
             disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 bg-slate-700/50 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-xl transition-all border border-slate-600/50"
+            className="flex-1 relative overflow-hidden group border border-slate-700 hover:border-slate-500 bg-gradient-to-b from-slate-800/90 to-slate-900 hover:from-slate-800 hover:to-slate-850 p-3 rounded-xl text-left transition-all shadow-md flex items-center gap-3 disabled:opacity-60"
           >
-            <Clock size={18} />
-            <div className="text-left leading-tight">
-              <div className="text-sm">Temporary Item</div>
-              <div className="text-[10px] text-slate-400 font-normal">This transaction only</div>
+            <div className="p-2 rounded-lg bg-slate-700/60 text-slate-300 group-hover:text-white transition-colors shrink-0">
+              <Clock size={18} />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white group-hover:text-indigo-200 transition-colors">Temporary Item</div>
+              <div className="text-[11px] text-slate-400">This transaction only</div>
             </div>
           </button>
 
           <button 
+            type="button"
             onClick={() => handleAction('draft')} 
             disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 font-bold py-3 px-4 rounded-xl transition-all border border-amber-500/30"
+            className="flex-1 relative overflow-hidden group border border-amber-500/40 hover:border-amber-400/80 bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-950 p-3 rounded-xl text-left transition-all shadow-md flex items-center gap-3 disabled:opacity-60"
           >
-            <Save size={18} />
-            <div className="text-left leading-tight">
-              <div className="text-sm">Save as Draft</div>
-              <div className="text-[10px] text-amber-500/70 font-normal">Finish details later</div>
+            <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 group-hover:bg-amber-500/30 transition-colors shrink-0">
+              <FileText size={18} />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-amber-300 group-hover:text-amber-200 transition-colors">Save as Draft</div>
+              <div className="text-[11px] text-amber-400/70">Finish details later</div>
             </div>
           </button>
 
           <button 
+            type="button"
             onClick={() => handleAction('inventory')} 
             disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg shadow-indigo-900/20"
+            className="flex-1 relative overflow-hidden group border border-indigo-400/40 hover:border-indigo-300 bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 p-3 rounded-xl text-left transition-all shadow-lg shadow-indigo-600/25 flex items-center gap-3 disabled:opacity-60"
           >
-            <Store size={18} />
-            <div className="text-left leading-tight">
-              <div className="text-sm">Save to Inventory</div>
-              <div className="text-[10px] text-indigo-200 font-normal">Permanent product</div>
+            <div className="p-2 rounded-lg bg-white/20 text-white shadow-sm shrink-0">
+              <PackagePlus size={18} />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white">Save to Inventory</div>
+              <div className="text-[11px] text-indigo-100/80">Permanent product</div>
             </div>
           </button>
         </div>

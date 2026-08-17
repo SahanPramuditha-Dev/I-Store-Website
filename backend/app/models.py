@@ -240,6 +240,9 @@ class Customer(Base, BaseHybridModel):
     address = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     birthday = Column(Date, nullable=True)
+    whatsapp_number = Column(String, nullable=True)
+    whatsapp_opt_in = Column(Boolean, default=True)
+    whatsapp_marketing_opt_in = Column(Boolean, default=False)
     is_deleted = Column(Boolean, default=False, index=True)
     deleted_at = Column(DateTime, nullable=True, index=True)
     deleted_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
@@ -362,6 +365,8 @@ class RepairTicket(Base, BaseHybridModel):
     approved_at = Column(DateTime, nullable=True, index=True)
     invoiced_at = Column(DateTime, nullable=True, index=True)
     notes = Column(Text, default="")
+    intake_photos = Column(Text, default="[]", nullable=True)
+    completion_photos = Column(Text, default="[]", nullable=True)
     is_deleted = Column(Boolean, default=False, index=True)
     deleted_at = Column(DateTime, nullable=True, index=True)
     deleted_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
@@ -1015,7 +1020,8 @@ class RepairPartUsage(Base):
     __tablename__ = "repair_part_usage"
     id = Column(Integer, primary_key=True)
     repair_id = Column(Integer, ForeignKey("repair_tickets.id"))
-    item_id = Column(Integer, ForeignKey("inventory_items.id"))
+    item_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True)
+    custom_part_name = Column(String, nullable=True)
     quantity = Column(Integer, default=1)
     unit_cost = Column(Float, default=0)
     created_at = Column(DateTime, default=utcnow)
@@ -1816,4 +1822,110 @@ class ProductAccessory(Base):
     id = Column(Integer, primary_key=True, index=True)
     master_product_id = Column(Integer, ForeignKey("master_products.id"), nullable=False)
     recommended_variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=False)
+
+
+class WhatsAppTemplate(Base):
+    __tablename__ = "whatsapp_templates"
+
+    id = Column(String(50), primary_key=True)
+    name = Column(String(100), nullable=False)
+    event_type = Column(String(50), nullable=False, unique=True, index=True)
+    category = Column(String(50), default="sales", index=True)  # sales, repairs, warranty, customer, payments, system
+    template_body = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class WhatsAppMessageLog(Base):
+    __tablename__ = "whatsapp_message_logs"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    phone_number = Column(String(20), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False, index=True)
+    category = Column(String(50), default="sales", index=True)
+    template_name = Column(String(100), nullable=True)
+    message_body = Column(Text, nullable=False)
+    media_url = Column(String(500), nullable=True)
+    status = Column(String(20), nullable=False, default="QUEUED", index=True)  # QUEUED, PROCESSING, SENT, DELIVERED, READ, FAILED, CANCELLED
+    error_detail = Column(Text, nullable=True)
+    message_id = Column(String(100), nullable=True, index=True)
+    ack_status = Column(String(20), nullable=True)  # PENDING, SERVER, DEVICE, READ, ERROR
+    pipeline_trace = Column(Text, nullable=True)  # JSON string representing array of step traces
+    retry_count = Column(Integer, default=0)
+    max_retries = Column(Integer, default=3)
+    trigger_type = Column(String(20), default="automatic", index=True)  # automatic, manual, retry
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    invoice_no = Column(String(50), nullable=True, index=True)
+    repair_no = Column(String(50), nullable=True, index=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    sent_at = Column(DateTime, nullable=True)
+    delivered_at = Column(DateTime, nullable=True)
+    read_at = Column(DateTime, nullable=True)
+
+    customer = relationship("Customer", foreign_keys=[customer_id])
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class WhatsAppQueue(Base):
+    __tablename__ = "whatsapp_queue"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    message_log_id = Column(String(50), ForeignKey("whatsapp_message_logs.id"), index=True)
+    phone_number = Column(String(20), nullable=False, index=True)
+    message_body = Column(Text, nullable=False)
+    media_url = Column(String(500), nullable=True)
+    status = Column(String(20), default="PENDING", index=True)  # PENDING, PROCESSING, FAILED, COMPLETED, CANCELLED
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    next_attempt_at = Column(DateTime, default=utcnow, index=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    message_log = relationship("WhatsAppMessageLog", foreign_keys=[message_log_id])
+
+
+class WhatsAppAutomationRule(Base):
+    __tablename__ = "whatsapp_automation_rules"
+
+    id = Column(String(50), primary_key=True)
+    event_type = Column(String(50), nullable=False, unique=True, index=True)
+    name = Column(String(100), nullable=False)
+    category = Column(String(50), default="sales", index=True)  # sales, repairs, warranty, payments, security, inventory
+    description = Column(Text, nullable=True)
+    is_enabled = Column(Boolean, default=True)
+    delay_seconds = Column(Integer, default=0)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class WhatsAppQuickReply(Base):
+    __tablename__ = "whatsapp_quick_replies"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    shortcut = Column(String(50), nullable=False, unique=True, index=True)  # e.g. /bank, /hours, /warranty
+    title = Column(String(100), nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String(50), default="general", index=True)
+    usage_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class WhatsAppBotRule(Base):
+    __tablename__ = "whatsapp_bot_rules"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(100), nullable=False)
+    keywords = Column(Text, nullable=False)  # comma-separated keywords e.g. "hours,opening,close,timing"
+    match_type = Column(String(20), default="contains")  # contains, exact, startswith
+    response_body = Column(Text, nullable=False)
+    category = Column(String(50), default="custom", index=True)
+    is_active = Column(Boolean, default=True)
+    priority = Column(Integer, default=10)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
 

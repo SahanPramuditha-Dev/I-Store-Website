@@ -8,6 +8,7 @@ import { apiService } from "../lib/apiService";
 import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, ErrorState, KpiCard, Loading, PageHeader, Select, SearchableSelect, StatusBadge } from "../components/UI";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppModal from "../components/layout/AppModal";
+import { BarcodeStickerModal } from "../components/BarcodeStickerModal";
 import { downloadCsv, downloadPdf, paginateRows } from "../lib/tableUtils";
 import { Menu, MenuItem } from "@mui/material";
 import {
@@ -210,6 +211,8 @@ export default function Inventory() {
   const [selectedSerials, setSelectedSerials] = useState([]);
   const [serialsLoading, setSerialsLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [stickerModalItem, setStickerModalItem] = useState(null);
+  const [selectedSerialDetail, setSelectedSerialDetail] = useState(null);
 
   const emptyProductForm = {
     master_product_id: "",
@@ -447,9 +450,22 @@ export default function Inventory() {
 
   const saveProduct = async () => {
     try {
-      // Strip UI-only fields before sending to API
+      // Strip UI-only fields and sanitize types before sending to API
       const { selected_variant_id, ...formData } = form;
-      const payload = { ...formData, supplier_id: form.supplier_id ? Number(form.supplier_id) : null };
+      const payload = {
+        ...formData,
+        master_product_id: formData.master_product_id ? Number(formData.master_product_id) : null,
+        supplier_id: formData.supplier_id ? Number(formData.supplier_id) : null,
+        warranty_days: Number(formData.shop_warranty_days || formData.warranty_days || 0),
+        shop_warranty_days: Number(formData.shop_warranty_days || 0),
+        supplier_warranty_days: Number(formData.supplier_warranty_days || 0),
+        quantity: Number(formData.quantity || 0),
+        cost_price: Number(formData.cost_price || 0),
+        sale_price: Number(formData.sale_price || 0),
+        wholesale_price: Number(formData.wholesale_price || 0),
+        min_allowed_price: Number(formData.min_allowed_price || 0),
+        low_stock_threshold: Number(formData.low_stock_threshold || 5),
+      };
       if (editingProductId) {
         const r = await api.put(`/inventory/${editingProductId}`, payload);
         setData((data || []).map((row) => (row.id === editingProductId ? r.data : row)));
@@ -553,12 +569,7 @@ export default function Inventory() {
 
   const printLabel = (item) => {
     if (!item) return;
-    openPrintCenter(navigate, {
-      type: "label",
-      ref: item.id || item.barcode || item.sku,
-      paper: "label_50x30",
-      template: "label",
-    });
+    setStickerModalItem(item);
   };
 
   const generateSku = () => {
@@ -852,7 +863,11 @@ export default function Inventory() {
                     {serialsLoading && <p className="text-xs text-slate-500">Loading serials...</p>}
                     {!serialsLoading && selectedSerials.length === 0 && <p className="text-xs text-slate-500">No serials added yet.</p>}
                     {!serialsLoading && selectedSerials.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between rounded bg-white/[0.03] px-2 py-1">
+                      <div 
+                        key={s.id} 
+                        className="flex items-center justify-between rounded bg-white/[0.03] px-2 py-1 cursor-pointer hover:bg-white/10"
+                        onClick={() => setSelectedSerialDetail(s)}
+                      >
                         <span className="font-mono text-xs text-slate-200">{s.serial_number}</span>
                         <span className="text-[10px] uppercase text-slate-400">{s.status}</span>
                       </div>
@@ -956,12 +971,19 @@ export default function Inventory() {
                             ...prev,
                             selected_variant_id: varId,
                             name: v.display_name || prev.name,
+                            brand: selectedMp?.brand || prev.brand,
+                            category: selectedMp?.category || prev.category,
                             storage: attrs.Storage || attrs.Length || attrs["Case Size"] || prev.storage,
                             color: attrs.Color || attrs["Band Color"] || prev.color,
                             sku: v.sku || prev.sku,
                             barcode: v.barcode || prev.barcode,
                             cost_price: v.default_cost_price ?? prev.cost_price,
                             sale_price: v.default_selling_price ?? prev.sale_price,
+                            wholesale_price: v.default_wholesale_price ?? prev.wholesale_price,
+                            min_allowed_price: v.min_allowed_price ?? prev.min_allowed_price,
+                            shop_warranty_days: v.shop_warranty_days ?? prev.shop_warranty_days,
+                            warranty_days: v.shop_warranty_days ?? prev.warranty_days,
+                            supplier_warranty_days: v.supplier_warranty_days ?? prev.supplier_warranty_days,
                           }));
                           toast(`Loaded variant: ${v.display_name || v.sku} ${attrStr ? `(${attrStr})` : ""}`, "info");
                         } else {
@@ -1154,6 +1176,20 @@ export default function Inventory() {
           )}
         </Modal>
       )}
+
+      {selectedSerialDetail && (
+        <SerialMovementHistoryModal 
+          serial={selectedSerialDetail} 
+          onClose={() => setSelectedSerialDetail(null)} 
+        />
+      )}
+
+      {/* 1-CLICK THERMAL BARCODE & PRICE TAG STICKER MODAL */}
+      <BarcodeStickerModal
+        open={Boolean(stickerModalItem)}
+        onClose={() => setStickerModalItem(null)}
+        item={stickerModalItem}
+      />
     </div>
   );
 }
@@ -1504,6 +1540,71 @@ function FieldSelect({ label, value, onChange, options, optionLabels }) {
         ))}
       </Select>
     </div>
+  );
+}
+
+function SerialMovementHistoryModal({ serial, onClose }) {
+  const [movements, setMovements] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchMovements = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(`/inventory/serials/${serial.id}/movements`);
+        if (active) setMovements(res.data || []);
+      } catch (err) {
+        // Ignored or handled via global error handling
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchMovements();
+    return () => { active = false; };
+  }, [serial.id]);
+
+  return (
+    <Modal title={`Movement History: ${serial.serial_number}`} onClose={onClose} panelClassName="max-w-xl bg-[#0f172a]">
+      {loading ? (
+        <div className="flex flex-col items-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-indigo-500"></div>
+          <p className="mt-2 text-xs text-slate-400">Loading movement history...</p>
+        </div>
+      ) : movements.length === 0 ? (
+        <div className="py-8 text-center text-sm text-slate-400">
+          No movement history recorded.
+        </div>
+      ) : (
+        <div className="relative border-l border-white/10 ml-3 pl-4 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          {movements.map((mov, i) => {
+            const isOut = Number(mov.quantity || 0) < 0 || mov.movement_type === "SALE" || mov.movement_type === "REPAIR_CONSUME";
+            const dt = new Date(mov.created_at);
+            return (
+              <div key={mov.id || i} className="relative">
+                <div className={`absolute -left-6 top-1 h-3 w-3 rounded-full border-2 border-[#0f172a] ${isOut ? "bg-rose-400" : "bg-emerald-400"}`}></div>
+                <div className="rounded-lg bg-white/[0.02] border border-white/5 p-3">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">{mov.movement_type}</span>
+                    <span className="text-[10px] text-slate-500">
+                      {dt.toLocaleDateString()} {dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {mov.note || (mov.reference_type ? `${mov.reference_type} #${mov.reference_id}` : 'Manual Adjustment')}
+                  </div>
+                  {mov.created_by_name && (
+                    <div className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                      <span className="text-slate-600">By:</span> {mov.created_by_name}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
   );
 }
 

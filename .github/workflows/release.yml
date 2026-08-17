@@ -19,13 +19,37 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: electron/package-lock.json
+          cache-dependency-path: |
+            electron/package-lock.json
+            frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Backend Dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pyinstaller
+
+      - name: Build Backend Executable (PyInstaller)
+        run: |
+          pyinstaller --noconfirm --clean --onedir --name IStoreBackend --distpath "electron/backend-dist" --workpath "electron/build-backend" --specpath "electron/build-backend" --paths "backend" --hidden-import app.main --collect-all certifi --collect-all passlib --collect-submodules app --collect-data app "backend/desktop_server.py"
 
       - name: Install Frontend Dependencies & Build
         run: |
           cd frontend
           npm ci
           npm run build
+
+      - name: Copy Frontend Dist to Electron
+        run: |
+          if (Test-Path "electron/frontend-dist") { Remove-Item "electron/frontend-dist" -Recurse -Force }
+          Copy-Item -Path "frontend/dist" -Destination "electron/frontend-dist" -Recurse
 
       - name: Install Electron Dependencies
         run: |

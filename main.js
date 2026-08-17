@@ -166,7 +166,30 @@ function startBackend() {
   });
 }
 
+let whatsappProcess = null;
+
+function startWhatsAppService() {
+  const whatsappDir = path.join(__dirname, "whatsapp_service");
+  if (!fs.existsSync(whatsappDir)) return;
+  try {
+    whatsappProcess = spawn("node", ["server.js"], {
+      cwd: whatsappDir,
+      windowsHide: true,
+      stdio: "ignore"
+    });
+    whatsappProcess.on("error", (err) => console.error("[main] WhatsApp service error:", err.message));
+  } catch (err) {
+    console.error("[main] Failed to spawn WhatsApp microservice:", err.message);
+  }
+}
+
+function stopWhatsAppService() {
+  if (whatsappProcess && !whatsappProcess.killed) whatsappProcess.kill();
+  whatsappProcess = null;
+}
+
 function stopBackend() {
+  stopWhatsAppService();
   if (backendProcess && !backendProcess.killed) backendProcess.kill();
   backendProcess = null;
   if (backendLogHandle) {
@@ -255,14 +278,15 @@ app.whenReady().then(async () => {
   const targetUserData = resolveDataRoot();
   app.setPath("userData", targetUserData);
   startBackend();
+  startWhatsAppService();
   await initDatabase();
   const win = createWindow();
-  initAutoUpdater(win);
+  initAutoUpdater(win, { stopBackend });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const newWin = createWindow();
-      initAutoUpdater(newWin);
+      initAutoUpdater(newWin, { stopBackend });
     }
   });
 });

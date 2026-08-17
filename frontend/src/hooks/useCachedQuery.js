@@ -5,7 +5,7 @@ const cache = {};
 const pendingRequests = {};
 
 export function useCachedQuery(key, fetchFnOrUrl, options = {}) {
-  const { staleTime = 5 * 60 * 1000, enabled = true } = options;
+  const { staleTime = 5 * 60 * 1000, enabled = true, keepPreviousData = true } = options;
   const cacheKey = typeof key === "string" ? key : JSON.stringify(key);
 
   const fetchRef = useRef(fetchFnOrUrl);
@@ -23,10 +23,16 @@ export function useCachedQuery(key, fetchFnOrUrl, options = {}) {
 
   const [status, setStatus] = useState(getInitialState);
 
-  // Sync state when cacheKey, enabled, or staleTime changes
+  // Sync state when cacheKey, enabled, or staleTime changes without flashing empty state
   useEffect(() => {
-    setStatus(getInitialState());
-  }, [cacheKey, enabled, staleTime, getInitialState]);
+    const nextState = getInitialState();
+    setStatus((prev) => {
+      if (keepPreviousData && prev.data && !nextState.data) {
+        return { data: prev.data, loading: true, error: null };
+      }
+      return nextState;
+    });
+  }, [cacheKey, enabled, staleTime, getInitialState, keepPreviousData]);
 
   const fetchData = useCallback(async (force = false) => {
     if (!enabled && !force) return;

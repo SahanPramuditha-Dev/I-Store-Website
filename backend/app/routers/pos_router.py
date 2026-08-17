@@ -1,12 +1,12 @@
 import json
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from fastapi import Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from app.constants import SALE_INVENTORY_LINE_TYPES, SALE_LINE_TYPES
 from app.database import get_db
 from app.auth import get_current_user, require_permission
+from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.models import (
     AppSetting,
     AdvancePayment,
@@ -46,6 +46,7 @@ from app.services.domain_audit_service import assert_accounting_period_open, rec
 from app.services.settings_policy_service import (
     enforce_pos_checkout_policy,
     enforce_void_refund_policy,
+    is_manager_or_higher,
     void_refund_approval_required,
 )
 from app.services.warranty_service import (
@@ -60,7 +61,7 @@ from app.services.return_service import (
     get_returned_qty_for_sale_item,
     process_return_record as process_return_record_entry,
 )
-from app.utils.time import utcnow
+from app.utils.time import utcnow, format_iso_utc
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 logger = logging.getLogger("istore.api")
@@ -149,7 +150,9 @@ def _inventory_card_payload(db: Session, row: InventoryItem) -> dict:
         "image_url": row.image_url,
         "sale_price": float(row.sale_price or 0),
         "cost_price": float(row.cost_price or 0),
-        "warranty_days": int(row.warranty_days or 0),
+        "warranty_days": int(row.shop_warranty_days or row.warranty_days or 0),
+        "shop_warranty_days": int(row.shop_warranty_days or 0),
+        "supplier_warranty_days": int(row.supplier_warranty_days or 0),
         "has_serials": bool(row.has_serials),
         "stock": {
             "on_hand": int(row.quantity or 0),
@@ -251,7 +254,7 @@ def sales(
             "paid": s.paid,
             "is_voided": s.is_voided,
             "void_reason": s.void_reason,
-            "created_at": s.created_at.isoformat()
+            "created_at": format_iso_utc(s.created_at)
         } for s in rows
     ]
 
@@ -328,7 +331,7 @@ def get_sale(sale_id: int, db: Session = Depends(get_db), _=Depends(get_current_
             "quantity": row.quantity,
             "status": row.decision_status,
             "refund_amount": row.refund_amount,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_at": format_iso_utc(row.created_at),
         }
         for row in return_rows
     ]
@@ -368,7 +371,7 @@ def get_sale(sale_id: int, db: Session = Depends(get_db), _=Depends(get_current_
                 "refund_amount": float(row.refund_amount or 0),
                 "store_credit_amount": float(row.store_credit_amount or 0),
                 "refund_status": row.refund_status,
-                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "created_at": format_iso_utc(row.created_at),
             }
         )
 
@@ -405,7 +408,7 @@ def get_sale(sale_id: int, db: Session = Depends(get_db), _=Depends(get_current_
         "paid": sale.paid,
         "is_voided": sale.is_voided,
         "void_reason": sale.void_reason,
-        "created_at": sale.created_at.isoformat(),
+        "created_at": format_iso_utc(sale.created_at),
         "lines": res_items,
         "warranty_records": warranty_payload,
         "return_history": return_payload,
@@ -438,7 +441,7 @@ def recent_transactions(
             "payment_status": row.payment_status,
             "invoice_status": row.invoice_status or ("voided" if row.is_voided else "finalized"),
             "payment_method": row.payment_method,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_at": format_iso_utc(row.created_at),
         }
         for row in rows
     ]
@@ -613,7 +616,7 @@ def get_available_advances_for_checkout(
 
 
 @router.post('/checkout', dependencies=[Depends(require_permission("pos.checkout"))])
-def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     ensure_warranty_defaults(db)
     assert_accounting_period_open(db, when=utcnow(), action="create sale")
     sales_rules = _business_ops_sales_rules(db)
@@ -1054,6 +1057,18 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
             linked_repair.invoiced_at = sale.created_at
             linked_repair.outstanding_balance = round(max(0.0, float(linked_repair.estimated_cost or 0) - float(amount_paid or 0)), 2)
             linked_repair.payment_status = "paid" if linked_repair.outstanding_balance <= 0 else "unpaid"
+            if sale.paid or linked_repair.outstanding_balance <= 0:
+                linked_repair.status = "delivered"
+                linked_repair.delivery_status = "delivered"
+                linked_repair.delivered_at = sale.created_at
+                db.add(
+                    RepairHistory(
+                        repair_id=linked_repair.id,
+                        status="delivered",
+                        note=f"Settled and invoiced at POS ({_invoice_label(sale)})",
+                        created_at=sale.created_at,
+                    )
+                )
 
     if stock_deducted_qty > 0:
         _log_invoice_event(
@@ -1242,6 +1257,7 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
     )
 
     db.commit()
+
     logger.info(json.dumps({
         "event": "sale_checkout",
         "request_id": getattr(request.state, "request_id", None),
@@ -1294,6 +1310,70 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
         logger.warning(f"Cloud sync skipped: {_sync_err}")
     # ────────────────────────────────────────────────────────────────────────
 
+    # ── Automated WhatsApp Receipt Trigger (Single Dispatch) ────────────────
+    if customer and (customer.whatsapp_number or customer.phone):
+        _phone_val = str(customer.whatsapp_number or customer.phone)
+        _c_name = customer.name or "Customer"
+        _inv_label = _invoice_label(sale)
+        _tot_str = f"{float(total):,.2f}"
+        _pd_str = f"{float(amount_paid):,.2f}"
+        _bal_str = f"{float(balance_due):,.2f}"
+        _subtotal_str = f"{float(subtotal):,.2f}"
+        _disc_str = f"{float(payload.discount_amount or 0):,.2f}"
+        _inv_date = sale.created_at.strftime("%Y-%m-%d %I:%M %p") if sale.created_at else ""
+        _pay_method = str(sale.payment_method or "Cash").capitalize()
+
+        import urllib.parse
+        from app.services.supabase_pos_sync import generate_invoice_token
+        _tok = generate_invoice_token(_inv_label)
+        _first_item_row = receipt_lines[0] if receipt_lines else {}
+        _first_item = _first_item_row.get("item_name") or _first_item_row.get("description") or "Device / Product"
+        _first_warranty_days = int(_first_item_row.get("warranty_days") or 0)
+        _first_warranty_months = round(_first_warranty_days / 30) if _first_warranty_days else 0
+        _portal_url = (
+            f"https://i-store-customer-portal-one.vercel.app/invoice/{_inv_label}"
+            f"?token={_tok}"
+            f"&name={urllib.parse.quote(_c_name)}"
+            f"&total={float(total):.2f}"
+            f"&subtotal={float(subtotal):.2f}"
+            f"&disc={float(payload.discount_amount or 0):.2f}"
+            f"&phone={urllib.parse.quote(_phone_val)}"
+            f"&method={urllib.parse.quote(_pay_method)}"
+            f"&item={urllib.parse.quote(str(_first_item))}"
+            f"&warranty={_first_warranty_months}"
+            f"&warranty_days={_first_warranty_days}"
+        )
+
+        from app.routers.repair_router import _get_store_info
+        _store_name, _store_phone, _store_addr, _ = _get_store_info(db, request=request)
+        _qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=600x600&data={urllib.parse.quote(_portal_url)}&format=png&margin=12"
+
+        background_tasks.add_task(
+            log_and_send_whatsapp,
+            event_type="pos_receipt",
+            phone=_phone_val,
+            variables={
+                "customer_name": _c_name,
+                "store_name": _store_name,
+                "invoice_number": _inv_label,
+                "invoice_date": _inv_date,
+                "payment_method": _pay_method,
+                "subtotal": _subtotal_str,
+                "discount_amount": _disc_str,
+                "invoice_total": _tot_str,
+                "paid_amount": _pd_str,
+                "balance_due": _bal_str,
+                "smart_bill_url": _portal_url,
+                "store_phone": _store_phone,
+            },
+            customer_id=customer.id if customer else None,
+            user_id=current_user.id if current_user and hasattr(current_user, "id") else None,
+            invoice_no=_inv_label,
+            trigger_type="automatic",
+            media_url=_qr_image_url,
+        )
+    # ────────────────────────────────────────────────────────────────────────
+
     return {
         "sale_id": sale.id,
         "id": sale.id,
@@ -1320,7 +1400,7 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
         "cash_amount": sale.cash_amount,
         "card_amount": sale.card_amount,
         "paid": sale.paid,
-        "created_at": sale.created_at.isoformat() if sale.created_at else None,
+        "created_at": format_iso_utc(sale.created_at),
         "lines": receipt_lines,
         "warranty_records": [
             {
@@ -1351,24 +1431,26 @@ def checkout(payload: SaleIn, request: Request, db: Session = Depends(get_db), c
 def checkout_repair(
     payload: SaleIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     if not payload.repair_ticket_id:
         raise HTTPException(status_code=400, detail="repair_ticket_id is required")
-    return checkout(payload, request, db, current_user)
+    return checkout(payload, request, background_tasks, db, current_user)
 
 
 @router.post('/checkout/reservation', dependencies=[Depends(require_permission("pos.reservation_billing"))])
 def checkout_reservation(
     payload: SaleIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     if not payload.reservation_id:
         raise HTTPException(status_code=400, detail="reservation_id is required")
-    return checkout(payload, request, db, current_user)
+    return checkout(payload, request, background_tasks, db, current_user)
 
 
 @router.post('/return', dependencies=[Depends(require_permission("pos.refund"))])
@@ -1379,7 +1461,7 @@ def return_sale(payload: SaleReturnIn, request: Request, db: Session = Depends(g
     assert_accounting_period_open(db, when=original.created_at or utcnow(), action="refund sale")
     subtotal = sum(l.quantity * l.price for l in payload.lines)
     refund_amount = abs(float(subtotal or 0))
-    if void_refund_approval_required(db, action="refund", amount=refund_amount):
+    if not is_manager_or_higher(_) and void_refund_approval_required(db, action="refund", amount=refund_amount):
         consume_approval_request(
             db,
             request_code=payload.approval_request_code,
@@ -1607,7 +1689,7 @@ def void_sale(
     if len(resolved_reason) < 5:
         raise HTTPException(status_code=400, detail="A descriptive void reason (min 5 chars) is required")
     void_amount = abs(float(sale.total or 0))
-    if void_refund_approval_required(db, action="void", amount=void_amount):
+    if not is_manager_or_higher(current_user) and void_refund_approval_required(db, action="void", amount=void_amount):
         consume_approval_request(
             db,
             request_code=(payload.approval_request_code if payload else None),

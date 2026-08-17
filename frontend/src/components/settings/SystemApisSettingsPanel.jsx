@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
-import { Settings2, Server, Printer, ScanLine, MessageSquare, Mail, PlugZap, ShieldCheck, Bug, KeyRound, Send } from "lucide-react";
+import { Settings2, Server, Printer, ScanLine, MessageSquare, Mail, PlugZap, ShieldCheck, Bug, KeyRound, Send, Bot, Sparkles, Eye, EyeOff, CheckCircle2, AlertCircle, CreditCard, Cloud, Landmark, RefreshCw } from "lucide-react";
 import { Input, Select, SectionCard, Badge, Button, Table } from "../../components/UI";
 import SettingsSectionShell from "./SettingsSectionShell";
+import WhatsAppSettingsCard from "./WhatsAppSettingsCard";
+import api from "../../lib/api";
 
 const DEFAULTS = {
   system_information: {
@@ -39,15 +41,50 @@ const DEFAULTS = {
     password: "",
     sender_name: "iStore POS",
   },
+  ai_configuration: {
+    enabled: true,
+    gemini_api_key: "",
+    model: "gemini-2.5-flash",
+    enable_chat_assistant: true,
+    enable_repair_diagnostics: true,
+    enable_inventory_forecasting: true,
+  },
   external_integrations: {
     whatsapp_business_api_connected: false,
+    google_drive: {
+      enabled: false,
+      client_id: "",
+      client_secret: "",
+      folder_id: "",
+      backup_frequency: "Daily",
+      auto_upload: true,
+    },
+    payment_gateway: {
+      enabled: false,
+      provider: "PayHere",
+      merchant_id: "",
+      merchant_secret: "",
+      app_id: "",
+      sandbox_mode: true,
+      currency: "LKR",
+      auto_generate_invoice_links: true,
+    },
+    accounting_software: {
+      enabled: false,
+      provider: "QuickBooks Online",
+      client_id: "",
+      client_secret: "",
+      realm_id: "",
+      auto_sync_daily_sales: true,
+      auto_sync_expenses: true,
+    },
     google_drive_backup_connected: false,
     payment_gateway_connected: false,
     accounting_software_connected: false,
   },
   license_subscription: {
     license_type: "Professional",
-    licensed_to: "I Store",
+    licensed_to: "E Store",
     valid_until: "",
     devices_allowed: 3,
     devices_used: 1,
@@ -130,10 +167,11 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
 
   const kpis = useMemo(() => {
     const d = sectionValue || {};
+    const hasAiKey = !!d?.ai_configuration?.gemini_api_key;
     return [
       { title: "Server", value: d?.system_information?.server_status || "Unknown", tone: d?.system_information?.server_status === "Online" ? "green" : "red", icon: <Server size={16} /> },
       { title: "Version", value: d?.system_information?.application_version || "-", tone: "indigo", icon: <Settings2 size={16} /> },
-      { title: "DB Size", value: d?.system_information?.database_size || "-", tone: "sky", icon: <Server size={16} /> },
+      { title: "Gemini AI", value: hasAiKey ? (d?.ai_configuration?.enabled !== false ? "Active" : "Disabled") : "No Key", tone: hasAiKey ? "green" : "amber", icon: <Sparkles size={16} /> },
       { title: "SMS Provider", value: d?.sms_gateway?.provider || "Not set", tone: "amber", icon: <MessageSquare size={16} /> },
       { title: "License", value: d?.license_subscription?.status || "Unknown", tone: "violet", icon: <ShieldCheck size={16} /> },
       { title: "API Access", value: d?.developer_advanced?.api_access ? "Enabled" : "Disabled", tone: d?.developer_advanced?.api_access ? "green" : "slate", icon: <KeyRound size={16} /> },
@@ -250,16 +288,560 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
     },
     {
       id: "integrations",
-      label: "External Integrations",
+      label: "External Integrations & AI",
       icon: PlugZap,
-      render: ({ data, updatePath }) => (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Toggle label="WhatsApp Business API" checked={data.external_integrations.whatsapp_business_api_connected} onChange={(v) => updatePath("external_integrations.whatsapp_business_api_connected", v)} />
-          <Toggle label="Google Drive backup" checked={data.external_integrations.google_drive_backup_connected} onChange={(v) => updatePath("external_integrations.google_drive_backup_connected", v)} />
-          <Toggle label="Payment gateway" checked={data.external_integrations.payment_gateway_connected} onChange={(v) => updatePath("external_integrations.payment_gateway_connected", v)} />
-          <Toggle label="Accounting software" checked={data.external_integrations.accounting_software_connected} onChange={(v) => updatePath("external_integrations.accounting_software_connected", v)} />
-        </div>
-      ),
+      render: ({ data, updatePath }) => {
+        const [showKey, setShowKey] = useState(false);
+        const [testingKey, setTestingKey] = useState(false);
+        const [testResult, setTestResult] = useState(null);
+
+        const aiConfig = data.ai_configuration || {
+          enabled: true,
+          gemini_api_key: "",
+          model: "gemini-2.5-flash",
+          enable_chat_assistant: true,
+          enable_repair_diagnostics: true,
+          enable_inventory_forecasting: true,
+        };
+
+        const handleTestKey = async () => {
+          setTestingKey(true);
+          setTestResult(null);
+          try {
+            const res = await api.post("/ai/test-key", {
+              api_key: aiConfig.gemini_api_key,
+              model: aiConfig.model,
+            });
+            setTestResult({ ok: true, message: res.data?.message || "Gemini connection verified!" });
+            toast("Gemini API key verified successfully!", "success");
+          } catch (err) {
+            const msg = err.response?.data?.detail || err.message || "Failed to reach Gemini API";
+            setTestResult({ ok: false, message: msg });
+            toast(`Gemini key error: ${msg}`, "error");
+          } finally {
+            setTestingKey(false);
+          }
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* Gemini AI Card */}
+            <div className="rounded-2xl border border-indigo-500/20 bg-gradient-to-b from-indigo-950/20 to-slate-950/60 p-5 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                      Google Gemini AI Integration
+                      <Badge tone={aiConfig.gemini_api_key ? "green" : "amber"}>
+                        {aiConfig.gemini_api_key ? "Key Configured" : "Key Missing"}
+                      </Badge>
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      Power the conversational assistant, repair auto-diagnosis, and inventory forecasting.
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  label="AI Active"
+                  checked={aiConfig.enabled}
+                  onChange={(v) => updatePath("ai_configuration.enabled", v)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                <div className="flex flex-col gap-1.5 md:col-span-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Gemini API Key</span>
+                  <div className="relative flex items-center">
+                    <Input
+                      type={showKey ? "text" : "password"}
+                      value={aiConfig.gemini_api_key || ""}
+                      placeholder="AIzaSy..."
+                      className="pr-10"
+                      onChange={(e) => updatePath("ai_configuration.gemini_api_key", e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey(!showKey)}
+                      className="absolute right-3 text-slate-400 hover:text-slate-200 transition-colors"
+                    >
+                      {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-500">
+                    Saved key will be used for all AI features without needing .env file edits.
+                  </span>
+                </div>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Model Selection</span>
+                  <Select
+                    value={aiConfig.model || "gemini-2.5-flash"}
+                    onChange={(e) => updatePath("ai_configuration.model", e.target.value)}
+                  >
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
+                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                  </Select>
+                </label>
+
+                <div className="flex items-end">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="w-full h-[38px] flex items-center justify-center gap-2"
+                    onClick={handleTestKey}
+                    disabled={testingKey || !aiConfig.gemini_api_key}
+                  >
+                    {testingKey ? <Settings2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                    {testingKey ? "Verifying..." : "Test AI Connection"}
+                  </Button>
+                </div>
+              </div>
+
+              {testResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 ${
+                    testResult.ok
+                      ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-300"
+                      : "bg-rose-950/30 border-rose-500/30 text-rose-300"
+                  }`}
+                >
+                  {testResult.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                  <span>{testResult.message}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-2 border-t border-white/5">
+                <Toggle
+                  label="Chat Copilot"
+                  hint="In-app AI assistant"
+                  checked={aiConfig.enable_chat_assistant}
+                  onChange={(v) => updatePath("ai_configuration.enable_chat_assistant", v)}
+                />
+                <Toggle
+                  label="Repair Diagnose"
+                  hint="AI parts & cost prediction"
+                  checked={aiConfig.enable_repair_diagnostics}
+                  onChange={(v) => updatePath("ai_configuration.enable_repair_diagnostics", v)}
+                />
+                <Toggle
+                  label="Restock Forecast"
+                  hint="Predictive low-stock orders"
+                  checked={aiConfig.enable_inventory_forecasting}
+                  onChange={(v) => updatePath("ai_configuration.enable_inventory_forecasting", v)}
+                />
+              </div>
+            </div>
+
+            {/* Payment Gateway Card */}
+            {(() => {
+              const [testingPayment, setTestingPayment] = useState(false);
+              const [paymentResult, setPaymentResult] = useState(null);
+              const [showSecret, setShowSecret] = useState(false);
+              const payConfig = data.external_integrations?.payment_gateway || {
+                enabled: false,
+                provider: "PayHere",
+                merchant_id: "",
+                merchant_secret: "",
+                app_id: "",
+                sandbox_mode: true,
+                currency: "LKR",
+                auto_generate_invoice_links: true,
+              };
+
+              const handleTestPayment = async () => {
+                setTestingPayment(true);
+                setPaymentResult(null);
+                try {
+                  const res = await api.post("/settings/integrations/test-payment-gateway", payConfig);
+                  setPaymentResult({ ok: true, message: res.data?.message || "Payment gateway verified!" });
+                  toast("Payment gateway credentials verified!", "success");
+                } catch (err) {
+                  const msg = err.response?.data?.detail || err.message || "Failed to verify gateway";
+                  setPaymentResult({ ok: false, message: msg });
+                  toast(`Payment Gateway error: ${msg}`, "error");
+                } finally {
+                  setTestingPayment(false);
+                }
+              };
+
+              return (
+                <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-b from-emerald-950/20 to-slate-950/60 p-5 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                        <CreditCard size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                          Online Payment Gateway
+                          <Badge tone={payConfig.enabled ? "green" : "slate"}>
+                            {payConfig.enabled ? `${payConfig.provider} Active` : "Disabled"}
+                          </Badge>
+                          {payConfig.sandbox_mode && payConfig.enabled && (
+                            <Badge tone="amber">Sandbox Mode</Badge>
+                          )}
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Generate online checkout payment links for customer WhatsApp invoices and repair estimates.
+                        </p>
+                      </div>
+                    </div>
+                    <Toggle
+                      label="Enable Payments"
+                      checked={payConfig.enabled}
+                      onChange={(v) => updatePath("external_integrations.payment_gateway.enabled", v)}
+                    />
+                  </div>
+
+                  {payConfig.enabled && (
+                    <div className="space-y-3 pt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Provider</span>
+                          <Select
+                            value={payConfig.provider || "PayHere"}
+                            onChange={(e) => updatePath("external_integrations.payment_gateway.provider", e.target.value)}
+                          >
+                            <option value="PayHere">PayHere (Sri Lanka LKR)</option>
+                            <option value="Stripe">Stripe</option>
+                            <option value="WEBXPAY">WEBXPAY (Sri Lanka)</option>
+                          </Select>
+                        </label>
+                        <Field
+                          label="Merchant ID / Client ID"
+                          value={payConfig.merchant_id}
+                          placeholder={payConfig.provider === "PayHere" ? "e.g. 121XXXX" : "pk_live_..."}
+                          onChange={(v) => updatePath("external_integrations.payment_gateway.merchant_id", v)}
+                        />
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Merchant Secret / Key</span>
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showSecret ? "text" : "password"}
+                              value={payConfig.merchant_secret || ""}
+                              placeholder="Secret key..."
+                              className="pr-10"
+                              onChange={(e) => updatePath("external_integrations.payment_gateway.merchant_secret", e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowSecret(!showSecret)}
+                              className="absolute right-3 text-slate-400 hover:text-slate-200 transition-colors"
+                            >
+                              {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                        <Toggle
+                          label="Sandbox / Test Mode"
+                          hint="Simulate payments without real money"
+                          checked={payConfig.sandbox_mode}
+                          onChange={(v) => updatePath("external_integrations.payment_gateway.sandbox_mode", v)}
+                        />
+                        <Toggle
+                          label="Auto-Attach Link to WhatsApp"
+                          hint="Embed pay link in invoices"
+                          checked={payConfig.auto_generate_invoice_links}
+                          onChange={(v) => updatePath("external_integrations.payment_gateway.auto_generate_invoice_links", v)}
+                        />
+                        <div className="flex items-end">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="w-full h-[38px] flex items-center justify-center gap-2"
+                            onClick={handleTestPayment}
+                            disabled={testingPayment || !payConfig.merchant_id}
+                          >
+                            {testingPayment ? <Settings2 className="animate-spin" size={14} /> : <CreditCard size={14} />}
+                            {testingPayment ? "Verifying..." : "Verify Gateway"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {paymentResult && (
+                        <div
+                          className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 ${
+                            paymentResult.ok
+                              ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-300"
+                              : "bg-rose-950/30 border-rose-500/30 text-rose-300"
+                          }`}
+                        >
+                          {paymentResult.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                          <span>{paymentResult.message}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Google Drive Cloud Backup Card */}
+            {(() => {
+              const [testingDrive, setTestingDrive] = useState(false);
+              const [driveResult, setDriveResult] = useState(null);
+              const driveConfig = data.external_integrations?.google_drive || {
+                enabled: false,
+                client_id: "",
+                client_secret: "",
+                folder_id: "",
+                backup_frequency: "Daily",
+                auto_upload: true,
+              };
+
+              const handleTestDrive = async () => {
+                setTestingDrive(true);
+                setDriveResult(null);
+                try {
+                  const res = await api.post("/settings/integrations/test-google-drive", driveConfig);
+                  setDriveResult({ ok: true, message: res.data?.message || "Google Drive verified!" });
+                  toast("Google Drive verified for backup storage!", "success");
+                } catch (err) {
+                  const msg = err.response?.data?.detail || err.message || "Failed to verify Drive";
+                  setDriveResult({ ok: false, message: msg });
+                  toast(`Google Drive error: ${msg}`, "error");
+                } finally {
+                  setTestingDrive(false);
+                }
+              };
+
+              return (
+                <div className="rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-950/20 to-slate-950/60 p-5 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400">
+                        <Cloud size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                          Google Drive Cloud Backup
+                          <Badge tone={driveConfig.enabled ? "green" : "slate"}>
+                            {driveConfig.enabled ? "Cloud Sync Active" : "Disabled"}
+                          </Badge>
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Automatically upload encrypted database snapshots and POS backups to Google Drive.
+                        </p>
+                      </div>
+                    </div>
+                    <Toggle
+                      label="Enable Drive Backup"
+                      checked={driveConfig.enabled}
+                      onChange={(v) => updatePath("external_integrations.google_drive.enabled", v)}
+                    />
+                  </div>
+
+                  {driveConfig.enabled && (
+                    <div className="space-y-3 pt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <Field
+                          label="Google Client ID / Service Account"
+                          value={driveConfig.client_id}
+                          placeholder="xxxx.apps.googleusercontent.com"
+                          onChange={(v) => updatePath("external_integrations.google_drive.client_id", v)}
+                        />
+                        <Field
+                          label="Target Folder ID"
+                          value={driveConfig.folder_id}
+                          placeholder="e.g. 1A2b3C4d5E..."
+                          onChange={(v) => updatePath("external_integrations.google_drive.folder_id", v)}
+                        />
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Upload Schedule</span>
+                          <Select
+                            value={driveConfig.backup_frequency || "Daily"}
+                            onChange={(e) => updatePath("external_integrations.google_drive.backup_frequency", e.target.value)}
+                          >
+                            <option value="Daily">Daily (At 02:00 AM)</option>
+                            <option value="TwiceDaily">Twice Daily (12-hour)</option>
+                            <option value="Weekly">Weekly (Sundays)</option>
+                            <option value="Realtime">On Each Shift Close</option>
+                          </Select>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        <Toggle
+                          label="Auto-Upload After Backup Creation"
+                          hint="Immediately sync newly created local archives"
+                          checked={driveConfig.auto_upload}
+                          onChange={(v) => updatePath("external_integrations.google_drive.auto_upload", v)}
+                        />
+                        <div className="flex items-end">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="w-full h-[38px] flex items-center justify-center gap-2"
+                            onClick={handleTestDrive}
+                            disabled={testingDrive || !driveConfig.client_id}
+                          >
+                            {testingDrive ? <Settings2 className="animate-spin" size={14} /> : <Cloud size={14} />}
+                            {testingDrive ? "Verifying..." : "Verify Drive Access"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {driveResult && (
+                        <div
+                          className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 ${
+                            driveResult.ok
+                              ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-300"
+                              : "bg-rose-950/30 border-rose-500/30 text-rose-300"
+                          }`}
+                        >
+                          {driveResult.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                          <span>{driveResult.message}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Accounting Software Sync Card */}
+            {(() => {
+              const [testingAccount, setTestingAccount] = useState(false);
+              const [accountResult, setAccountResult] = useState(null);
+              const accConfig = data.external_integrations?.accounting_software || {
+                enabled: false,
+                provider: "QuickBooks Online",
+                client_id: "",
+                client_secret: "",
+                realm_id: "",
+                auto_sync_daily_sales: true,
+                auto_sync_expenses: true,
+              };
+
+              const handleTestAccounting = async () => {
+                setTestingAccount(true);
+                setAccountResult(null);
+                try {
+                  const res = await api.post("/settings/integrations/test-accounting", accConfig);
+                  setAccountResult({ ok: true, message: res.data?.message || "Accounting sync verified!" });
+                  toast("Accounting ledger connection verified!", "success");
+                } catch (err) {
+                  const msg = err.response?.data?.detail || err.message || "Failed to verify accounting link";
+                  setAccountResult({ ok: false, message: msg });
+                  toast(`Accounting Sync error: ${msg}`, "error");
+                } finally {
+                  setTestingAccount(false);
+                }
+              };
+
+              return (
+                <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-b from-violet-950/20 to-slate-950/60 p-5 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
+                        <Landmark size={20} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                          Accounting & General Ledger Sync
+                          <Badge tone={accConfig.enabled ? "green" : "slate"}>
+                            {accConfig.enabled ? `${accConfig.provider} Connected` : "Disabled"}
+                          </Badge>
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Automatically post daily sales receipts, repair service income, and supplier expenses to your ledger.
+                        </p>
+                      </div>
+                    </div>
+                    <Toggle
+                      label="Enable Sync"
+                      checked={accConfig.enabled}
+                      onChange={(v) => updatePath("external_integrations.accounting_software.enabled", v)}
+                    />
+                  </div>
+
+                  {accConfig.enabled && (
+                    <div className="space-y-3 pt-2">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Platform</span>
+                          <Select
+                            value={accConfig.provider || "QuickBooks Online"}
+                            onChange={(e) => updatePath("external_integrations.accounting_software.provider", e.target.value)}
+                          >
+                            <option value="QuickBooks Online">QuickBooks Online (Intuit)</option>
+                            <option value="Xero">Xero Accounting</option>
+                            <option value="Custom Webhook">Custom Accounting Webhook</option>
+                          </Select>
+                        </label>
+                        <Field
+                          label="Client / API ID"
+                          value={accConfig.client_id}
+                          placeholder="OAuth Client ID..."
+                          onChange={(v) => updatePath("external_integrations.accounting_software.client_id", v)}
+                        />
+                        <Field
+                          label="Company / Realm ID"
+                          value={accConfig.realm_id}
+                          placeholder="e.g. 913035..."
+                          onChange={(v) => updatePath("external_integrations.accounting_software.realm_id", v)}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                        <Toggle
+                          label="Auto-Sync Daily Sales"
+                          hint="Post closing sales totals daily"
+                          checked={accConfig.auto_sync_daily_sales}
+                          onChange={(v) => updatePath("external_integrations.accounting_software.auto_sync_daily_sales", v)}
+                        />
+                        <Toggle
+                          label="Auto-Sync Expenses"
+                          hint="Post store expenses to ledger"
+                          checked={accConfig.auto_sync_expenses}
+                          onChange={(v) => updatePath("external_integrations.accounting_software.auto_sync_expenses", v)}
+                        />
+                        <div className="flex items-end">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="w-full h-[38px] flex items-center justify-center gap-2"
+                            onClick={handleTestAccounting}
+                            disabled={testingAccount || !accConfig.client_id}
+                          >
+                            {testingAccount ? <Settings2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                            {testingAccount ? "Verifying..." : "Verify Ledger Link"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {accountResult && (
+                        <div
+                          className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 ${
+                            accountResult.ok
+                              ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-300"
+                              : "bg-rose-950/30 border-rose-500/30 text-rose-300"
+                          }`}
+                        >
+                          {accountResult.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                          <span>{accountResult.message}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="pt-2">
+              <WhatsAppSettingsCard />
+            </div>
+          </div>
+        );
+      },
     },
     {
       id: "license",

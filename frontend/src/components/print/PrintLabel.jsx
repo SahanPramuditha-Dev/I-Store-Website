@@ -45,7 +45,7 @@ export function PrintLabel({ product: propProduct, settings, storeProfile }) {
       <div className="w-full h-full flex flex-col justify-between" style={{ padding: "1mm" }}>
         {/* Store Name / Header */}
         <div className="text-center font-bold text-[10px] leading-tight truncate">
-          {settings?.branding?.show_logo ? storeProfile?.store_name : (settings?.business?.business_name || storeProfile?.store_name || "I Store")}
+          {settings?.branding?.show_logo ? storeProfile?.store_name : (settings?.business?.business_name || storeProfile?.store_name || "E Store")}
         </div>
         
         {/* Product Name */}

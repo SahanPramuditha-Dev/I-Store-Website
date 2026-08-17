@@ -1,4 +1,4 @@
-import { Children, forwardRef, isValidElement, useState, useMemo } from "react";
+import { Children, forwardRef, isValidElement, useState, useMemo, useRef } from "react";
 import { FormControl, MenuItem, Select as MuiSelect } from "@mui/material";
 import { isOwnerOrAdmin } from "../lib/rbac";
 
@@ -423,8 +423,13 @@ export function AppSelect({
 
   // Prevent accidental passing of MenuProps/PaperProps as DOM attributes by
   // stripping them from the rest props and building a safe MenuProps object.
-  const { MenuProps: incomingMenuProps, PaperProps: incomingPaperProps, ...selectPropsRest } = selectProps || {};
-  // Defensive: remove any accidentally cased variants that might still be present
+  const {
+    MenuProps: incomingMenuProps,
+    PaperProps: incomingPaperProps,
+    menuProps: incomingMenuPropsLower,
+    paperProps: incomingPaperPropsLower,
+    ...selectPropsRest
+  } = selectProps || {};
   delete selectPropsRest.PaperProps;
   delete selectPropsRest.MenuProps;
   delete selectPropsRest.paperProps;
@@ -444,13 +449,27 @@ export function AppSelect({
     ...menuPaperSx,
   };
 
-  const { PaperProps: _mp1, paperProps: _mp2, ...cleanMenuProps } = menuProps || {};
-  const { PaperProps: _imp1, paperProps: _imp2, ...cleanIncomingMenuProps } = incomingMenuProps || {};
+  const {
+    PaperProps: _mp1,
+    paperProps: _mp2,
+    slotProps: incomingMenuSlotProps,
+    ...cleanMenuProps
+  } = menuProps || {};
+  const {
+    PaperProps: _imp1,
+    paperProps: _imp2,
+    slotProps: incomingDirectSlotProps,
+    ...cleanIncomingMenuProps
+  } = incomingMenuProps || {};
 
   const finalMenuProps = {
     ...cleanIncomingMenuProps,
     ...cleanMenuProps,
-    PaperProps: mergedPaperProps,
+    slotProps: {
+      paper: mergedPaperProps,
+      ...(incomingMenuSlotProps || {}),
+      ...(incomingDirectSlotProps || {}),
+    },
   };
 
   return (
@@ -528,7 +547,16 @@ export function SearchableSelect({
   searchPlaceholder = "Search options...",
 }) {
   const [search, setSearch] = useState("");
+  const [menuWidth, setMenuWidth] = useState(null);
+  const containerRef = useRef(null);
+  const searchInputRef = useRef(null);
   const sizeConfig = resolveSelectSize(size);
+
+  const handleOpen = () => {
+    if (containerRef.current) {
+      setMenuWidth(containerRef.current.clientWidth);
+    }
+  };
 
   const filteredOptions = useMemo(() => {
     if (!search.trim()) return options;
@@ -555,20 +583,39 @@ export function SearchableSelect({
     setSearch("");
   };
 
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      e.stopPropagation();
+      const popover = e.currentTarget.closest(".MuiPaper-root");
+      if (popover) {
+        const firstOption = popover.querySelector('[role="option"]:not([aria-disabled="true"])');
+        if (firstOption) {
+          firstOption.focus();
+        }
+      }
+    }
+  };
+
+  const matchedOptionValue = selectedOption ? (typeof selectedOption === "object" ? selectedOption.value : selectedOption) : "";
+
   return (
     <FormControl
+      ref={containerRef}
       size={sizeConfig.formControlSize}
       fullWidth={fullWidth}
       disabled={disabled}
       className={className}
+      style={{ boxSizing: "border-box", width: fullWidth ? "100%" : "auto" }}
     >
       <MuiSelect
-        value={value ?? ""}
+        value={matchedOptionValue}
         onChange={handleSelectChange}
         displayEmpty
+        onOpen={handleOpen}
         onClose={() => setSearch("")}
         renderValue={() => (
-          <span style={{ color: value ? "#0f172a" : "#64748b", fontWeight: 600 }}>
+          <span style={{ color: (value !== "" && value !== null && value !== undefined) ? "#0f172a" : "#64748b", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {selectedLabel}
           </span>
         )}
@@ -580,51 +627,64 @@ export function SearchableSelect({
           color: "#0f172a",
           border: "1px solid #cbd5e1",
           boxShadow: "0 0 0 1px rgba(148, 163, 184, 0.18)",
+          width: "100%",
+          boxSizing: "border-box",
           "& .MuiSelect-select": {
             py: sizeConfig.selectPaddingY,
             pr: "34px",
             pl: sizeConfig.selectPaddingX,
             display: "flex",
             alignItems: "center",
+            boxSizing: "border-box",
+            width: "100%",
           },
           "& .MuiSvgIcon-root": { color: "#64748b" },
         }}
         MenuProps={{
-          PaperProps: {
-            sx: {
-              background: "#ffffff !important",
-              color: "#0f172a !important",
-              border: "1.5px solid #cbd5e1",
-              borderRadius: "14px",
-              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.12)",
-              maxHeight: 380,
-              overflow: "hidden",
-              "& .MuiList-root": {
-                paddingTop: 0,
-                paddingBottom: 0,
-                backgroundColor: "#ffffff !important",
+          autoFocus: false,
+          slotProps: {
+            paper: {
+              style: {
+                width: menuWidth ? `${menuWidth}px` : "100%",
+                minWidth: menuWidth ? `${menuWidth}px` : "100%",
+                boxSizing: "border-box",
               },
-              "& .MuiMenuItem-root": {
-                fontWeight: 600,
-                color: "#1e293b !important",
-                backgroundColor: "#ffffff !important",
-                fontSize: "13px",
-                py: "10px",
-                px: "14px",
-                borderBottom: "1px solid #f1f5f9",
-                transition: "all 0.15s ease",
-              },
-              "& .MuiMenuItem-root:hover": {
-                backgroundColor: "#f1f5f9 !important",
-                color: "#4f46e5 !important",
-              },
-              "& .MuiMenuItem-root.Mui-selected": {
-                backgroundColor: "#e0e7ff !important",
-                color: "#4338ca !important",
-                fontWeight: 700,
-              },
-              "& .MuiMenuItem-root.Mui-selected:hover": {
-                backgroundColor: "#c7d2fe !important",
+              sx: {
+                background: "#ffffff !important",
+                color: "#0f172a !important",
+                border: "1.5px solid #cbd5e1",
+                borderRadius: "14px",
+                boxShadow: "0 20px 40px rgba(0, 0, 0, 0.12)",
+                maxHeight: 380,
+                overflowX: "hidden",
+                overflowY: "auto",
+                zIndex: 1000,
+                boxSizing: "border-box",
+                "& .MuiList-root": {
+                  paddingTop: 0,
+                  paddingBottom: 0,
+                  backgroundColor: "#ffffff !important",
+                  boxSizing: "border-box",
+                  width: "100%",
+                },
+                "& .MuiMenuItem-root": {
+                  fontWeight: 600,
+                  color: "#1e293b !important",
+                  backgroundColor: "#ffffff !important",
+                  fontSize: "13px",
+                  py: "9px",
+                  px: "14px",
+                  borderBottom: "1px solid #f1f5f9",
+                  "&:hover": {
+                    backgroundColor: "#f8fafc !important",
+                    color: "#0284c7 !important",
+                  },
+                  "&.Mui-selected": {
+                    backgroundColor: "#f0f9ff !important",
+                    color: "#0284c7 !important",
+                    fontWeight: 700,
+                  },
+                },
               },
             },
           },
@@ -633,18 +693,20 @@ export function SearchableSelect({
         {/* White Search Header Bar */}
         <div
           style={{
-            padding: "10px 12px",
+            padding: "8px 10px",
             position: "sticky",
             top: 0,
             zIndex: 20,
             backgroundColor: "#ffffff",
             borderBottom: "2px solid #e2e8f0",
             boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+            boxSizing: "border-box",
+            width: "100%",
           }}
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
         >
-          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <div style={{ position: "relative", display: "flex", alignItems: "center", width: "100%", minWidth: 0, boxSizing: "border-box" }}>
             <svg
               style={{
                 position: "absolute",
@@ -653,6 +715,7 @@ export function SearchableSelect({
                 height: "15px",
                 color: "#4f46e5",
                 pointerEvents: "none",
+                flexShrink: 0,
               }}
               fill="none"
               stroke="currentColor"
@@ -661,22 +724,30 @@ export function SearchableSelect({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
+              ref={searchInputRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               placeholder={searchPlaceholder}
               autoFocus
               style={{
                 width: "100%",
-                padding: "8px 30px 8px 34px",
-                fontSize: "13px",
+                minWidth: 0,
+                boxSizing: "border-box",
+                paddingLeft: "34px",
+                paddingRight: search ? "30px" : "12px",
+                paddingTop: "7px",
+                paddingBottom: "7px",
+                fontSize: "12px",
                 fontWeight: 600,
                 borderRadius: "8px",
                 backgroundColor: "#f8fafc",
                 border: "1.5px solid #6366f1",
                 color: "#0f172a",
                 outline: "none",
-                boxShadow: "0 0 0 3px rgba(99, 102, 241, 0.2)",
+                boxShadow: "0 0 0 3px rgba(99, 102, 241, 0.15)",
+                textOverflow: "ellipsis",
               }}
             />
             {search && (
@@ -685,7 +756,7 @@ export function SearchableSelect({
                 onClick={() => setSearch("")}
                 style={{
                   position: "absolute",
-                  right: "10px",
+                  right: "8px",
                   background: "#e2e8f0",
                   border: "none",
                   borderRadius: "50%",
@@ -698,6 +769,7 @@ export function SearchableSelect({
                   cursor: "pointer",
                   fontSize: "11px",
                   fontWeight: "bold",
+                  flexShrink: 0,
                 }}
               >
                 ✕
@@ -706,7 +778,7 @@ export function SearchableSelect({
           </div>
         </div>
 
-        {placeholder && (
+        {placeholder && !filteredOptions.some((opt) => (typeof opt === "object" ? opt?.value : opt) === "") && (
           <MenuItem value="" style={{ color: "#64748b", fontStyle: "italic", fontSize: "12px", backgroundColor: "#ffffff" }}>
             {placeholder}
           </MenuItem>
@@ -755,25 +827,25 @@ export function ProductSelect({
         label: `${p.name || "Unnamed Item"}${skuStr}${priceVal !== null ? ` | LKR ${priceVal.toLocaleString("en-LK")}` : ""}${qtyVal !== null ? ` | Stock: ${qtyVal}` : ""}`,
         subText: `${p.sku || ""} ${p.barcode || ""}`,
         customRender: (
-          <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "2px", py: "2px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-              <span style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px" }}>
-                {p.name || "Unnamed Product"}
-              </span>
-              {p.sku && (
-                <span style={{ fontSize: "10px", fontFamily: "monospace", color: "#0284c7", backgroundColor: "#e0f2fe", padding: "1px 6px", borderRadius: "4px", border: "1px solid #bae6fd" }}>
-                  {p.sku}
-                </span>
-              )}
+          <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "3px", py: "3px", boxSizing: "border-box" }}>
+            <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px", lineHeight: "1.3", wordBreak: "break-word" }}>
+              {p.name || "Unnamed Product"}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "11px", color: "#64748b" }}>
-              {priceVal !== null && (
+            {p.sku && (
+              <div style={{ fontSize: "11px", fontFamily: "monospace", color: "#64748b", fontWeight: 600, letterSpacing: "0.02em" }}>
+                {p.sku}
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginTop: "2px", fontSize: "12px" }}>
+              {priceVal !== null ? (
                 <span style={{ color: "#16a34a", fontWeight: 700 }}>
                   LKR {priceVal.toLocaleString("en-LK", { minimumFractionDigits: 2 })}
                 </span>
+              ) : (
+                <span />
               )}
               {qtyVal !== null && (
-                <span style={{ color: qtyVal > 0 ? "#4f46e5" : "#dc2626", fontWeight: 700 }}>
+                <span style={{ color: qtyVal > 0 ? "#4f46e5" : "#dc2626", fontWeight: 700, fontSize: "11px" }}>
                   {qtyVal > 0 ? `Stock: ${qtyVal}` : "Out of Stock"}
                 </span>
               )}
@@ -791,6 +863,69 @@ export function ProductSelect({
       options={options}
       placeholder={placeholder}
       searchPlaceholder="Search product by name, SKU, or barcode..."
+      className={className}
+      disabled={disabled}
+      size={size}
+      fullWidth={fullWidth}
+    />
+  );
+}
+
+export function CustomerSelect({
+  value,
+  onChange,
+  customers = [],
+  placeholder = "Walk-in Customer",
+  searchPlaceholder = "Search customer by name or phone...",
+  className = "",
+  disabled = false,
+  size = "md",
+  fullWidth = true,
+}) {
+  const options = useMemo(() => {
+    const list = [
+      {
+        value: "",
+        label: placeholder,
+        subText: "walk-in default",
+        customRender: (
+          <div style={{ py: "2px", color: "#64748b", fontStyle: "italic", fontSize: "13px", fontWeight: 600 }}>
+            {placeholder}
+          </div>
+        ),
+      },
+    ];
+
+    (customers || []).forEach((c) => {
+      const phoneStr = c.phone ? ` (${c.phone})` : "";
+      list.push({
+        value: String(c.id),
+        label: `${c.name || "Customer"}${phoneStr}`,
+        subText: `${c.name || ""} ${c.phone || ""} ${c.email || ""}`,
+        customRender: (
+          <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "2px", py: "2px", boxSizing: "border-box" }}>
+            <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px", lineHeight: "1.3", wordBreak: "break-word" }}>
+              {c.name || "Unnamed Customer"}
+            </div>
+            {c.phone && (
+              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>
+                {c.phone}
+              </div>
+            )}
+          </div>
+        ),
+      });
+    });
+    return list;
+  }, [customers, placeholder]);
+
+  return (
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={options}
+      placeholder={placeholder}
+      searchPlaceholder={searchPlaceholder}
       className={className}
       disabled={disabled}
       size={size}

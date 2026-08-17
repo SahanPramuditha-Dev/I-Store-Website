@@ -17,6 +17,7 @@ import {
 import { Badge, Button, KpiCard, PageHeader, SectionCard, Select, Table } from "../components/UI";
 import { downloadCsv, downloadPdf, openPrintView, paginateRows } from "../lib/tableUtils";
 import { useFeedback } from "../components/FeedbackProvider";
+import { toLocalIsoDate, formatDateTime } from "../lib/dateParser";
 import api from "../lib/api";
 import AppDrawer from "../components/layout/AppDrawer";
 
@@ -43,8 +44,8 @@ function initialDateRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   return {
-    date_from: start.toISOString().slice(0, 10),
-    date_to: now.toISOString().slice(0, 10),
+    date_from: toLocalIsoDate(start),
+    date_to: toLocalIsoDate(now),
   };
 }
 
@@ -171,12 +172,7 @@ function formatPayload(value) {
   }).join(" | ");
 }
 
-function formatDateTime(value) {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return "-";
-  return dt.toLocaleString();
-}
+
 
 function uniqueSorted(values) {
   return [...new Set((values || []).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
@@ -371,7 +367,7 @@ export default function ActivityLog() {
       });
       await downloadPdf(
         `audit_trail_${filters.date_from || "from"}_${filters.date_to || "to"}`,
-        "I Store Audit Trail",
+        "E Store Audit Trail",
         exportColumns,
         rows,
         { confidentialStamp: true, watermark: "Audit Trail" },
@@ -390,7 +386,7 @@ export default function ActivityLog() {
       date_to: filters.date_to || null,
       filters,
     }).catch(() => {});
-    openPrintView("I Store Audit Trail", exportColumns, rows);
+    openPrintView("E Store Audit Trail", exportColumns, rows);
   };
 
   if (accessDenied) {

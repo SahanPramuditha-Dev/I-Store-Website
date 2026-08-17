@@ -290,7 +290,7 @@ function buildSampleDocumentHtml({ identity, doc, reference, paper }) {
           <section class="meta">
             <div><strong>Reference</strong><br />${escapeHtml(reference || "PREVIEW")}</div>
             <div><strong>Printed At</strong><br />${escapeHtml(formatDate())}</div>
-            <div><strong>Operator</strong><br />I Store workstation</div>
+            <div><strong>Operator</strong><br />E Store workstation</div>
           </section>
           <table>
             <thead><tr><th>Description</th><th>Status</th><th>Value</th></tr></thead>
