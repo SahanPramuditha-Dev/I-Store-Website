@@ -3595,6 +3595,43 @@ html:not(.dark) .dashboard-date-pill {
   color: #334155 !important;
 }
 
+html:not(.dark) .dashboard-range-tabs {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .dashboard-range-tabs button {
+  color: #64748b !important;
+}
+
+html:not(.dark) .dashboard-range-tabs button:hover {
+  color: #0f172a !important;
+  background: #e2e8f0 !important;
+}
+
+html:not(.dark) .dashboard-range-tabs button.is-active {
+  color: #ffffff !important;
+  background: var(--brand-primary) !important;
+  box-shadow: 0 1px 3px rgba(79, 70, 229, 0.3) !important;
+}
+
+html:not(.dark) .dashboard-list-row {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .dashboard-list-row p.text-slate-200 {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .dashboard-list-row p.text-slate-400 {
+  color: #64748b !important;
+}
+
+html:not(.dark) .dashboard-list-row p.text-emerald-300 {
+  color: #059669 !important;
+}
+
 html:not(.dark) .dashboard-activity-row {
   background: #f8fafc !important;
   border-color: #e2e8f0 !important;
@@ -3604,27 +3641,39 @@ html:not(.dark) .dashboard-activity-row p.text-slate-200 {
   color: #0f172a !important;
 }
 
-html:not(.dark) .dashboard-action-tile {
-  background: #ffffff !important;
-  border-color: #cbd5e1 !important;
+html:not(.dark) .dashboard-activity-row p.text-slate-400 {
+  color: #64748b !important;
 }
 
-html:not(.dark) .dashboard-action-tile:hover {
-  background: #f8fafc !important;
-  border-color: #94a3b8 !important;
+html:not(.dark) .dashboard-activity-row .bg-black\/20 {
+  background: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
 }
 
-html:not(.dark) .dashboard-action-tile span:last-child {
+html:not(.dark) .dashboard-table-card table td.text-slate-200,
+html:not(.dark) .dashboard-table-card table .text-slate-200 {
   color: #0f172a !important;
 }
 
-html:not(.dark) .dashboard-hero h2 {
-  color: #0f172a !important;
+html:not(.dark) .dashboard-table-card table td.text-slate-400,
+html:not(.dark) .dashboard-table-card table .text-slate-400 {
+  color: #64748b !important;
 }
 
-html:not(.dark) .dashboard-hero p,
-html:not(.dark) .dashboard-table-card .text-slate-400 {
+html:not(.dark) .dashboard-table-card table th {
   color: #475569 !important;
+}
+
+html:not(.dark) .dashboard-table-card table tr:hover {
+  background: #f8fafc !important;
+}
+
+html:not(.dark) .dashboard-table-card table .text-cyan-300 {
+  color: #0284c7 !important;
+}
+
+html:not(.dark) .dashboard-table-card table .text-emerald-300 {
+  color: #059669 !important;
 }
 
 html:not(.dark) .dashboard-notifications {

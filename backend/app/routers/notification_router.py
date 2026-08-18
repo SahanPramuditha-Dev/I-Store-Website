@@ -99,6 +99,47 @@ def _ensure_runtime_schema(db: Session) -> None:
     _RUNTIME_SCHEMA_READY = True
 
 
+import re
+
+
+def _clean_human_message(msg: str | None) -> str:
+    if not msg:
+        return ""
+
+    def _replace_iso(m):
+        raw = m.group(0)
+        try:
+            dt = datetime.fromisoformat(raw)
+            return dt.strftime("%b %d, %Y at %I:%M %p")
+        except Exception:
+            return raw
+
+    return re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?", _replace_iso, str(msg))
+
+
+def _cleanup_existing_duplicates_and_messages(db: Session) -> None:
+    all_open = (
+        db.query(Notification)
+        .filter(Notification.is_archived == False)  # noqa: E712
+        .order_by(Notification.created_at.desc())
+        .all()
+    )
+    seen_keys = set()
+    for row in all_open:
+        if row.entity_type and row.entity_id is not None:
+            key = (row.source_module or "", row.entity_type, row.entity_id)
+        else:
+            key = (row.source_module or "", row.title)
+
+        if key in seen_keys:
+            row.is_archived = True
+            row.archived_at = utcnow()
+        else:
+            seen_keys.add(key)
+            if row.message:
+                row.message = _clean_human_message(row.message)
+
+
 def _serialize_notification(row: Notification) -> dict:
     source = str(row.source_module or "system").lower()
     notif_type = str(row.type or "").lower()
@@ -110,7 +151,7 @@ def _serialize_notification(row: Notification) -> dict:
         action_url = "/settings"
         action_label = "Backup Settings"
     elif source == "inventory" or "stock" in notif_type:
-        action_url = "/inventory"
+        action_url = "/inventory/products"
         action_label = "View Stock"
     elif source == "repairs" or "repair" in notif_type:
         action_url = "/repairs"
@@ -122,11 +163,13 @@ def _serialize_notification(row: Notification) -> dict:
         action_url = "/warranty"
         action_label = "View Warranty"
 
+    clean_msg = _clean_human_message(row.message)
+
     return {
         "id": row.id,
         "type": row.type,
         "title": row.title,
-        "message": row.message,
+        "message": clean_msg,
         "is_read": bool(row.is_read),
         "read_at": row.read_at.isoformat() if row.read_at else None,
         "is_acknowledged": bool(row.is_acknowledged),
@@ -411,6 +454,9 @@ def _refresh_notifications(db: Session) -> dict:
             Notification.is_archived == False,  # noqa: E712
             Notification.source_module == "backup",
         ).update({"is_archived": True, "archived_at": auto_resolved_at}, synchronize_session=False)
+
+    # Clean up any leftover historical duplicates and sanitize message timestamps in DB
+    _cleanup_existing_duplicates_and_messages(db)
 
     db.commit()
     return {

@@ -133,6 +133,35 @@ function getNotificationCategoryIcon(source, type) {
   return <Bell size={13} className="text-slate-400 shrink-0" />;
 }
 
+function getNotificationAction(item) {
+  if (item?.action_url && item?.action_label) {
+    return { url: item.action_url, label: item.action_label };
+  }
+  const s = String(item?.source_module || "").toLowerCase();
+  const t = String(item?.type || "").toLowerCase();
+  if (s === "backup" || t.includes("backup")) return { url: "/settings", label: "Backup Settings" };
+  if (s === "inventory" || t.includes("stock")) return { url: "/inventory/products", label: "View Stock" };
+  if (s === "repairs" || t.includes("repair")) return { url: "/repairs", label: "View Repair" };
+  if (s === "pos" || t.includes("balance") || t.includes("payment")) return { url: "/pos", label: "Open POS" };
+  if (s === "warranty" || t.includes("warranty")) return { url: "/warranty", label: "View Warranty" };
+  return null;
+}
+
+function sanitizeMessage(msg) {
+  if (!msg) return "";
+  return msg.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?/g, (isoStr) => {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  });
+}
+
 export default function Layout() {
   const location = useLocation();
   const n = useNavigate();
@@ -166,7 +195,23 @@ export default function Layout() {
   }, [repairs, dashboardData]);
 
   const notifications = useMemo(() => {
-    return [...(apiNotifications || [])];
+    const list = Array.isArray(apiNotifications) ? apiNotifications : [];
+    // Ensure strict frontend deduplication so multiple duplicates collapse into a single card
+    const seen = new Set();
+    const deduped = [];
+    for (const item of list) {
+      const key = item.entity_type && item.entity_id != null
+        ? `${item.source_module || ""}-${item.entity_type}-${item.entity_id}`
+        : `${item.source_module || ""}-${item.title}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push({
+          ...item,
+          message: sanitizeMessage(item.message),
+        });
+      }
+    }
+    return deduped;
   }, [apiNotifications]);
 
   const unreadNotifCount = useMemo(() => {
@@ -541,7 +586,7 @@ export default function Layout() {
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-black uppercase tracking-widest text-slate-800 dark:text-slate-200">Alerts & Notifications</h4>
                     {unreadNotifCount > 0 && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono border border-rose-500/20">
+                      <span className="whitespace-nowrap inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono border border-rose-500/20 shrink-0">
                         {unreadNotifCount} new
                       </span>
                     )}
@@ -644,6 +689,7 @@ export default function Layout() {
                       const isWarning = severity === "warning" || severity === "high" || severity === "medium";
                       const isUnread = !item.is_read;
                       const relTime = formatRelativeTime(item.created_at);
+                      const action = getNotificationAction(item);
 
                       return (
                         <div
@@ -663,9 +709,9 @@ export default function Layout() {
                               await api.put(`/notifications/${item.id}/read`).catch(() => {});
                               refreshNotifications?.();
                             }
-                            if (item.action_url) {
+                            if (action?.url) {
                               setShowNotifications(false);
-                              navigateIfAllowed(item.action_url);
+                              navigateIfAllowed(action.url);
                             }
                           }}
                         >
@@ -705,17 +751,17 @@ export default function Layout() {
                               {item.source_module || "system"}
                             </span>
                             <div className="flex items-center gap-1.5">
-                              {item.action_url && (
+                              {action && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setShowNotifications(false);
-                                    navigateIfAllowed(item.action_url);
+                                    navigateIfAllowed(action.url);
                                   }}
                                   className="rounded-lg border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition flex items-center gap-1"
                                 >
-                                  {item.action_label || "Open"} <ExternalLink size={10} />
+                                  {action.label} <ExternalLink size={10} />
                                 </button>
                               )}
                               {!item.is_acknowledged ? (

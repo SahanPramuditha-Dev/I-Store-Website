@@ -610,33 +610,29 @@ export default function Dashboard() {
                         <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-default)" opacity={0.6} />
                     <XAxis
                       dataKey="name"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
+                      tick={{ fill: "var(--text-muted)", fontSize: 11, fontWeight: 600 }}
                       dy={8}
                       interval={salesRange === "30d" ? 4 : 0}
                     />
                     <YAxis
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#94a3b8", fontSize: 11, fontWeight: 600 }}
+                      tick={{ fill: "var(--text-muted)", fontSize: 11, fontWeight: 600 }}
                       width={65}
                       tickFormatter={(v) => (v >= 1000000 ? `LKR ${(v / 1000000).toFixed(1)}M` : `LKR ${(v / 1000).toFixed(0)}k`)}
                     />
                     <Tooltip
                       cursor={{ stroke: "#06b6d4", strokeWidth: 1.5, strokeDasharray: "4 4" }}
+                      wrapperClassName="recharts-tooltip-wrapper"
                       contentStyle={{
-                        backgroundColor: "#0f172a",
                         borderRadius: "12px",
-                        border: "1px solid rgba(6, 182, 212, 0.4)",
-                        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.7)",
                         padding: "10px 14px",
                       }}
-                      itemStyle={{ color: "#ffffff", fontWeight: 700, fontSize: "13px" }}
-                      labelStyle={{ color: "#38bdf8", fontWeight: 800, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}
                       formatter={(val) => [`LKR ${Number(val).toLocaleString()}`, "Revenue"]}
                     />
                     <Area
@@ -699,7 +695,7 @@ export default function Dashboard() {
 
                   {/* Clean Dynamic Center Badge */}
                   <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-slate-950/90 p-2 backdrop-blur-md border border-white/10 shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all duration-200">
+                    <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white dark:bg-slate-950/90 p-2 backdrop-blur-md border border-slate-200 dark:border-white/10 shadow-lg dark:shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all duration-200">
                       {activePieIndex !== null && activeSalesData[activePieIndex] ? (
                         <>
                           <span
@@ -708,22 +704,22 @@ export default function Dashboard() {
                           >
                             {activeSalesData[activePieIndex].name}
                           </span>
-                          <span className="mt-0.5 text-xs font-black text-white tabular-nums tracking-tight">
+                          <span className="mt-0.5 text-xs font-black text-slate-900 dark:text-white tabular-nums tracking-tight">
                             LKR {Number(activeSalesData[activePieIndex].value || 0) >= 1000000
                               ? `${(Number(activeSalesData[activePieIndex].value || 0) / 1000000).toFixed(1)}M`
                               : Number(activeSalesData[activePieIndex].value || 0).toLocaleString()}
                           </span>
-                          <span className="text-[9px] font-bold text-slate-400">
+                          <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">
                             {formatPercentage(activeSalesData[activePieIndex].value, totalSales)} of sales
                           </span>
                         </>
                       ) : (
                         <>
-                          <span className="text-[9px] font-black uppercase tracking-wider text-cyan-400">Total Sales</span>
-                          <span className="mt-0.5 text-xs font-black text-white tabular-nums tracking-tight">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Total Sales</span>
+                          <span className="mt-0.5 text-xs font-black text-slate-900 dark:text-white tabular-nums tracking-tight">
                             LKR {totalSales >= 1000000 ? `${(totalSales / 1000000).toFixed(1)}M` : totalSales.toLocaleString()}
                           </span>
-                          <span className="text-[9px] font-medium text-slate-500">
+                          <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400">
                             {activeSalesData.length} {activeSalesData.length === 1 ? "Category" : "Categories"}
                           </span>
                         </>
@@ -748,8 +744,8 @@ export default function Dashboard() {
                         onMouseLeave={() => setActivePieIndex(null)}
                         className={`group flex flex-col rounded-xl border p-3 transition-all duration-200 cursor-pointer shadow-sm ${
                           isActive
-                            ? "border-cyan-400/60 bg-slate-800/90 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                            : "border-white/5 bg-slate-900/60 hover:border-white/20 hover:bg-slate-800/60"
+                            ? "border-cyan-500 bg-cyan-50/70 dark:bg-slate-800/90 shadow-sm"
+                            : "border-slate-200 bg-slate-50/70 hover:bg-slate-100/80 dark:border-white/5 dark:bg-slate-900/60 dark:hover:bg-slate-800/60"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -761,12 +757,12 @@ export default function Dashboard() {
                                 boxShadow: `0 0 10px ${color}80`,
                               }}
                             />
-                            <span className="truncate text-xs font-bold text-slate-200 group-hover:text-white">
+                            <span className="truncate text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white">
                               {s.name}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0 text-xs">
-                            <span className="font-bold tabular-nums font-mono text-white">
+                            <span className="font-bold tabular-nums font-mono text-slate-900 dark:text-white">
                               LKR {Number(s.value || 0).toLocaleString()}
                             </span>
                             <span
@@ -778,7 +774,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         {/* Progress Bar */}
-                        <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-950/80">
+                        <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-950/80">
                           <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
