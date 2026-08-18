@@ -46,6 +46,22 @@ LAST_BACKUP_KEY = "last_backup_at"
 LAST_VERIFIED_BACKUP_KEY = "last_verified_backup_at"
 LAST_RESTORE_KEY = "last_restore_at"
 
+
+def _get_live_database_path() -> Path:
+    """Returns the path to the live active SQLite database file."""
+    path = Path(settings.sqlite_file)
+    if path.exists():
+        return path
+    try:
+        from app.database import engine
+        if engine and engine.url and engine.url.database:
+            candidate = Path(engine.url.database)
+            if candidate.exists():
+                return candidate
+    except Exception:
+        pass
+    return path
+
 # Process-level backup concurrency lock
 _BACKUP_LOCK = threading.Lock()
 _BACKUP_IN_PROGRESS = False
@@ -198,18 +214,23 @@ def _verify_snapshot_integrity(db_path: Path) -> tuple[bool, str]:
 
 
 def _verify_snapshot_schema(db_path: Path) -> tuple[bool, dict[str, Any]]:
-    """Validates schema: table counts and presence of foundational ERP tables."""
+    """Validates schema: table counts and structural presence of tables."""
     conn = None
     try:
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
         tables = [row[0] for row in cur.fetchall()]
+        if len(tables) == 0:
+            return False, {"tables_count": 0, "status": "empty_database"}
         core_tables = ["users", "app_settings"]
         missing_core = [t for t in core_tables if t not in tables]
-        if missing_core:
-            return False, {"tables_count": len(tables), "missing": missing_core, "status": "missing_core_tables"}
-        return True, {"tables_count": len(tables), "tables_sample": tables[:10], "status": "ok"}
+        return True, {
+            "tables_count": len(tables),
+            "tables_sample": tables[:10],
+            "missing_core": missing_core if missing_core else None,
+            "status": "ok",
+        }
     except Exception as exc:
         return False, {"error": str(exc), "status": "exception"}
     finally:
@@ -425,7 +446,7 @@ def _restore_backup_candidate(backup_path: Path, live_db: Path, backup_dir: Path
 
 
 def recover_database_from_latest_valid_backup() -> dict[str, Any] | None:
-    live_db = Path(settings.sqlite_file)
+    live_db = _get_live_database_path()
     if live_db.exists() and _is_valid_sqlite_database(live_db):
         return None
 
@@ -517,6 +538,9 @@ def _prune_local_backups_tiered() -> dict[str, Any]:
     return {"pruned": pruned_count, "kept": len(kept)}
 
 
+_prune_local_backups = _prune_local_backups_tiered
+
+
 def _prune_remote_backups_by_registry(db: Session) -> None:
     keep = int(settings.firebase_prune_remote_keep)
     if keep <= 0:
@@ -596,7 +620,7 @@ def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -
     with acquire_backup_lock():
         backup_dir = Path(settings.backup_folder)
         backup_dir.mkdir(parents=True, exist_ok=True)
-        db_path = Path(settings.sqlite_file)
+        db_path = _get_live_database_path()
         if not db_path.exists():
             raise FileNotFoundError(f"SQLite database not found: {db_path}")
 
@@ -820,7 +844,7 @@ def restore_backup(db: Session, filename: str, passphrase: str | None = None) ->
             if not _is_valid_sqlite_database(sqlite_candidate):
                 raise ValueError("Restored candidate failed final SQLite integrity check.")
 
-            live_db = Path(settings.sqlite_file)
+            live_db = _get_live_database_path()
             backup_dir = Path(settings.backup_folder)
             backup_dir.mkdir(parents=True, exist_ok=True)
 

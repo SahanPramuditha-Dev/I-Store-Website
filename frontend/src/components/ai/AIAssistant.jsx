@@ -35,7 +35,31 @@ import {
   FileSpreadsheet
 } from "lucide-react";
 import { useAIChat } from "./useAIChat";
+import { getAuthValue } from "../../lib/rbac";
 import "./AIAssistant.css";
+
+function getAutoSelectedRole() {
+  try {
+    const rawRole = String(
+      getAuthValue("login_role") ||
+      getAuthValue("role") ||
+      localStorage.getItem("login_role") ||
+      localStorage.getItem("role") ||
+      localStorage.getItem("login_role_label") ||
+      ""
+    ).toLowerCase();
+
+    if (rawRole.includes("tech") || rawRole.includes("repair")) {
+      return "technician";
+    }
+    if (rawRole.includes("cashier") || rawRole.includes("pos") || rawRole.includes("sales") || rawRole.includes("clerk")) {
+      return "cashier";
+    }
+    return "admin";
+  } catch {
+    return "admin";
+  }
+}
 
 const ROLE_PROMPTS = {
   admin: [
@@ -451,7 +475,7 @@ export default function AIAssistant() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [inputText, setInputText] = useState("");
   const [copiedId, setCopiedId] = useState(null);
-  const [activeRole, setActiveRole] = useState("admin");
+  const [activeRole, setActiveRole] = useState(() => getAutoSelectedRole());
   const [attachedImage, setAttachedImage] = useState(null); // { base64, previewUrl, name }
   const [isListening, setIsListening] = useState(false);
 
@@ -468,6 +492,13 @@ export default function AIAssistant() {
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const speechRecognitionRef = useRef(null);
+
+  // Sync role automatically whenever AI modal is opened
+  useEffect(() => {
+    if (isOpen) {
+      setActiveRole(getAutoSelectedRole());
+    }
+  }, [isOpen]);
 
   // Auto scroll
   useEffect(() => {
@@ -568,7 +599,8 @@ export default function AIAssistant() {
       textareaRef.current.style.height = "auto";
     }
 
-    sendMessage(text || "Please analyze this attached photo.", imageToSend, activeRole, "Manager");
+    const userRoleLabel = getAuthValue("login_role_label") || getAuthValue("login_role") || "Staff";
+    sendMessage(text || "Please analyze this attached photo.", imageToSend, activeRole, userRoleLabel);
   };
 
   const handleKeyDown = (e) => {
