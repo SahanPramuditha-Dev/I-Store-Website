@@ -1590,25 +1590,25 @@ export default function POS() {
   }, [catalogRows, inventoryFetch.data, activeCategory, searchQuery]);
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3 text-slate-200 overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col gap-3 text-slate-900 dark:text-slate-200 overflow-hidden">
       
       {/* TOP COMPACT STATUS BAR */}
-      <div className="flex flex-nowrap items-center justify-between gap-3 bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-xl p-2 shrink-0 shadow-sm overflow-x-auto">
-        <div className="flex items-center shrink-0 bg-black/40 p-1 rounded-lg border border-white/5">
+      <div className="flex flex-nowrap items-center justify-between gap-3 bg-white dark:bg-slate-900/60 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-xl p-2 shrink-0 shadow-sm overflow-x-auto">
+        <div className="flex items-center shrink-0 bg-slate-100 dark:bg-black/40 p-1 rounded-lg border border-slate-200 dark:border-white/5">
           <button 
-            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "sale" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "sale" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
             onClick={() => setMode("sale")}
           >
             Product Sale
           </button>
           <button 
-            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "repair" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "repair" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
             onClick={() => setMode("repair")}
           >
             Repair Billing
           </button>
           <button 
-            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "reservation" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "reservation" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
             onClick={() => setMode("reservation")}
           >
             Reservation
@@ -1616,7 +1616,7 @@ export default function POS() {
           <button
             type="button"
             onClick={() => setMode("return")}
-            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "return" ? "bg-rose-500/20 text-rose-100 shadow-md" : "text-slate-400 hover:text-white"}`}
+            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "return" ? "bg-rose-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
           >
             Return / Exchange
           </button>
@@ -1628,12 +1628,12 @@ export default function POS() {
             <button
               type="button"
               onClick={() => setShiftModalOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-xs font-bold transition shadow-sm"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-xs font-bold transition shadow-sm"
               title="Click to view Drawer Float or Close Register Shift"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>Shift Open (#{currentShiftData.recon_code})</span>
-              <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded">
+              <span className="text-[11px] font-mono text-emerald-900 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/20 px-1.5 py-0.5 rounded">
                 LKR {Number(currentShiftData.sales_summary?.expected_drawer_cash || currentShiftData.opening_float || 0).toLocaleString()}
               </span>
             </button>
@@ -1641,10 +1641,10 @@ export default function POS() {
             <button
               type="button"
               onClick={() => setShiftModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition shadow-sm animate-pulse"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-xs font-bold transition shadow-sm animate-pulse"
               title="Click to open register shift with starting float"
             >
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
               <span>Open Register Shift</span>
             </button>
           )}
@@ -1653,27 +1653,27 @@ export default function POS() {
         <div className="flex items-center shrink-0 gap-4 2xl:gap-6 px-3 2xl:px-5">
           <div className="flex flex-col items-end justify-center whitespace-nowrap">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">Subtotal</span>
-            <span className="text-base font-black text-slate-200 leading-none">LKR {Math.round(subtotal).toLocaleString()}</span>
+            <span className="text-base font-black text-slate-900 dark:text-slate-200 leading-none">LKR {Math.round(subtotal).toLocaleString()}</span>
           </div>
           <div className="flex flex-col items-end justify-center whitespace-nowrap">
             <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">Discount</span>
-            <span className="text-base font-black text-rose-400 leading-none">LKR {Math.round(discountAmount).toLocaleString()}</span>
+            <span className="text-base font-black text-rose-600 dark:text-rose-400 leading-none">LKR {Math.round(discountAmount).toLocaleString()}</span>
           </div>
           <div className="flex flex-col items-end justify-center whitespace-nowrap">
-            <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest leading-none mb-1">Grand Total</span>
-            <span className="text-base font-black text-indigo-400 leading-none">LKR {Math.round(grandTotal).toLocaleString()}</span>
+            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-widest leading-none mb-1">Grand Total</span>
+            <span className="text-base font-black text-indigo-600 dark:text-indigo-400 leading-none">LKR {Math.round(grandTotal).toLocaleString()}</span>
           </div>
           {appliedAdvanceTotal > 0 && <div className="flex flex-col items-end justify-center whitespace-nowrap">
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest leading-none mb-1">Advance</span>
-            <span className="text-base font-black text-emerald-300 leading-none">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest leading-none mb-1">Advance</span>
+            <span className="text-base font-black text-emerald-700 dark:text-emerald-300 leading-none">LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
           </div>}
           {appliedStoreCreditTotal > 0 && <div className="flex flex-col items-end justify-center whitespace-nowrap">
-            <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest leading-none mb-1">Store Credit</span>
-            <span className="text-base font-black text-cyan-300 leading-none">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
+            <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-bold uppercase tracking-widest leading-none mb-1">Store Credit</span>
+            <span className="text-base font-black text-cyan-700 dark:text-cyan-300 leading-none">LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
           </div>}
-          <div className="flex flex-col items-end justify-center whitespace-nowrap rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-1.5">
-            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-widest leading-none mb-1">Due Now</span>
-            <span className="text-base font-black text-amber-300 leading-none">LKR {Math.round(dueAfterCredits).toLocaleString()}</span>
+          <div className="flex flex-col items-end justify-center whitespace-nowrap rounded-lg border border-amber-300 dark:border-amber-400/25 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5">
+            <span className="text-[10px] text-amber-800 dark:text-amber-400 font-bold uppercase tracking-widest leading-none mb-1">Due Now</span>
+            <span className="text-base font-black text-amber-900 dark:text-amber-300 leading-none">LKR {Math.round(dueAfterCredits).toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -1682,14 +1682,14 @@ export default function POS() {
       <div className="grid flex-1 min-h-0 gap-3 overflow-hidden grid-cols-1 xl:grid-cols-[minmax(250px,0.82fr)_minmax(420px,1.18fr)_minmax(300px,0.9fr)] 2xl:grid-cols-[minmax(300px,0.85fr)_minmax(560px,1.35fr)_minmax(320px,0.8fr)]">
         
         {/* LEFT PANEL: PRODUCT EXPLORER (30%) */}
-        <div className="min-h-0 flex flex-col bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden shadow-lg">
-          <div className="p-3 border-b border-white/5 bg-slate-900/50 space-y-2 shrink-0">
+        <div className="min-h-0 flex flex-col bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm">
+          <div className="p-3 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-slate-900/50 space-y-2 shrink-0">
             <div className="relative">
-              <Barcode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Barcode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input 
                 ref={barcodeRef}
                 autoFocus
-                className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-9 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                className="w-full bg-white dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-xl py-2 pl-9 pr-4 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 placeholder="Scan Barcode (Enter)"
                 value={scanCode}
                 onChange={e => setScanCode(e.target.value)}
@@ -1697,10 +1697,10 @@ export default function POS() {
               />
             </div>
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input 
                 ref={productSearchRef}
-                className="w-full bg-black/20 border border-white/5 rounded-xl py-2 pl-9 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-white dark:bg-black/20 border border-slate-300 dark:border-white/5 rounded-xl py-2 pl-9 pr-4 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -1713,7 +1713,7 @@ export default function POS() {
                 <button 
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-colors border ${activeCategory === cat ? "bg-indigo-500 border-indigo-400 text-white" : "bg-black/20 border-white/5 text-slate-400 hover:text-white"}`}
+                  className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-colors border ${activeCategory === cat ? "bg-indigo-600 border-indigo-600 text-white" : "bg-slate-100 dark:bg-black/20 border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
                 >
                   {cat}
                 </button>
@@ -1724,11 +1724,11 @@ export default function POS() {
               onClick={() => setQuickAddOpen((open) => !open)}
               className={`w-full flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all shadow-sm ${
                 quickAddOpen 
-                  ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-indigo-500/10" 
-                  : "bg-gradient-to-r from-indigo-600/15 via-purple-600/15 to-indigo-600/15 hover:from-indigo-600/25 hover:to-purple-600/25 text-indigo-200 border border-indigo-500/30 hover:border-indigo-400/50"
+                  ? "bg-indigo-50 text-indigo-700 border border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/40 shadow-indigo-500/10" 
+                  : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-gradient-to-r dark:from-indigo-600/15 dark:via-purple-600/15 dark:to-indigo-600/15 dark:text-indigo-200 dark:border-indigo-500/30"
               }`}
             >
-              {quickAddOpen ? <X size={14} /> : <Zap size={14} className="text-indigo-400 animate-pulse" />}
+              {quickAddOpen ? <X size={14} /> : <Zap size={14} className="text-indigo-600 dark:text-indigo-400 animate-pulse" />}
               <span>{quickAddOpen ? "Hide Quick Add Form" : "Quick Add / Manual Sale"}</span>
             </button>
           </div>
@@ -1930,17 +1930,17 @@ export default function POS() {
                 }}
                 role="button"
                 tabIndex={0}
-                className="cursor-pointer bg-black/20 border border-white/5 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all p-3 rounded-xl flex flex-col text-left group"
+                className="cursor-pointer bg-slate-50 hover:bg-indigo-50/40 dark:bg-black/20 dark:hover:bg-indigo-500/10 border border-slate-200 dark:border-white/5 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all p-3 rounded-xl flex flex-col text-left group shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="font-semibold text-sm text-slate-200 line-clamp-2 leading-tight group-hover:text-white">{i.name}</div>
+                  <div className="font-semibold text-sm text-slate-800 dark:text-slate-200 line-clamp-2 leading-tight group-hover:text-indigo-600 dark:group-hover:text-white">{i.name}</div>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       openProductDetail(i);
                     }}
-                    className="shrink-0 p-1 rounded-md border border-white/10 bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+                    className="shrink-0 p-1 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10"
                     title="View details"
                   >
                     <Info size={12} />
@@ -1948,31 +1948,31 @@ export default function POS() {
                 </div>
                 <div className="text-[10px] text-slate-500 mt-1">{i.sku || 'No SKU'}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-1">
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${stockLabel === "Available" ? "bg-emerald-500/10 text-emerald-300" : stockLabel === "Low Stock" ? "bg-amber-500/10 text-amber-300" : "bg-rose-500/10 text-rose-300"}`}>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${stockLabel === "Available" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 border border-emerald-200 dark:border-transparent" : stockLabel === "Low Stock" ? "bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300 border border-amber-200 dark:border-transparent" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300 border border-rose-200 dark:border-transparent"}`}>
                     {stockLabel}
                   </span>
                   {Number(i.warranty_days || 0) > 0 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-sky-500/10 text-sky-300">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300 border border-sky-200 dark:border-transparent">
                       {Number(i.warranty_days)}d Warranty
                     </span>
                   )}
                 </div>
                 <div className="mt-auto pt-3 flex flex-col gap-1.5 w-full">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-indigo-400">Rs. {i.sale_price.toLocaleString()}</span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${availableQty > 5 ? "bg-emerald-500/10 text-emerald-400" : availableQty > 0 ? "bg-amber-500/10 text-amber-300" : "bg-rose-500/10 text-rose-400"}`}>
+                    <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">Rs. {i.sale_price.toLocaleString()}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${availableQty > 5 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400" : availableQty > 0 ? "bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"}`}>
                       {availableQty} avail
                     </span>
                   </div>
                   {reservedQty > 0 && (
                     <div className="flex justify-between items-center text-[10px]">
                       <span className="text-slate-500">Reserved:</span>
-                      <span className="text-cyan-300 font-bold">{reservedQty}</span>
+                      <span className="text-cyan-600 dark:text-cyan-300 font-bold">{reservedQty}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="text-slate-500">Margin:</span>
-                    <span className={margin < 0 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
+                    <span className={margin < 0 ? "text-rose-600 dark:text-rose-400 font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold"}>
                       {marginPercent}% (Rs. {Math.round(margin).toLocaleString()})
                     </span>
                   </div>
@@ -1982,7 +1982,7 @@ export default function POS() {
                       e.stopPropagation();
                       addItem(i);
                     }}
-                    className="mt-1 rounded-md bg-indigo-600/20 border border-indigo-400/30 text-indigo-200 text-[10px] font-bold py-1 hover:bg-indigo-600/30"
+                    className="mt-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-indigo-600/20 dark:hover:bg-indigo-600/30 dark:text-indigo-200 dark:border-indigo-400/30 text-[10px] font-bold py-1 transition"
                   >
                     Quick Add
                   </button>
@@ -1995,7 +1995,7 @@ export default function POS() {
         </div>
 
         {/* CENTER PANEL: BILLING WORKSPACE (50%) */}
-        <div className="min-h-0 flex flex-col bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden shadow-lg relative">
+        <div className="min-h-0 flex flex-col bg-white dark:bg-slate-900/60 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm relative">
           
           {mode === "repair" && (
             <div className="p-3 bg-indigo-900/20 border-b border-indigo-500/20 flex flex-wrap gap-2 items-center shrink-0">
@@ -3091,65 +3091,65 @@ export default function POS() {
             )}
           </div>
 
-          {mode === "repair" && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          {mode === "repair" && <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl p-4 shadow-sm shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Wrench size={12}/> Repair Actions</h3>
             <div className="grid grid-cols-1 gap-2">
-              <Link to="/repairs" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">New Repair Ticket</Link>
-              <button onClick={() => setMode("repair")} className="bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-indigo-300 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Process Repair Payment</button>
+              <Link to="/repairs" className="bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">New Repair Ticket</Link>
+              <button onClick={() => setMode("repair")} className="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Process Repair Payment</button>
             </div>
           </div>}
 
-          {mode === "reservation" && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          {mode === "reservation" && <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl p-4 shadow-sm shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Clock size={12}/> Reservation Tools</h3>
             <div className="grid grid-cols-1 gap-2">
-              <button onClick={() => setMode("reservation")} className="bg-white/5 hover:bg-cyan-500/20 border border-white/5 hover:border-cyan-500/30 text-cyan-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Reservation Settlement</button>
-              <Link to="/reservations" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Open Reservations Module</Link>
-              <Link to="/returns" className="bg-white/5 hover:bg-rose-500/20 border border-white/5 hover:border-rose-500/30 text-rose-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Returns / Exchanges</Link>
+              <button onClick={() => setMode("reservation")} className="bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 border border-cyan-200 dark:border-cyan-500/30 text-cyan-800 dark:text-cyan-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Reservation Settlement</button>
+              <Link to="/reservations" className="bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Open Reservations Module</Link>
+              <Link to="/returns" className="bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-800 dark:text-rose-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Returns / Exchanges</Link>
             </div>
           </div>}
 
-          {mode !== "sale" && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          {mode !== "sale" && <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl p-4 shadow-sm shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><User size={12}/> Customer Actions</h3>
             <div className="grid grid-cols-1 gap-2">
-              <Link to="/customers" className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Add New Customer</Link>
-              <button onClick={() => setShowNewCustomerModal(true)} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Quick Create Customer</button>
+              <Link to="/customers" className="bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Add New Customer</Link>
+              <button onClick={() => setShowNewCustomerModal(true)} className="bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Quick Create Customer</button>
             </div>
           </div>}
 
-          {lastSale && <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          {lastSale && <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl p-4 shadow-sm shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Printer size={12}/> Receipt Actions</h3>
             <div className="grid grid-cols-1 gap-2">
-              <button onClick={printReceipt} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Print Receipt</button>
-              <button onClick={sendReceiptWhatsApp} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1"><MessageCircle size={12}/> WhatsApp</button>
-              <button onClick={sendReceiptEmail} className="bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1"><Mail size={12}/> Email</button>
+              <button onClick={printReceipt} className="bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors">Print Receipt</button>
+              <button onClick={sendReceiptWhatsApp} className="bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1"><MessageCircle size={12}/> WhatsApp</button>
+              <button onClick={sendReceiptEmail} className="bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-200 rounded-lg p-2.5 text-xs font-semibold text-center transition-colors flex items-center justify-center gap-1"><Mail size={12}/> Email</button>
             </div>
           </div>}
 
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl p-4 shadow-sm shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><Wallet size={12}/> Shift Snapshot</h3>
             <div className="space-y-2">
-              <div className="flex justify-between text-xs"><span className="text-slate-500">Today's Sales</span><span className="font-bold text-slate-200">{cashierSummary.count}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-slate-500">Today's Revenue</span><span className="font-bold text-emerald-300">LKR {Math.round(cashierSummary.total).toLocaleString()}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">Today's Sales</span><span className="font-bold text-slate-900 dark:text-slate-200">{cashierSummary.count}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-slate-500">Today's Revenue</span><span className="font-bold text-emerald-600 dark:text-emerald-300">LKR {Math.round(cashierSummary.total).toLocaleString()}</span></div>
             </div>
           </div>
 
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-4 shadow-lg shrink-0">
+          <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl p-4 shadow-sm shrink-0">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2"><AlertCircle size={12}/> Inventory Alerts</h3>
             <div className="space-y-2">
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">Low Stock</span>
-                <span className="font-bold text-amber-300">{inventoryAlerts.low.length}</span>
+                <span className="font-bold text-amber-600 dark:text-amber-300">{inventoryAlerts.low.length}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">Out of Stock</span>
-                <span className="font-bold text-rose-300">{inventoryAlerts.out.length}</span>
+                <span className="font-bold text-rose-600 dark:text-rose-300">{inventoryAlerts.out.length}</span>
               </div>
               <div className="max-h-20 overflow-y-auto custom-scrollbar space-y-1 pr-1">
                 {inventoryAlerts.low.slice(0, 3).map((row) => (
-                  <div key={`low-${row.id}`} className="text-[10px] text-amber-200 truncate">{row.name} ({row.quantity})</div>
+                  <div key={`low-${row.id}`} className="text-[10px] text-amber-700 dark:text-amber-200 truncate">{row.name} ({row.quantity})</div>
                 ))}
                 {inventoryAlerts.out.slice(0, 2).map((row) => (
-                  <div key={`out-${row.id}`} className="text-[10px] text-rose-200 truncate">{row.name} (0)</div>
+                  <div key={`out-${row.id}`} className="text-[10px] text-rose-700 dark:text-rose-200 truncate">{row.name} (0)</div>
                 ))}
                 {inventoryAlerts.low.length === 0 && inventoryAlerts.out.length === 0 && (
                   <div className="text-[10px] text-slate-500">No critical alerts</div>
@@ -3158,43 +3158,43 @@ export default function POS() {
             </div>
           </div>
 
-          <div className="bg-slate-900/40 backdrop-blur-md border border-white/5 rounded-2xl p-3 shadow-lg shrink-0">
+          <div className="bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl p-3 shadow-sm shrink-0">
             <button
               type="button"
               onClick={() => setShowRecentSales((value) => !value)}
               className="flex w-full items-center justify-between gap-2 text-left"
             >
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2"><Clock size={12}/> Recent Sales</h3>
-              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-bold text-slate-300">
+              <span className="rounded-md border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-2 py-1 text-[10px] font-bold text-slate-700 dark:text-slate-300">
                 {showRecentSales ? "Hide" : "Show"}
               </span>
             </button>
             {showRecentSales && (
             <div className="mt-3 max-h-[280px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
               {(salesFetch.data || []).slice(0,10).map((s) => (
-                <div key={s.id} className="bg-black/20 border border-white/5 rounded-lg p-2.5 hover:bg-white/5 transition-colors cursor-default">
+                <div key={s.id} className="bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-lg p-2.5 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-default">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-bold text-slate-300">{s.invoice_no}</span>
-                    <span className="text-xs font-black text-emerald-400">{s.total.toLocaleString()}</span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-300">{s.invoice_no}</span>
+                    <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">{s.total.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] text-slate-500">{new Date(s.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${s.payment_method === 'Cash' ? 'bg-green-500/10 text-green-400' : 'bg-sky-500/10 text-sky-400'}`}>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${s.payment_method === 'Cash' ? 'bg-emerald-50 dark:bg-green-500/10 text-emerald-700 dark:text-green-400 border border-emerald-200 dark:border-transparent' : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-transparent'}`}>
                       {s.payment_method}
                     </span>
                   </div>
                   {!s.is_voided && !s.is_return && (
                     <div className="mt-2 grid grid-cols-4 gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); openReturnModal(s.id); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[9px] font-bold transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); openReturnModal(s.id); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 text-[9px] font-bold transition-colors border border-rose-200 dark:border-transparent">
                         <CornerUpLeft size={10} /> Return
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); quickReprint(s.id); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 text-[9px] font-bold transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); quickReprint(s.id); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[9px] font-bold transition-colors border border-indigo-200 dark:border-transparent">
                         <Printer size={10} /> Print
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); shareRecentSaleWhatsApp(s); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 text-[9px] font-bold transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); shareRecentSaleWhatsApp(s); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[9px] font-bold transition-colors border border-emerald-200 dark:border-transparent">
                         <Share2 size={10} /> Share
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); voidSale(s); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 text-[9px] font-bold transition-colors">
+                      <button onClick={(e) => { e.stopPropagation(); voidSale(s); }} className="w-full flex items-center justify-center gap-0.5 py-1 rounded bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 text-[9px] font-bold transition-colors border border-amber-200 dark:border-transparent">
                         Void
                       </button>
                     </div>
