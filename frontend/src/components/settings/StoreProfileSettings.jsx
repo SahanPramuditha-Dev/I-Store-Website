@@ -1238,10 +1238,10 @@ export default function StoreProfileSettings({
 
       {dirty && (
         <div className="sticky bottom-0 z-20">
-          <div className="rounded-2xl border border-indigo-400/30 bg-slate-950/95 backdrop-blur p-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="rounded-2xl border border-slate-200 dark:border-indigo-400/30 bg-white dark:bg-slate-950/95 shadow-lg backdrop-blur p-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm">
-              <Badge tone="amber">Unsaved Changes</Badge>
-              <span className="text-slate-300">You have pending edits in Store Profile.</span>
+              <Badge tone="warning">Unsaved Changes</Badge>
+              <span className="text-slate-700 dark:text-slate-300">You have pending edits in Store Profile.</span>
             </div>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={handleDiscard} disabled={saving}>

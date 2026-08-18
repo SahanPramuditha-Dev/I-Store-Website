@@ -131,26 +131,26 @@ export default function SettingsSectionShell({
       </div>
 
       <div className="sticky bottom-0 z-20">
-        <div className="rounded-2xl border border-indigo-400/30 bg-slate-950/95 backdrop-blur p-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="rounded-2xl border border-slate-200 dark:border-indigo-400/30 bg-white dark:bg-slate-950/95 shadow-lg backdrop-blur p-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm">
             {dirty ? (
               <>
-                <Badge tone="amber">Unsaved Changes</Badge>
-                <span className="text-slate-300">You have pending edits.</span>
+                <Badge tone="warning">Unsaved Changes</Badge>
+                <span className="text-slate-700 dark:text-slate-300">You have pending edits.</span>
               </>
             ) : (
               <>
-                <Badge tone="green">Saved</Badge>
-                <span className="text-slate-400">No pending edits.</span>
+                <Badge tone="success">Saved</Badge>
+                <span className="text-slate-500 dark:text-slate-400">No pending edits.</span>
               </>
             )}
             {hasErrors ? (
-              <span className="inline-flex items-center gap-1 text-rose-300 text-xs">
+              <span className="inline-flex items-center gap-1 text-rose-700 dark:text-rose-300 text-xs">
                 <AlertTriangle size={12} />
                 {errors.length} issue{errors.length > 1 ? "s" : ""}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-emerald-300 text-xs">
+              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300 text-xs">
                 <CheckCircle2 size={12} />
                 Valid
               </span>

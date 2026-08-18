@@ -992,8 +992,8 @@ export default function AccessControlSettingsPanel({
       )}
 
       <div className="sticky bottom-0 z-20">
-        <div className="rounded-2xl border border-indigo-400/30 bg-slate-950/95 backdrop-blur p-3 flex items-center justify-between gap-3">
-          <div className="text-sm text-slate-300">Save staff accounts, session controls, and login/security policy changes.</div>
+        <div className="rounded-2xl border border-slate-200 dark:border-indigo-400/30 bg-white dark:bg-slate-950/95 shadow-lg backdrop-blur p-3 flex items-center justify-between gap-3">
+          <div className="text-sm text-slate-700 dark:text-slate-300">Save staff accounts, session controls, and login/security policy changes.</div>
           <Button onClick={saveAccessControl} disabled={saving}>
             <Shield size={13} />
             {saving ? "Saving..." : "Save Access Control"}
@@ -1005,9 +1005,9 @@ export default function AccessControlSettingsPanel({
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editor.mode === "create" ? "Create Staff Account" : "Edit Staff Account"}
-        panelClassName="max-w-4xl bg-slate-950"
+        panelClassName="max-w-4xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10"
         headerActions={
-          <button className="text-slate-400 hover:text-white" onClick={() => setModalOpen(false)}>
+          <button className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" onClick={() => setModalOpen(false)}>
             Close
           </button>
         }
@@ -1122,9 +1122,9 @@ export default function AccessControlSettingsPanel({
         open={overrideModal.open}
         onClose={() => setOverrideModal({ open: false, user: null })}
         title={`Permission Overrides - ${overrideModal.user?.full_name || "-"}`}
-        panelClassName="max-w-4xl bg-slate-950"
+        panelClassName="max-w-4xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10"
         headerActions={
-          <button className="text-slate-400 hover:text-white" onClick={() => setOverrideModal({ open: false, user: null })}>
+          <button className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" onClick={() => setOverrideModal({ open: false, user: null })}>
             Close
           </button>
         }
