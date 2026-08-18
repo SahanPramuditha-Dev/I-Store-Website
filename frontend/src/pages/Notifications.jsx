@@ -82,6 +82,35 @@ function rowMatchesQuery(row, query) {
   return haystack.includes(query.trim().toLowerCase());
 }
 
+function getNotificationAction(item) {
+  if (item?.action_url && item?.action_label) {
+    return { url: item.action_url, label: item.action_label };
+  }
+  const s = String(item?.source_module || "").toLowerCase();
+  const t = String(item?.type || "").toLowerCase();
+  if (s === "backup" || t.includes("backup")) return { url: "/settings", label: "Backup Settings" };
+  if (s === "inventory" || t.includes("stock")) return { url: "/inventory/products", label: "View Stock" };
+  if (s === "repairs" || t.includes("repair")) return { url: "/repairs", label: "View Repair" };
+  if (s === "pos" || t.includes("balance") || t.includes("payment")) return { url: "/pos", label: "Open POS" };
+  if (s === "warranty" || t.includes("warranty")) return { url: "/warranty", label: "View Warranty" };
+  return null;
+}
+
+function sanitizeMessage(msg) {
+  if (!msg) return "";
+  return msg.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?/g, (isoStr) => {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  });
+}
+
 export default function Notifications() {
   const navigate = useNavigate();
   const { toast, confirm } = useFeedback();
@@ -93,7 +122,23 @@ export default function Notifications() {
   const [busy, setBusy] = useState("");
 
   const rows = useMemo(() => {
-    return [...(data || [])].sort((a, b) => {
+    const list = Array.isArray(data) ? data : [];
+    // Ensure strict frontend deduplication so multiple duplicates collapse into a single card
+    const seen = new Set();
+    const deduped = [];
+    for (const item of list) {
+      const key = item.entity_type && item.entity_id != null
+        ? `${item.source_module || ""}-${item.entity_type}-${item.entity_id}`
+        : `${item.source_module || ""}-${item.title}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push({
+          ...item,
+          message: sanitizeMessage(item.message),
+        });
+      }
+    }
+    return deduped.sort((a, b) => {
       const severityDelta = (SEVERITY_ORDER[String(a.severity || "").toLowerCase()] ?? 9) - (SEVERITY_ORDER[String(b.severity || "").toLowerCase()] ?? 9);
       if (severityDelta !== 0) return severityDelta;
       return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
@@ -282,16 +327,20 @@ export default function Notifications() {
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                    {row.action_url && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => navigate(row.action_url)}
-                        className="flex items-center gap-1 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/30"
-                      >
-                        {row.action_label || "Open"} <ExternalLink size={12} />
-                      </Button>
-                    )}
+                    {(() => {
+                      const action = getNotificationAction(row);
+                      if (!action) return null;
+                      return (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => navigate(action.url)}
+                          className="flex items-center gap-1 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/30"
+                        >
+                          {action.label} <ExternalLink size={12} />
+                        </Button>
+                      );
+                    })()}
                     {!row.is_read ? (
                       <Button size="sm" variant="secondary" onClick={() => markRead(row.id)} disabled={busy === `read-${row.id}`}>
                         Mark Read

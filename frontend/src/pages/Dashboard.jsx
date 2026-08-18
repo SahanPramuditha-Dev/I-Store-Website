@@ -466,13 +466,13 @@ export default function Dashboard() {
           }
         />
 
-        <div className="dashboard-health-card grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-slate-900/45 p-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="dashboard-health-card grid grid-cols-1 gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/45 p-2 sm:grid-cols-2 xl:grid-cols-4 shadow-sm">
           {health.map((h) => (
-            <div key={h.label} className="dashboard-health-item flex items-center justify-between rounded-lg border px-3 py-1.5">
+            <div key={h.label} className="dashboard-health-item flex items-center justify-between rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5">
               <div className={`flex items-center gap-2 text-xs font-semibold ${h.accent}`}>
                 <span className="status-beacon" style={{ color: h.tone === "green" ? "#10b981" : h.tone === "sky" ? "#0ea5e9" : h.tone === "indigo" ? "#6366f1" : "#f59e0b" }} />
                 {h.icon}
-                <span className="text-slate-200">{h.label}</span>
+                <span className="text-slate-800 dark:text-slate-200">{h.label}</span>
               </div>
               <Badge tone={h.tone} className="px-2 py-0.5 text-[9px]">
                 {h.meta}
