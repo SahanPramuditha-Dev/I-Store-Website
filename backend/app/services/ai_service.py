@@ -483,6 +483,7 @@ REQUIRED JSON OUTPUT FORMAT:
             ]
         }
 
+
 def draft_customer_message(message_type: str, customer_name: str, details: Dict[str, Any], db: Optional[Session] = None) -> Dict[str, str]:
     """Generates customer-facing SMS/WhatsApp message drafts."""
     prompt = f"""
@@ -511,4 +512,233 @@ Guidelines:
         return {
             "sms": f"Hello {customer_name}, updates regarding your {message_type.replace('_', ' ')} are ready at E Store.",
             "whatsapp": f"Hello *{customer_name}*,\n\nUpdates regarding your *{message_type.replace('_', ' ')}* are ready.\n\nThank you for choosing *E Store*!"
+        }
+
+def forecast_financial_trends(db: Session) -> Dict[str, Any]:
+    """Analyzes historic revenue, labor expenses, and part costs to project next month's expected profit margins and high-margin service categories."""
+    now = utcnow()
+    ninety_days_ago = now - timedelta(days=90)
+    thirty_days_ago = now - timedelta(days=30)
+    
+    # 1. Fetch sales from the past 90 days
+    sales_90d = db.query(Sale).filter(
+        Sale.created_at >= ninety_days_ago,
+        Sale.is_voided == False
+    ).all()
+    
+    total_sales_90d = sum(float(s.total or 0) for s in sales_90d)
+    sales_30d = [s for s in sales_90d if s.created_at >= thirty_days_ago]
+    total_sales_30d = sum(float(s.total or 0) for s in sales_30d)
+    
+    # 2. Fetch sale items for cost & margin analysis
+    sale_ids_90d = [s.id for s in sales_90d]
+    sale_items = db.query(SaleItem).filter(SaleItem.sale_id.in_(sale_ids_90d)).all() if sale_ids_90d else []
+    total_cogs_90d = sum(float(si.unit_cost or 0) * int(si.quantity or 1) for si in sale_items)
+    
+    # 3. Fetch completed repairs in 90 days
+    repairs_90d = db.query(RepairTicket).filter(
+        RepairTicket.created_at >= ninety_days_ago,
+        RepairTicket.is_deleted == False
+    ).all()
+    repair_revenue_90d = sum(float(r.estimated_cost or 0) for r in repairs_90d if r.status in ["completed", "delivered"])
+    
+    # 4. Fetch approved expenses in 90 days
+    expenses_90d = db.query(Expense).filter(
+        Expense.expense_date >= ninety_days_ago,
+        Expense.is_deleted == False,
+        Expense.status.in_(["Approved", "Paid"])
+    ).all()
+    total_expenses_90d = sum(float(e.amount or 0) for e in expenses_90d)
+    
+    # Category expense breakdown
+    expense_categories: Dict[str, float] = {}
+    for exp in expenses_90d:
+        cat = exp.category or "General"
+        expense_categories[cat] = expense_categories.get(cat, 0.0) + float(exp.amount or 0)
+
+    summary_stats = {
+        "period_analyzed_days": 90,
+        "past_30d_revenue": round(total_sales_30d, 2),
+        "past_90d_revenue": round(total_sales_90d, 2),
+        "past_90d_cogs": round(total_cogs_90d, 2),
+        "past_90d_gross_profit": round(total_sales_90d - total_cogs_90d, 2),
+        "past_90d_repair_revenue": round(repair_revenue_90d, 2),
+        "past_90d_operational_expenses": round(total_expenses_90d, 2),
+        "expense_category_breakdown": expense_categories
+    }
+
+    prompt = f"""
+You are the Chief Financial Officer (CFO) and predictive analytics AI for 'I Store / E Store'.
+Analyze these 90-day historic financial metrics and project next month's financial forecast, profit margins, and key recommendations.
+Return ONLY valid JSON without any markdown block wrappers.
+
+FINANCIAL DATA:
+{json.dumps(summary_stats, indent=2)}
+
+REQUIRED JSON OUTPUT FORMAT:
+{{
+  "forecast_summary": "Executive 2-sentence summary of expected financial trajectory.",
+  "projected_revenue_next_month": 450000.00,
+  "projected_cogs_next_month": 220000.00,
+  "projected_expenses_next_month": 65000.00,
+  "projected_net_profit_next_month": 165000.00,
+  "projected_margin_pct": 36.6,
+  "revenue_growth_trend": "positive" | "stable" | "declining",
+  "growth_rate_pct": 5.4,
+  "high_margin_opportunities": [
+    "Opportunity 1 (e.g., iPhone Screen Replacements yielding 65% margin)",
+    "Opportunity 2"
+  ],
+  "cost_saving_recommendations": [
+    "Recommendation 1 (e.g., Bulk purchase screen adhesives to reduce COGS by 8%)",
+    "Recommendation 2"
+  ],
+  "risk_flags": [
+    "Any potential financial risk or margin squeeze warning"
+  ]
+}}
+"""
+    try:
+        raw_response = _generate_single_prompt(prompt, db=db)
+        clean_json = raw_response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        result = json.loads(clean_json)
+        result["historic_stats"] = summary_stats
+        return result
+    except Exception as err:
+        logger.error(f"Error in financial forecast AI: {err}")
+        avg_monthly_rev = total_sales_90d / 3.0 if total_sales_90d else 100000.0
+        avg_monthly_cogs = total_cogs_90d / 3.0 if total_cogs_90d else 50000.0
+        avg_monthly_exp = total_expenses_90d / 3.0 if total_expenses_90d else 15000.0
+        proj_net = max(0.0, avg_monthly_rev - avg_monthly_cogs - avg_monthly_exp)
+        return {
+            "forecast_summary": "Projected steady performance based on 90-day baseline operations.",
+            "projected_revenue_next_month": round(avg_monthly_rev, 2),
+            "projected_cogs_next_month": round(avg_monthly_cogs, 2),
+            "projected_expenses_next_month": round(avg_monthly_exp, 2),
+            "projected_net_profit_next_month": round(proj_net, 2),
+            "projected_margin_pct": round((proj_net / avg_monthly_rev * 100) if avg_monthly_rev else 0, 1),
+            "revenue_growth_trend": "stable",
+            "growth_rate_pct": 2.5,
+            "high_margin_opportunities": [
+                "Screen & Battery repair services offer the highest gross margin return",
+                "High-velocity fast charger accessories"
+            ],
+            "cost_saving_recommendations": [
+                "Audit recurring utility & vendor overhead",
+                "Consolidate spare part supplier orders for volume discounts"
+            ],
+            "risk_flags": ["Keep an eye on rising inventory holding costs."],
+            "historic_stats": summary_stats
+        }
+
+def analyze_repair_sla_risks(db: Session) -> Dict[str, Any]:
+    """Monitors open repair tickets and predicts SLA breaches, bottlenecks, and missing parts risks."""
+    now = utcnow()
+    
+    # 1. Fetch active repair tickets
+    active_repairs = db.query(RepairTicket).filter(
+        RepairTicket.is_deleted == False,
+        RepairTicket.status.notin_(["completed", "delivered", "cancelled"])
+    ).all()
+    
+    tickets_data = []
+    for r in active_repairs:
+        created_at = r.created_at or now
+        age_hours = round((now - created_at).total_seconds() / 3600.0, 1)
+        est_completion = r.estimated_completion.isoformat() if r.estimated_completion else None
+        
+        # Check parts status
+        parts_count = len(r.parts_usage) if r.parts_usage else 0
+        
+        tickets_data.append({
+            "id": r.id,
+            "ticket_no": r.ticket_no or f"REP-{r.id}",
+            "customer_id": r.customer_id,
+            "device": r.device_model or "Unknown Device",
+            "issue": (r.issue or "")[:100],
+            "status": r.status or "pending",
+            "priority": r.priority or "Normal",
+            "technician": r.technician or "Unassigned",
+            "age_hours": age_hours,
+            "estimated_completion": est_completion,
+            "parts_logged": parts_count,
+            "notes": (r.notes or "")[:100]
+        })
+
+    if not tickets_data:
+        return {
+            "summary": "No active repair tickets currently in progress. All repair queues are clear.",
+            "total_active_jobs": 0,
+            "critical_risk_count": 0,
+            "moderate_risk_count": 0,
+            "sla_health_score": 100,
+            "risk_tickets": [],
+            "action_recommendations": ["System operational. Ready to intake new repair orders."]
+        }
+
+    prompt = f"""
+You are the Repair Operations and SLA Dispatcher AI for 'I Store / E Store'.
+Evaluate these active repair tickets for SLA breach risk (standard SLA target: 24h for Urgent, 48h for High, 72h for Normal/Low).
+Identify which tickets are at Risk or Breached, why, and what specific action is needed.
+Return ONLY valid JSON without any markdown code wrappers.
+
+ACTIVE TICKETS:
+{json.dumps(tickets_data, indent=2)}
+
+REQUIRED JSON OUTPUT FORMAT:
+{{
+  "summary": "Overall assessment of current repair queue health.",
+  "total_active_jobs": {len(tickets_data)},
+  "critical_risk_count": 2,
+  "moderate_risk_count": 3,
+  "sla_health_score": 82,
+  "risk_tickets": [
+    {{
+      "ticket_no": "REP-1042",
+      "device": "iPhone 13 Pro",
+      "status": "waiting_for_parts",
+      "technician": "Ashan Perera",
+      "risk_level": "Critical" | "High" | "Medium",
+      "reason": "Waiting for screen part for 54 hours, exceeding 48h SLA target.",
+      "recommended_action": "Follow up with supplier immediately or reassign."
+    }}
+  ],
+  "action_recommendations": [
+    "Action recommendation 1",
+    "Action recommendation 2"
+  ]
+}}
+"""
+    try:
+        raw_response = _generate_single_prompt(prompt, db=db)
+        clean_json = raw_response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        return json.loads(clean_json)
+    except Exception as err:
+        logger.error(f"Error in SLA Risk AI: {err}")
+        # Rule-based fallback
+        risks = []
+        for t in tickets_data:
+            age = t["age_hours"]
+            prio = t["priority"]
+            if (prio == "Urgent" and age > 24) or (prio == "High" and age > 48) or age > 72 or t["status"] == "waiting_for_parts":
+                risks.append({
+                    "ticket_no": t["ticket_no"],
+                    "device": t["device"],
+                    "status": t["status"],
+                    "technician": t["technician"],
+                    "risk_level": "Critical" if age > 72 or prio == "Urgent" else "High",
+                    "reason": f"Active for {age}h in '{t['status']}' state.",
+                    "recommended_action": "Prioritize diagnosis and part assignment."
+                })
+        return {
+            "summary": f"{len(risks)} of {len(tickets_data)} active repair tickets require managerial attention to prevent SLA breaches.",
+            "total_active_jobs": len(tickets_data),
+            "critical_risk_count": sum(1 for r in risks if r["risk_level"] == "Critical"),
+            "moderate_risk_count": sum(1 for r in risks if r["risk_level"] != "Critical"),
+            "sla_health_score": max(20, 100 - len(risks) * 12),
+            "risk_tickets": risks,
+            "action_recommendations": [
+                "Reassign stagnant jobs to available technicians.",
+                "Expedite delayed replacement parts from suppliers."
+            ]
         }

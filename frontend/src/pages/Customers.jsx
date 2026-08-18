@@ -35,6 +35,7 @@ const CUSTOMER_COLUMNS = [
   { key: "email", label: "Email", sortable: false },
   { key: "address", label: "Address", sortable: false },
   { key: "total_spent", label: "Total Spent", sortable: true },
+  { key: "loyalty_points", label: "Loyalty Points", sortable: true },
   { key: "outstanding_balance", label: "Outstanding Balance", sortable: true },
   { key: "repairs_count", label: "Repairs", sortable: true },
   { key: "last_visit", label: "Last Visit", sortable: true },
@@ -196,9 +197,12 @@ export default function Customers() {
 
       const activeWarranties = Number(customer.active_warranty_count || 0);
 
+      const loyaltyPoints = Math.floor((totalSpent || 0) / 1000);
+
       return {
         ...customer,
         total_spent: totalSpent,
+        loyalty_points: loyaltyPoints,
         outstanding_balance: outstandingBalance,
         repairs_count: customerRepairs.length,
         last_visit: lastVisit,
@@ -437,20 +441,20 @@ export default function Customers() {
         <KpiCard tone="red" title="Total Outstanding" value={`Rs. ${stats.totalOutstanding.toLocaleString()}`} icon={<AlertTriangle size={18} />} />
       </div>
 
-      <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
-        <div className="p-4 border-b border-white/5 bg-black/20 flex flex-wrap justify-between items-center gap-3 shrink-0">
-          <div className="text-xs text-slate-400 font-bold uppercase tracking-widest">Customer Directory</div>
+      <div className="flex-1 bg-white dark:bg-slate-900/60 backdrop-blur-md border border-slate-200 dark:border-white/10 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+        <div className="p-4 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-black/20 flex flex-wrap justify-between items-center gap-3 shrink-0">
+          <div className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Customer Directory</div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <div className="relative w-full sm:w-80">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 placeholder="Search by name, phone, email, or address..."
-                className="w-full bg-black/40 border border-white/10 rounded-lg py-2 pl-9 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                className="w-full bg-white dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg py-2 pl-9 pr-4 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-1 bg-black/30 border border-white/10 rounded-lg px-2 py-1">
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1">
               <Filter size={12} className="text-slate-500" />
               {QUICK_FILTERS.map((f) => (
                 <button
@@ -554,6 +558,13 @@ export default function Customers() {
                   {visibleColumns.email && <td className="px-4 py-3 text-slate-400">{c.email || "-"}</td>}
                   {visibleColumns.address && <td className="max-w-[170px] truncate px-4 py-3 text-slate-400">{c.address || "-"}</td>}
                   {visibleColumns.total_spent && <td className="px-4 py-3 font-bold text-emerald-300">Rs. {c.total_spent.toLocaleString()}</td>}
+                  {visibleColumns.loyalty_points && (
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                        {c.loyalty_points} PTS
+                      </span>
+                    </td>
+                  )}
                   {visibleColumns.outstanding_balance && (
                     <td className={`px-4 py-3 font-bold ${c.outstanding_balance > 0 ? "text-rose-300" : "text-emerald-300"}`}>
                       Rs. {c.outstanding_balance.toLocaleString()}
@@ -703,26 +714,26 @@ export default function Customers() {
           ) : draftResult ? (
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">SMS Version (Under 160 chars)</p>
-                <div className="p-3 rounded-xl border border-white/10 bg-slate-900 font-mono text-xs text-slate-200 select-all">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">SMS Version (Under 160 chars)</p>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900 font-mono text-xs text-slate-800 dark:text-slate-200 select-all">
                   {draftResult.sms_draft}
                 </div>
                 <button
                   onClick={() => { navigator.clipboard.writeText(draftResult.sms_draft); toast("Copied SMS draft to clipboard", "success"); }}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-slate-300 font-semibold"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[10px] text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Copy SMS
                 </button>
               </div>
 
               <div className="space-y-1.5">
-                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">WhatsApp / Email Version</p>
-                <div className="p-3 rounded-xl border border-white/10 bg-slate-900 text-xs text-slate-200 whitespace-pre-wrap select-all">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">WhatsApp / Email Version</p>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap select-all">
                   {draftResult.whatsapp_draft}
                 </div>
                 <button
                   onClick={() => { navigator.clipboard.writeText(draftResult.whatsapp_draft); toast("Copied WhatsApp draft to clipboard", "success"); }}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-slate-300 font-semibold"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-[10px] text-slate-700 dark:text-slate-300 font-semibold"
                 >
                   Copy WhatsApp Message
                 </button>

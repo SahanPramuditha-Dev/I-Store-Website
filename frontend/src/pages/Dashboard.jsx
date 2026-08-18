@@ -88,16 +88,16 @@ function AnalyticsSection() {
   }, []);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-900/40 p-4 shadow-sm mb-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/60 mb-4">
+      <div className="flex items-center justify-between mb-3.5">
         <button 
           onClick={() => setIsOpen(!isOpen)} 
-          className="flex items-center gap-2 text-sm font-bold text-slate-200 hover:text-white"
+          className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white"
         >
           <span>📊 Live Business Intelligence</span>
-          <span className="text-xs text-slate-400">({isOpen ? 'Hide' : 'Show'})</span>
+          <span className="text-[10px] font-medium text-slate-400">({isOpen ? 'Hide' : 'Show'})</span>
         </button>
-        <Button variant="ghost" size="sm" onClick={fetchAnalytics} disabled={loading}>
+        <Button variant="ghost" size="sm" onClick={fetchAnalytics} disabled={loading} className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         </Button>
       </div>
@@ -109,61 +109,84 @@ function AnalyticsSection() {
                {[1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton-shimmer h-[120px] rounded-xl" />)}
              </div>
           ) : error ? (
-            <div className="text-sm text-rose-400 p-2 bg-rose-950/20 rounded-lg">{error}</div>
+            <div className="text-xs text-rose-600 dark:text-rose-400 p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-500/20 rounded-xl">{error}</div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <div className="rounded-xl border border-slate-700/50 bg-slate-800/40 p-3">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Today's Sales</p>
-                <div className="flex flex-col gap-1">
-                  <span className="text-lg font-bold text-emerald-400">LKR {(data?.sales?.total_sales || 0).toLocaleString()}</span>
-                  <span className="text-xs text-slate-400">{data?.sales?.total_orders || 0} Orders</span>
+              {/* Today's Sales */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Today's Sales</p>
+                <div className="my-1.5">
+                  <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">LKR {(data?.sales?.total_sales || 0).toLocaleString()}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">{data?.sales?.total_orders || 0} Orders today</p>
+              </div>
+
+              {/* Low Stock Alert */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Low Stock Alert</p>
+                  {(data?.lowStock?.count || 0) > 0 && (
+                    <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+                  )}
+                </div>
+                <div className="my-1.5">
+                  <span className="text-lg font-extrabold text-slate-900 dark:text-white tabular-nums">{data?.lowStock?.count || 0} <span className="text-xs font-semibold text-slate-500">Items</span></span>
+                </div>
+                <div className="flex flex-col gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                  {(data?.lowStock?.top_items || []).slice(0, 2).map((item, i) => (
+                    <span key={i} className="truncate">• {item.name} ({item.stock})</span>
+                  ))}
+                  {(!data?.lowStock?.top_items || data?.lowStock?.top_items.length === 0) && (
+                    <span>All items well-stocked</span>
+                  )}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-amber-700/50 bg-amber-900/10 p-3">
-                <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider mb-2">Low Stock Alert</p>
-                <div className="flex flex-col gap-2">
-                  <span className="text-lg font-bold text-amber-300">{data?.lowStock?.count || 0} Items</span>
-                  <div className="flex flex-col gap-1 text-[10px] text-slate-400">
-                    {(data?.lowStock?.top_items || []).slice(0,3).map((item, i) => (
-                      <span key={i} className="truncate">• {item.name} ({item.stock})</span>
-                    ))}
-                  </div>
+              {/* Unpaid Balances */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Unpaid Balances</p>
+                <div className="my-1.5">
+                  <span className="text-lg font-extrabold text-rose-600 dark:text-rose-400 tabular-nums">LKR {(data?.unpaid?.total_amount || 0).toLocaleString()}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">{data?.unpaid?.total_customers || 0} Customers Pending</p>
+              </div>
+
+              {/* Delayed Repairs */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Delayed Repairs</p>
+                  {(data?.delayedRepairs?.count || 0) > 0 && (
+                    <span className="inline-block h-2 w-2 rounded-full bg-rose-500" />
+                  )}
+                </div>
+                <div className="my-1.5">
+                  <span className="text-lg font-extrabold text-slate-900 dark:text-white tabular-nums">{data?.delayedRepairs?.count || 0} <span className="text-xs font-semibold text-slate-500">Overdue</span></span>
+                </div>
+                <div className="flex flex-col gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                  {(data?.delayedRepairs?.top_repairs || []).slice(0, 2).map((repair, i) => (
+                    <span key={i} className="truncate">• {repair.job_number} ({repair.days_late}d late)</span>
+                  ))}
+                  {(!data?.delayedRepairs?.top_repairs || data?.delayedRepairs?.top_repairs.length === 0) && (
+                    <span>No overdue repair jobs</span>
+                  )}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-rose-700/50 bg-rose-900/10 p-3">
-                <p className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider mb-2">Unpaid Balances</p>
-                <div className="flex flex-col gap-1">
-                  <span className="text-lg font-bold text-rose-400">LKR {(data?.unpaid?.total_amount || 0).toLocaleString()}</span>
-                  <span className="text-xs text-slate-400">{data?.unpaid?.total_customers || 0} Customers</span>
+              {/* Peak Hours */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Peak Traffic Hours</p>
+                <div className="my-1 flex flex-col gap-1 text-[11px]">
+                  {(data?.peakHours?.top_hours || []).slice(0, 2).map((ph, i) => (
+                    <div key={i} className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                      <span>{ph.hour}</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded text-[10px]">{ph.count} tx</span>
+                    </div>
+                  ))}
+                  {(!data?.peakHours?.top_hours || data?.peakHours?.top_hours.length === 0) && (
+                    <span className="text-[11px] text-slate-400">Awaiting traffic data</span>
+                  )}
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-sky-700/50 bg-sky-900/10 p-3">
-                <p className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider mb-2">Delayed Repairs</p>
-                <div className="flex flex-col gap-2">
-                  <span className="text-lg font-bold text-sky-300">{data?.delayedRepairs?.count || 0} Overdue</span>
-                  <div className="flex flex-col gap-1 text-[10px] text-slate-400">
-                    {(data?.delayedRepairs?.top_repairs || []).slice(0,3).map((repair, i) => (
-                      <span key={i} className="truncate">• {repair.job_number} ({repair.days_late}d)</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-indigo-700/50 bg-indigo-900/10 p-3">
-                <p className="text-[11px] font-semibold text-indigo-400 uppercase tracking-wider mb-2">Peak Hours</p>
-                <div className="flex flex-col gap-2">
-                   <div className="flex flex-col gap-1 text-xs text-slate-300">
-                    {(data?.peakHours?.top_hours || []).slice(0,3).map((ph, i) => (
-                      <div key={i} className="flex justify-between">
-                         <span>{ph.hour}</span>
-                         <span className="font-mono text-indigo-300">{ph.count} tx</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <p className="text-[10px] text-slate-400">Busiest POS volume periods</p>
               </div>
             </div>
           )}
@@ -458,70 +481,82 @@ export default function Dashboard() {
         <AnalyticsSection />
 
         {/* ACTION CENTER */}
-        <div className="rounded-xl border border-rose-500/20 bg-slate-900/60 p-3 shadow-lg backdrop-blur-md">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-400">
-              <Sparkles size={15} className="animate-pulse" />
-              <span>⚡ Action Center (Requires Attention)</span>
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+              <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+              <span>Action Center (Requires Attention)</span>
             </div>
             <span className="text-[10px] text-slate-400">Real-time operational alerts</span>
           </div>
 
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Overdue Repairs */}
             <div
               onClick={() => navigate("/repairs")}
-              className="flex items-center justify-between cursor-pointer rounded-lg border border-rose-500/30 bg-rose-950/20 p-2.5 transition hover:border-rose-400"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
             >
-              <div className="flex items-center gap-2">
-                <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-ping" />
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 group-hover:bg-rose-500/20 transition-colors">
+                  <Sparkles size={16} />
+                </div>
                 <div>
-                  <p className="text-xs font-semibold text-rose-200">Overdue Repairs</p>
-                  <p className="text-[10px] text-slate-400">Waiting &gt; 7 days</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Overdue Repairs</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Waiting &gt; 7 days</p>
                 </div>
               </div>
-              <Badge tone="red">{actionCenter.overdue_repairs || 0}</Badge>
+              <Badge tone="red" className="font-mono font-bold">{actionCenter.overdue_repairs || 0}</Badge>
             </div>
 
+            {/* Low & Out of Stock */}
             <div
               onClick={() => setShowLowStockModal(true)}
-              className="flex items-center justify-between cursor-pointer rounded-lg border border-amber-500/30 bg-amber-950/20 p-2.5 transition hover:border-amber-400"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
             >
-              <div className="flex items-center gap-2">
-                <Boxes size={14} className="text-amber-400" />
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 group-hover:bg-amber-500/20 transition-colors">
+                  <Boxes size={16} />
+                </div>
                 <div>
-                  <p className="text-xs font-semibold text-amber-200">Low & Out of Stock</p>
-                  <p className="text-[10px] text-slate-400">Items below minimum</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Low & Out of Stock</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Items below minimum</p>
                 </div>
               </div>
-              <Badge tone="amber">{(actionCenter.low_stock_items || 0) + (actionCenter.out_of_stock_items || 0)}</Badge>
+              <Badge tone="amber" className="font-mono font-bold">{(actionCenter.low_stock_items || 0) + (actionCenter.out_of_stock_items || 0)}</Badge>
             </div>
 
+            {/* Supplier Payables */}
             <div
               onClick={() => navigate("/suppliers")}
-              className="flex items-center justify-between cursor-pointer rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-2.5 transition hover:border-indigo-400"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
             >
-              <div className="flex items-center gap-2">
-                <Users size={14} className="text-indigo-400" />
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 group-hover:bg-indigo-500/20 transition-colors">
+                  <Users size={16} />
+                </div>
                 <div>
-                  <p className="text-xs font-semibold text-indigo-200">Supplier Payables</p>
-                  <p className="text-[10px] text-slate-400">Pending GRN bills</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Supplier Payables</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Pending GRN bills</p>
                 </div>
               </div>
-              <Badge tone="indigo">LKR {(actionCenter.pending_supplier_payables || 0).toLocaleString()}</Badge>
+              <Badge tone="indigo" className="font-mono font-bold">LKR {(actionCenter.pending_supplier_payables || 0).toLocaleString()}</Badge>
             </div>
 
+            {/* Expiring Warranties */}
             <div
               onClick={() => navigate("/warranty")}
-              className="flex items-center justify-between cursor-pointer rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-2.5 transition hover:border-cyan-400"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
             >
-              <div className="flex items-center gap-2">
-                <Clock size={14} className="text-cyan-400" />
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 group-hover:bg-sky-500/20 transition-colors">
+                  <Clock size={16} />
+                </div>
                 <div>
-                  <p className="text-xs font-semibold text-cyan-200">Expiring Warranties</p>
-                  <p className="text-[10px] text-slate-400">Next 30 days</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Expiring Warranties</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Next 30 days</p>
                 </div>
               </div>
-              <Badge tone="sky">{actionCenter.expiring_warranties || 0}</Badge>
+              <Badge tone="sky" className="font-mono font-bold">{actionCenter.expiring_warranties || 0}</Badge>
             </div>
           </div>
         </div>
@@ -1064,17 +1099,17 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-2.5">
                 {data.top_products.map((item, idx) => (
-                  <div key={item.name + idx} className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/30 p-2.5">
+                  <div key={item.name + idx} className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-slate-950/30 p-2.5">
                     <div className="flex items-center gap-3">
-                      <span className="grid h-6 w-6 place-items-center rounded-lg bg-indigo-500/20 text-xs font-black text-indigo-300">
+                      <span className="grid h-6 w-6 place-items-center rounded-lg bg-indigo-500/20 text-xs font-black text-indigo-700 dark:text-indigo-300">
                         #{idx + 1}
                       </span>
                       <div>
-                        <p className="text-xs font-bold text-slate-200">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">{item.qty} units sold</p>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.name}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">{item.qty} units sold</p>
                       </div>
                     </div>
-                    <p className="text-xs font-black text-emerald-300">LKR {item.sales.toLocaleString()}</p>
+                    <p className="text-xs font-black text-emerald-600 dark:text-emerald-300">LKR {item.sales.toLocaleString()}</p>
                   </div>
                 ))}
               </div>
@@ -1097,14 +1132,14 @@ export default function Dashboard() {
                     const pctStr = formatPercentage(pm.amount, totalPmAmount);
                     const channelColor = pmPalette[pm.name] || "#06b6d4";
                     return (
-                      <div key={pm.name} className="flex flex-col justify-between rounded-xl border border-white/5 bg-slate-900/60 p-3 transition-all hover:border-cyan-500/30">
+                      <div key={pm.name} className="flex flex-col justify-between rounded-xl border border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-slate-900/60 p-3 transition-all hover:border-cyan-500/30">
                         <div className="flex items-center justify-between">
                           <div>
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">{pm.name}</span>
-                            <p className="text-[11px] text-slate-400 mt-0.5">{pm.count} transactions</p>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">{pm.name}</span>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{pm.count} transactions</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-black text-white tabular-nums">LKR {pm.amount.toLocaleString()}</p>
+                            <p className="text-sm font-black text-slate-900 dark:text-white tabular-nums">LKR {pm.amount.toLocaleString()}</p>
                             <span
                               className="mt-0.5 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-extrabold"
                               style={{ backgroundColor: `${channelColor}25`, color: channelColor, border: `1px solid ${channelColor}40` }}
@@ -1114,7 +1149,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         {/* Progress Bar */}
-                        <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-950/80">
+                        <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-950/80">
                           <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
@@ -1145,16 +1180,16 @@ export default function Dashboard() {
             }
           >
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Total Stock Value (Cost)</span>
-                <p className="text-base font-black text-amber-200 mt-1">LKR {(data?.inventory_stats?.worth_cost || 0).toLocaleString()}</p>
-                <p className="text-[10px] text-slate-400">Retail Worth: LKR {(data?.inventory_stats?.worth_retail || 0).toLocaleString()}</p>
+              <div className="rounded-xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-950/20 p-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">Total Stock Value (Cost)</span>
+                <p className="text-base font-black text-amber-900 dark:text-amber-200 mt-1">LKR {(data?.inventory_stats?.worth_cost || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Retail Worth: LKR {(data?.inventory_stats?.worth_retail || 0).toLocaleString()}</p>
               </div>
 
-              <div className="rounded-xl border border-rose-500/20 bg-rose-950/20 p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Dead Stock Tied Value</span>
-                <p className="text-base font-black text-rose-200 mt-1">LKR {(data?.inventory_stats?.dead_stock_value || 0).toLocaleString()}</p>
-                <p className="text-[10px] text-slate-400">{data?.inventory_stats?.dead_stock_count || 0} Products Unsold &gt; 90 Days</p>
+              <div className="rounded-xl border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-950/20 p-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">Dead Stock Tied Value</span>
+                <p className="text-base font-black text-rose-900 dark:text-rose-200 mt-1">LKR {(data?.inventory_stats?.dead_stock_value || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">{data?.inventory_stats?.dead_stock_count || 0} Products Unsold &gt; 90 Days</p>
               </div>
             </div>
           </SectionCard>
@@ -1169,7 +1204,7 @@ export default function Dashboard() {
                   className="dashboard-action-tile flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition"
                 >
                   <span className="dashboard-action-icon grid h-7 w-7 place-items-center rounded-lg">{action.icon}</span>
-                  <span className="truncate text-sm font-semibold text-slate-100">{action.label}</span>
+                  <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{action.label}</span>
                 </button>
               ))}
             </div>

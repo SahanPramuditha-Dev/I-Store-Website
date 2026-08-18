@@ -49,7 +49,11 @@ def sync_checkout_invoice_to_cloud(
     store_logo_url: Optional[str] = None,
     shop_name: Optional[str] = None,
     shop_address: Optional[str] = None,
-    store_id: Optional[str] = None
+    shop_phone: Optional[str] = None,
+    shop_whatsapp: Optional[str] = None,
+    store_id: Optional[str] = None,
+    enable_loyalty: bool = True,
+    loyalty_rate: int = 1000
 ) -> Dict[str, Any]:
     """
     Syncs a POS checkout transaction to the cloud Supabase database
@@ -63,6 +67,8 @@ def sync_checkout_invoice_to_cloud(
     resolved_store_id = str(store_id).strip().lower().replace(" ", "-") if store_id else "default"
     display_shop_name = shop_name or "I-Store"
 
+    loyalty_points = int(float(total or 0) // max(1, loyalty_rate or 1000)) if enable_loyalty else 0
+
     invoice_payload = {
         "id": invoice_id,
         "token": token,
@@ -75,6 +81,7 @@ def sync_checkout_invoice_to_cloud(
         "tax": tax,
         "total": total,
         "payment_method": payment_method,
+        "loyalty_points": loyalty_points,
         "status": status
     }
 
@@ -93,13 +100,17 @@ def sync_checkout_invoice_to_cloud(
         ctx.verify_mode = ssl.CERT_NONE
 
         # 0. Ensure Store record exists in Supabase
-        if shop_name or resolved_store_id != "default":
+        if shop_name or resolved_store_id != "default" or shop_phone or shop_whatsapp:
             store_payload = {
                 "id": resolved_store_id,
                 "name": shop_name or "Retail Store",
                 "tagline": "Digital Receipts & Warranty Portal",
                 "logo_url": store_logo_url or "",
                 "address": shop_address or "",
+                "phone": shop_phone or "",
+                "whatsapp_number": shop_whatsapp or shop_phone or "",
+                "enable_loyalty_program": enable_loyalty,
+                "loyalty_rate_lkr_per_point": loyalty_rate,
             }
             try:
                 store_req = urllib.request.Request(

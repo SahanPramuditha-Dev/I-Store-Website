@@ -436,30 +436,30 @@ export default function Layout() {
                 />
                 <span className="dashboard-keycap">Ctrl + K</span>
               </div>
-              <div
-                className={`hidden lg:block rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                  isOnline ? "border-emerald-500/40 text-emerald-300" : "border-rose-500/40 text-rose-300"
-                }`}
-                title="Network connectivity status"
-              >
-                {isOnline ? "Online" : "Offline"}
-              </div>
+              {!isOnline && (
+                <div
+                  className="rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider animate-pulse"
+                  title="Network connectivity is unavailable"
+                >
+                  Offline
+                </div>
+              )}
               {queueLength > 0 && (
                 <div
-                  className="rounded-lg border border-amber-500/40 text-amber-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider animate-pulse"
+                  className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider animate-pulse"
                   title="Offline events pending synchronization"
                 >
                   Pending Sync: {queueLength}
                 </div>
               )}
-              <div
-                className={`hidden lg:block rounded-lg border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                  backendStatus?.available ? "border-sky-500/40 text-sky-300" : "border-amber-500/40 text-amber-300"
-                }`}
-                title="Backend service health"
-              >
-                {backendStatus?.available ? "Backend OK" : "Backend Down"}
-              </div>
+              {backendStatus && !backendStatus.available && (
+                <div
+                  className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider animate-pulse"
+                  title="Backend service disconnected"
+                >
+                  Backend Down
+                </div>
+              )}
               {notificationsAllowed ? (
                 <button onClick={() => setShowNotifications((v) => !v)} className="dashboard-icon-btn relative" title="Notifications">
                   <Bell size={18} />
@@ -506,7 +506,7 @@ export default function Layout() {
                 {notifications.map((item) => (
                   <div
                     key={item.id}
-                    className={`rounded-xl border p-3 ${item.is_read ? "opacity-60" : ""}`}
+                    className={`rounded-xl border p-3 border-slate-200 dark:border-white/10 ${item.is_read ? "opacity-60" : ""}`}
                     onClick={async () => {
                       if (!item?.id) return;
                       await api.put(`/notifications/${item.id}/read`).catch(() => {});
@@ -514,10 +514,10 @@ export default function Layout() {
                     }}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-bold text-white">{item.title}</p>
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{String(item.severity || "info")}</span>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</p>
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{String(item.severity || "info")}</span>
                     </div>
-                    <p className="mt-1 text-[10px] text-slate-400">{item.message}</p>
+                    <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-400">{item.message}</p>
                     <div className="mt-2 flex items-center justify-between">
                       <span className="text-[9px] text-slate-500">{item.source_module || "system"}</span>
                       {!item.is_acknowledged ? (
@@ -528,12 +528,12 @@ export default function Layout() {
                             await api.put(`/notifications/${item.id}/ack`).catch(() => {});
                             refreshNotifications?.();
                           }}
-                          className="rounded-md border border-white/10 px-2 py-1 text-[9px] font-bold text-indigo-200 hover:border-indigo-400/50"
+                          className="rounded-md border border-slate-300 dark:border-white/10 px-2 py-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-200 hover:border-indigo-500/50 hover:bg-indigo-50 dark:hover:bg-white/5"
                         >
                           Acknowledge
                         </button>
                       ) : (
-                        <span className="text-[9px] font-semibold text-emerald-300">Acknowledged</span>
+                        <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-300">Acknowledged</span>
                       )}
                     </div>
                   </div>
@@ -544,18 +544,29 @@ export default function Layout() {
           )}
 
           {showCommandPalette && (
-            <div className="absolute inset-0 z-[60] flex items-start justify-center bg-black/50 p-3 sm:p-6 backdrop-blur-sm">
-              <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl">
-                <div className="border-b border-white/10 p-3">
+            <div
+              className="fixed inset-0 z-[100] flex items-start justify-center bg-black/60 p-4 sm:pt-24 backdrop-blur-sm animate-fade-in"
+              onClick={() => {
+                setShowCommandPalette(false);
+                setCommandQuery("");
+              }}
+            >
+              <div
+                className="w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="border-b border-slate-200 dark:border-white/10 p-3.5 flex items-center gap-2.5">
+                  <Search size={18} className="text-slate-400 shrink-0" />
                   <input
                     autoFocus
                     value={commandQuery}
                     onChange={(event) => setCommandQuery(event.target.value)}
-                    placeholder="Type a command..."
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 outline-none focus:border-indigo-400/60"
+                    placeholder="Type a command or jump to page..."
+                    className="w-full bg-transparent text-sm font-medium text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none"
                   />
+                  <span className="dashboard-keycap text-[10px]">ESC</span>
                 </div>
-                <div className="max-h-[calc(90vh-72px)] overflow-y-auto p-2">
+                <div className="max-h-[calc(80vh-64px)] overflow-y-auto p-2">
                   {filteredCommands.map((row) => (
                     <button
                       key={row.id}
@@ -565,14 +576,14 @@ export default function Layout() {
                         setShowCommandPalette(false);
                         setCommandQuery("");
                       }}
-                      className="mb-1 flex w-full items-center justify-between rounded-lg border border-transparent px-3 py-2 text-left text-sm text-slate-200 transition hover:border-indigo-400/40 hover:bg-indigo-500/10"
+                      className="mb-1 flex w-full items-center justify-between rounded-xl border border-transparent px-3.5 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:border-indigo-400/40 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
                     >
-                      <span>{row.label}</span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{row.hint}</span>
+                      <span className="text-slate-800 dark:text-slate-100">{row.label}</span>
+                      <span className="rounded-md border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{row.hint}</span>
                     </button>
                   ))}
                   {filteredCommands.length === 0 && (
-                    <p className="p-3 text-sm text-slate-500">No commands match your search.</p>
+                    <p className="p-4 text-center text-sm text-slate-500">No commands match your search.</p>
                   )}
                 </div>
               </div>

@@ -1290,6 +1290,17 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
             for line in receipt_lines
         ]
 
+        _settings = _read_settings_state(db)
+        _biz = _settings.get("business_profile") or _settings.get("general") or {}
+        _cust_rules = ((_settings.get("business_ops") or {}).get("customer_rules") or _settings.get("customer_rules") or {})
+        _enable_loyalty = bool(_cust_rules.get("enable_loyalty_program", True))
+        _loyalty_rate = int(_cust_rules.get("loyalty_rate_lkr_per_point", 1000) or 1000)
+        _shop_name = _biz.get("shop_name") or _biz.get("store_name") or "I-Store"
+        _shop_addr = _biz.get("address") or _biz.get("shop_address") or ""
+        _shop_phone = _biz.get("phone") or _biz.get("contact_number") or ""
+        _shop_whatsapp = _biz.get("whatsapp_number") or _biz.get("whatsapp") or _shop_phone
+        _store_id = _biz.get("store_id") or str(_shop_name).strip().lower().replace(" ", "-")
+
         def _do_sync():
             sync_checkout_invoice_to_cloud(
                 invoice_id=_invoice_label_str,
@@ -1303,6 +1314,13 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
                 payment_method=str(sale.payment_method or "Cash"),
                 items=_sync_items,
                 status="Paid" if sale.paid else "Pending",
+                shop_name=_shop_name,
+                shop_address=_shop_addr,
+                shop_phone=_shop_phone,
+                shop_whatsapp=_shop_whatsapp,
+                store_id=_store_id,
+                enable_loyalty=_enable_loyalty,
+                loyalty_rate=_loyalty_rate
             )
 
         threading.Thread(target=_do_sync, daemon=True).start()

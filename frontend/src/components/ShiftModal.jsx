@@ -100,56 +100,57 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
         open={open}
         onClose={onClose}
         title={
-          <div className="flex items-center gap-2 text-emerald-400">
+          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
             <DollarSign size={18} />
             <span>Open Cash Register Shift</span>
           </div>
         }
-        panelClassName="max-w-md bg-[#0d1322] border-white/10"
+        panelClassName="max-w-md"
       >
         <form onSubmit={handleOpenShift} className="space-y-4 py-2">
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">
+          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300">
             Enter the starting cash amount (float) present in the cash drawer at the beginning of this shift.
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">Opening Cash Float (LKR)</label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Opening Cash Float (LKR)</label>
             <Input
               type="number"
               min="0"
               step="100"
               value={openingFloat}
               onChange={(e) => setOpeningFloat(e.target.value)}
-              placeholder="e.g. 10000"
+              placeholder="e.g. 5000"
               required
-              className="text-lg font-bold font-mono text-emerald-400"
+              autoFocus
+              className="text-lg font-bold font-mono"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">Shift Label / Terminal</label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Shift Session Name</label>
             <Input
               type="text"
               value={shiftName}
               onChange={(e) => setShiftName(e.target.value)}
-              placeholder="e.g. Morning Shift / Main Terminal"
+              placeholder="e.g. Morning Shift / POS Terminal 1"
             />
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-300 block mb-1.5">Opening Notes (Optional)</label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">Opening Notes (Optional)</label>
             <Input
               type="text"
               value={openNotes}
               onChange={(e) => setOpenNotes(e.target.value)}
-              placeholder="e.g. Clean float verified by cashier"
+              placeholder="e.g. Starting with 5x 1000 notes"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
-            <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
-            <Button variant="primary" type="submit" disabled={loading}>
-              {loading ? "Opening..." : "Confirm & Open Shift"}
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-white/10">
+            <Button variant="secondary" type="button" onClick={onClose} disabled={loading}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={loading || !openingFloat} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+              {loading ? "Opening..." : "Start Shift"}
             </Button>
           </div>
         </form>
@@ -163,53 +164,53 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
       open={open}
       onClose={onClose}
       title={
-        <div className="flex items-center gap-2 text-indigo-400">
+        <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
           <Lock size={18} />
           <span>Close Shift &amp; Cash Reconciliation (#{currentShift.recon_code})</span>
         </div>
       }
-      panelClassName="max-w-2xl bg-[#0d1322] border-white/10"
+      panelClassName="max-w-2xl"
     >
       <div className="space-y-4 py-1 text-xs">
         {/* Shift Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <div className="p-3 rounded-xl bg-slate-900 border border-white/5">
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/5">
             <span className="text-[10px] uppercase font-bold text-slate-500 block">Opening Float</span>
-            <span className="text-sm font-bold text-slate-200 font-mono">
+            <span className="text-sm font-bold text-slate-900 dark:text-slate-200 font-mono">
               LKR {Number(currentShift.opening_float || 0).toLocaleString()}
             </span>
           </div>
-          <div className="p-3 rounded-xl bg-slate-900 border border-white/5">
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/5">
             <span className="text-[10px] uppercase font-bold text-slate-500 block">Cash Sales</span>
-            <span className="text-sm font-bold text-emerald-400 font-mono">
+            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono">
               + LKR {Number(salesSummary.cash_sales || 0).toLocaleString()}
             </span>
           </div>
-          <div className="p-3 rounded-xl bg-slate-900 border border-white/5">
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/5">
             <span className="text-[10px] uppercase font-bold text-slate-500 block">Expected in Drawer</span>
-            <span className="text-sm font-bold text-cyan-400 font-mono">
+            <span className="text-sm font-bold text-sky-600 dark:text-cyan-400 font-mono">
               LKR {expectedTotal.toLocaleString()}
             </span>
           </div>
-          <div className="p-3 rounded-xl bg-slate-900 border border-white/5">
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/5">
             <span className="text-[10px] uppercase font-bold text-slate-500 block">Card / Bank</span>
-            <span className="text-sm font-bold text-slate-400 font-mono">
+            <span className="text-sm font-bold text-slate-700 dark:text-slate-400 font-mono">
               LKR {(Number(salesSummary.card_sales || 0) + Number(salesSummary.bank_sales || 0)).toLocaleString()}
             </span>
           </div>
         </div>
 
         {/* Cash Counting Section */}
-        <div className="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-3">
-          <div className="flex items-center justify-between border-b border-white/5 pb-2">
-            <div className="flex items-center gap-2 font-bold text-slate-200">
-              <Calculator size={15} className="text-indigo-400" />
+        <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-black/30 border border-slate-200 dark:border-white/10 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/5 pb-2">
+            <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+              <Calculator size={15} className="text-indigo-600 dark:text-indigo-400" />
               <span>Physical Cash Drawer Count</span>
             </div>
             <button
               type="button"
               onClick={() => setUseDenominations(!useDenominations)}
-              className="text-[11px] text-indigo-400 hover:underline font-semibold"
+              className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
             >
               {useDenominations ? "Switch to Direct Total" : "Use Denomination Breakdown"}
             </button>
@@ -218,8 +219,8 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
           {useDenominations ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {DENOMINATIONS.map((d) => (
-                <div key={d.value} className="flex items-center justify-between p-2 rounded-xl bg-slate-900/60 border border-white/5">
-                  <span className="font-semibold text-slate-300 text-xs">{d.label}</span>
+                <div key={d.value} className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-white/5">
+                  <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">{d.label}</span>
                   <input
                     type="number"
                     min="0"
@@ -229,21 +230,21 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
                       setCounts((prev) => ({ ...prev, [d.value]: val }));
                     }}
                     placeholder="0"
-                    className="w-16 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-right text-xs font-mono text-white focus:outline-none focus:border-indigo-500"
+                    className="w-16 bg-slate-50 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-2 py-1 text-right text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               ))}
             </div>
           ) : (
             <div>
-              <label className="text-xs font-semibold text-slate-400 block mb-1">Total Counted Cash (LKR)</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 block mb-1">Total Counted Cash (LKR)</label>
               <Input
                 type="number"
                 min="0"
                 value={directCounted}
                 onChange={(e) => setDirectCounted(e.target.value)}
                 placeholder="Enter total counted cash in drawer..."
-                className="text-base font-bold font-mono text-cyan-400"
+                className="text-base font-bold font-mono"
               />
             </div>
           )}
@@ -251,10 +252,10 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
           {/* Live Variance Calculation Banner */}
           <div className={`p-3 rounded-xl border flex items-center justify-between font-mono text-xs ${
             Math.abs(variance) < 1
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
               : variance > 0
-              ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
-              : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+              ? "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300"
+              : "bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-300"
           }`}>
             <div>
               <span className="font-sans font-bold block">Actual Counted Cash:</span>
@@ -273,7 +274,7 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
 
         {/* Closing Notes */}
         <div>
-          <label className="text-xs font-semibold text-slate-400 block mb-1">Closing Remarks / Handover Notes</label>
+          <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 block mb-1">Closing Remarks / Handover Notes</label>
           <Input
             type="text"
             value={closeNotes}
@@ -283,7 +284,7 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-2 pt-2 border-t border-white/10">
+        <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-white/10">
           <Button variant="secondary" onClick={onClose} disabled={loading}>Keep Shift Open</Button>
           <Button
             variant="primary"

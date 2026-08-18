@@ -2065,53 +2065,53 @@ export default function POS() {
                </div>
              )}
              <div className="min-w-[700px]">
-               <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 bg-slate-950/80 backdrop-blur z-10 text-[10px] uppercase tracking-widest text-slate-500 border-b border-white/5">
-                    <tr>
-                      <th className="p-3 font-bold">Item Name</th>
-                      <th className="p-3 font-bold text-center w-24">Type</th>
-                      <th className="p-3 font-bold text-center w-24">Qty</th>
-                      <th className="p-3 font-bold text-right w-24">Price</th>
-                      <th className="p-3 font-bold text-center w-24">Warranty</th>
-                      <th className="p-3 font-bold text-right w-28">Total</th>
-                      <th className="p-3 w-10"></th>
-                    </tr>
-                  </thead>
-                 <tbody className="divide-y divide-white/5">
-                   {cart.map((c, idx) => {
-                   const inv = (inventoryFetch.data || []).find(x => x.id === c.item_id);
-                   const margin = inv ? (c.price - inv.cost_price) : 0;
-                   const isNegativeMargin = !c.is_labor && margin < 0;
-                   return (
-                   <tr key={`${c.item_id}-${idx}`} onClick={() => setSelectedCartIndex(idx)} className={`hover:bg-white/5 transition-colors group ${selectedCartIndex === idx ? "bg-indigo-500/10 border-l-2 border-indigo-500" : ""} ${isNegativeMargin ? "bg-rose-500/5" : ""}`}>
-                      <td className="p-3">
-                        <div className="font-semibold text-sm text-slate-200 flex items-center gap-2">
-                          {c.name}
-                          {isNegativeMargin && <AlertCircle size={14} className="text-rose-400" />}
+                <table className="w-full text-left border-collapse">
+                   <thead className="sticky top-0 bg-slate-100 dark:bg-slate-950/80 backdrop-blur z-10 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-200 dark:border-white/5">
+                     <tr>
+                       <th className="p-3 font-bold">Item Name</th>
+                       <th className="p-3 font-bold text-center w-24">Type</th>
+                       <th className="p-3 font-bold text-center w-24">Qty</th>
+                       <th className="p-3 font-bold text-right w-24">Price</th>
+                       <th className="p-3 font-bold text-center w-24">Warranty</th>
+                       <th className="p-3 font-bold text-right w-28">Total</th>
+                       <th className="p-3 w-10"></th>
+                     </tr>
+                   </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-white/5">
+                    {cart.map((c, idx) => {
+                    const inv = (inventoryFetch.data || []).find(x => x.id === c.item_id);
+                    const margin = inv ? (c.price - inv.cost_price) : 0;
+                    const isNegativeMargin = !c.is_labor && margin < 0;
+                    return (
+                    <tr key={`${c.item_id}-${idx}`} onClick={() => setSelectedCartIndex(idx)} className={`hover:bg-slate-100 dark:hover:bg-white/5 transition-colors group ${selectedCartIndex === idx ? "bg-indigo-50/80 dark:bg-indigo-500/10 border-l-2 border-indigo-500" : ""} ${isNegativeMargin ? "bg-rose-500/5" : ""}`}>
+                       <td className="p-3">
+                         <div className="font-semibold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                           {c.name}
+                           {isNegativeMargin && <AlertCircle size={14} className="text-rose-400" />}
+                         </div>
+                       </td>
+                       <td className="p-3 text-center">
+                         <span className={`inline-flex px-2 py-1 rounded text-[10px] font-bold uppercase ${c.line_type === "manual_product" ? "bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-500/30" : c.line_type === "product" || c.line_type === "spare_part" ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
+                           {c.line_type === "manual_product" ? "Quick Sale" : String(c.line_type || "product").replace("_", " ")}
+                         </span>
+                       </td>
+                       <td className="p-3">
+                         <div className="flex items-center justify-center bg-slate-100 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg overflow-hidden">
+                           <button onClick={() => stepQty(c.item_id, -1)} className="px-2 py-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10"><Minus size={12}/></button>
+                          <input 
+                            type="number" 
+                            className="w-8 bg-transparent text-center text-sm font-bold text-slate-900 dark:text-white outline-none no-spinners" 
+                            value={c.quantity}
+                            onChange={(e) => updateItem(c.item_id, 'quantity', Math.max(1, Number(e.target.value)))}
+                          />
+                          <button onClick={() => stepQty(c.item_id, 1)} className="px-2 py-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10"><Plus size={12}/></button>
                         </div>
                       </td>
-                      <td className="p-3 text-center">
-                        <span className={`inline-flex px-2 py-1 rounded text-[10px] font-bold uppercase ${c.line_type === "manual_product" ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30" : c.line_type === "product" || c.line_type === "spare_part" ? "bg-indigo-500/15 text-indigo-300" : "bg-amber-500/15 text-amber-300"}`}>
-                          {c.line_type === "manual_product" ? "Quick Sale" : String(c.line_type || "product").replace("_", " ")}
-                        </span>
-                      </td>
                       <td className="p-3">
-                        <div className="flex items-center justify-center bg-black/40 border border-white/10 rounded-lg overflow-hidden">
-                          <button onClick={() => stepQty(c.item_id, -1)} className="px-2 py-1.5 text-slate-400 hover:text-white hover:bg-white/10"><Minus size={12}/></button>
-                         <input 
-                           type="number" 
-                           className="w-8 bg-transparent text-center text-sm font-bold outline-none no-spinners" 
-                           value={c.quantity}
-                           onChange={(e) => updateItem(c.item_id, 'quantity', Math.max(1, Number(e.target.value)))}
-                         />
-                         <button onClick={() => stepQty(c.item_id, 1)} className="px-2 py-1.5 text-slate-400 hover:text-white hover:bg-white/10"><Plus size={12}/></button>
-                       </div>
-                     </td>
-                     <td className="p-3">
-                       <input 
-                         type="number" 
-                         className={`w-full bg-transparent text-right text-sm font-semibold outline-none focus:bg-white/5 border border-transparent focus:border-white/10 rounded px-1 ${isNegativeMargin ? "text-rose-400" : ""}`}
-                         value={c.price}
+                        <input 
+                          type="number" 
+                          className={`w-full bg-transparent text-right text-sm font-semibold outline-none focus:bg-slate-100 dark:focus:bg-white/5 border border-transparent focus:border-slate-300 dark:focus:border-white/10 rounded px-1 text-slate-900 dark:text-white ${isNegativeMargin ? "text-rose-600 dark:text-rose-400" : ""}`}
+                          value={c.price}
                           onChange={(e) => updateItem(c.item_id, 'price', Math.max(0, Number(e.target.value)))}
                         />
                       </td>
@@ -2119,10 +2119,10 @@ export default function POS() {
                         {c.is_labor ? (
                           <span className="text-xs text-slate-500">-</span>
                         ) : (
-                          <div className="inline-flex items-center gap-1 bg-black/30 border border-white/10 rounded px-1.5 py-0.5">
+                          <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-black/30 border border-slate-300 dark:border-white/10 rounded px-1.5 py-0.5">
                             <input
                               type="number"
-                              className="bg-transparent text-[10px] w-10 text-center outline-none"
+                              className="bg-transparent text-[10px] w-10 text-center text-slate-800 dark:text-slate-200 outline-none"
                               value={c.warranty_days}
                               onChange={(e) => updateItem(c.item_id, 'warranty_days', Number(e.target.value))}
                               title="Warranty in days"
@@ -2131,35 +2131,35 @@ export default function POS() {
                           </div>
                         )}
                       </td>
-                      <td className="p-3 text-right font-black text-indigo-300">
+                      <td className="p-3 text-right font-black text-indigo-600 dark:text-indigo-300">
                         {(c.price * c.quantity).toLocaleString()}
                       </td>
-                     <td className="p-3 text-right">
-                       <button onClick={() => removeItem(c.item_id)} className="text-rose-500/50 hover:text-rose-400 transition-colors p-1 rounded hover:bg-rose-500/10">
-                         <Trash2 size={16} />
-                       </button>
-                     </td>
-                     </tr>
-                   );
-                   })}
-                 </tbody>
-               </table>
-             </div>
-             {cart.length === 0 && (
-               <div className="h-full flex flex-col items-center justify-center px-6 pb-10 text-center">
-                 <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl border border-indigo-400/20 bg-indigo-500/10 text-indigo-300 shadow-lg shadow-indigo-950/30">
-                   <ShoppingBasket size={32} />
-                 </div>
-                 <p className="text-base font-bold text-slate-200">Your cart is ready</p>
-                 <p className="mt-1 text-xs text-slate-400">Scan a barcode, search the catalogue, or select a product card.</p>
-                 <div className="mt-4 flex flex-wrap justify-center gap-2 text-[10px] font-semibold text-slate-400">
-                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">F2 Search</span>
-                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">Enter Add item</span>
-                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">Ctrl + Enter Checkout</span>
-                 </div>
-               </div>
-             )}
-          </div>
+                      <td className="p-3 text-right">
+                        <button onClick={() => removeItem(c.item_id)} className="text-rose-500/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors p-1 rounded hover:bg-rose-500/10">
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                    );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {cart.length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center px-6 pb-10 text-center">
+                  <div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl border border-indigo-400/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 shadow-lg shadow-indigo-500/10 dark:shadow-indigo-950/30">
+                    <ShoppingBasket size={32} />
+                  </div>
+                  <p className="text-base font-bold text-slate-900 dark:text-slate-200">Your cart is ready</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Scan a barcode, search the catalogue, or select a product card.</p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2 text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+                    <span className="rounded-full border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-2.5 py-1">F2 Search</span>
+                    <span className="rounded-full border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-2.5 py-1">Enter Add item</span>
+                    <span className="rounded-full border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-2.5 py-1">Ctrl + Enter Checkout</span>
+                  </div>
+                </div>
+              )}
+           </div>
 
           {false && (
           <div className="shrink-0 bg-slate-950 border-t border-white/10 p-4 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">

@@ -41,32 +41,32 @@ export function ManagerPinModal({ isOpen, actionLabel, onApproved, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-amber-500/30 rounded-xl w-full max-w-sm p-6 text-slate-100 shadow-2xl relative">
+    <div className="fixed inset-0 bg-black/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-slate-900 border border-amber-500/30 rounded-xl w-full max-w-sm p-6 text-slate-900 dark:text-slate-100 shadow-2xl relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 text-lg font-bold"
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg font-bold"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-3 mb-4 pb-3 border-b border-slate-800">
-          <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
+        <div className="flex items-center gap-3 mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg">
             <ShieldAlert className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="font-bold text-base text-slate-100">Manager Authorization</h3>
-            <p className="text-xs text-slate-400">Action: {actionLabel || "Sensitive POS Operation"}</p>
+            <h3 className="font-bold text-base text-slate-900 dark:text-slate-100">Manager Authorization</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Action: {actionLabel || "Sensitive POS Operation"}</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-2">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
               Enter Manager Security PIN
             </label>
             <div className="relative">
-              <KeyRound className="w-5 h-5 absolute left-3 top-2.5 text-slate-500" />
+              <KeyRound className="w-5 h-5 absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" />
               <input
                 type="password"
                 maxLength={8}
@@ -77,18 +77,18 @@ export function ManagerPinModal({ isOpen, actionLabel, onApproved, onClose }) {
                 }}
                 placeholder="••••"
                 autoFocus
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-center text-xl font-mono tracking-widest text-slate-100 focus:border-amber-500 focus:outline-none"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg pl-10 pr-4 py-2 text-center text-xl font-mono tracking-widest text-slate-900 dark:text-slate-100 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
               />
             </div>
-            {error && <p className="text-xs text-rose-400 mt-2 font-medium">{error}</p>}
+            {error && <p className="text-xs text-rose-500 mt-2 font-medium">{error}</p>}
           </div>
 
           <div className="flex gap-2 pt-2">
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={onClose}
-              className="flex-1 border-slate-700 text-slate-300"
+              className="flex-1"
             >
               Cancel
             </Button>

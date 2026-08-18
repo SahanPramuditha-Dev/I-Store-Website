@@ -41,6 +41,11 @@ export function PrintTotals({ invoice, config, printConfig }) {
             <span>LKR {formatMoney(invoice.grand_total)}</span>
           </div>
         )}
+
+        <div className="flex justify-between py-1 text-[11px] text-slate-500 border-t border-dashed border-slate-300 mt-1 pt-1">
+          <span>Loyalty Points (1 pt / LKR 1,000):</span>
+          <span className="font-bold text-slate-800">+{Math.floor(Number(invoice.grand_total || invoice.total || 0) / 1000)} PTS</span>
+        </div>
       </div>
     </div>
   );

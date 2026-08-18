@@ -184,7 +184,7 @@ if (Test-Port $BACKEND_PORT) {
     Write-Step "  ▶" "Starting backend..." "" "Cyan"
 
     $backendCmd = @"
-Set-Location '$ROOT'
+Set-Location '$ROOT\backend'
 `$env:PYTHONPATH = '$ROOT\backend'
 Get-Content '$ENV_FILE' | ForEach-Object {
     if (`$_ -match '^([^#=]+)=(.*)$') {

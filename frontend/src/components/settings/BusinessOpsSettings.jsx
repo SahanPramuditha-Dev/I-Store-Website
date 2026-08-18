@@ -54,6 +54,9 @@ const DEFAULTS = {
     auto_register_walk_in_customers: false,
     require_phone_for_new_customer: true,
     allow_duplicate_phone_numbers: false,
+    enable_loyalty_program: true,
+    loyalty_rate_lkr_per_point: 1000,
+    auto_apply_loyalty_discount: false,
     customer_id_format: "CUS-####",
     dormant_customer_threshold_days: 90,
     allow_customer_blacklisting: true,
@@ -309,6 +312,9 @@ export default function BusinessOpsSettings({ sectionValue, onSectionChange, onS
       icon: Users,
       render: ({ data, updatePath }) => (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <RowToggle label="Enable Loyalty Program" hint="1 point per LKR 1,000 spent" checked={data.customer_rules.enable_loyalty_program !== false} onChange={(v) => updatePath("customer_rules.enable_loyalty_program", v)} />
+          <RowToggle label="Auto-apply loyalty discount at checkout" hint="Automatically deducts points without cashier manual entry" checked={data.customer_rules.auto_apply_loyalty_discount} onChange={(v) => updatePath("customer_rules.auto_apply_loyalty_discount", v)} />
+          <NumberField label="Loyalty rate (Spend per 1 Point)" value={data.customer_rules.loyalty_rate_lkr_per_point || 1000} onChange={(v) => updatePath("customer_rules.loyalty_rate_lkr_per_point", v)} suffix="LKR" />
           <RowToggle label="Auto-register walk-ins" checked={data.customer_rules.auto_register_walk_in_customers} onChange={(v) => updatePath("customer_rules.auto_register_walk_in_customers", v)} />
           <RowToggle label="Require phone for new customer" checked={data.customer_rules.require_phone_for_new_customer} onChange={(v) => updatePath("customer_rules.require_phone_for_new_customer", v)} />
           <RowToggle label="Allow duplicate phone numbers" checked={data.customer_rules.allow_duplicate_phone_numbers} onChange={(v) => updatePath("customer_rules.allow_duplicate_phone_numbers", v)} />

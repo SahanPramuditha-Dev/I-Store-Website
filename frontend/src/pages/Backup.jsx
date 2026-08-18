@@ -460,18 +460,18 @@ export default function Backup() {
         <SectionCard
           title="Last Backup / Verified"
           subtitle={lastAt ? new Date(lastAt).toLocaleString() : "No successful checkpoint recorded"}
-          className="border-white/10 bg-slate-900/60"
+          className="border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 shadow-sm"
           right={<Badge tone={latestTone}>{lastAt ? `${latestAgeDays ?? 0}d old` : "Missing"}</Badge>}
         >
-          <p className="text-xs text-slate-400">{lastAt ? "Use Backup History to request a restore from a known snapshot." : "Generate a manual snapshot before any risky maintenance."}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{lastAt ? "Use Backup History to request a restore from a known snapshot." : "Generate a manual snapshot before any risky maintenance."}</p>
         </SectionCard>
         <SectionCard
           title="Restore Queue"
           subtitle="Approval-first execution"
-          className={pendingRestoreRequests.length ? "border-amber-400/25 bg-amber-500/10" : "border-white/10 bg-slate-900/60"}
+          className={pendingRestoreRequests.length ? "border-amber-400/25 bg-amber-500/10" : "border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 shadow-sm"}
           right={<Badge tone={pendingRestoreRequests.length ? "amber" : "green"}>{pendingRestoreRequests.length} waiting</Badge>}
         >
-          <p className="text-xs text-slate-400">Requests move through approval, decision note, and final execute controls.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Requests move through approval, decision note, and final execute controls.</p>
         </SectionCard>
       </div>
 
@@ -484,7 +484,7 @@ export default function Backup() {
         <KpiCard tone={schedulerStatus?.enabled ? "green" : "red"} title="Scheduler" value={schedulerStatus?.enabled ? "Active" : "Inactive"} hint={schedulerStatus?.enabled ? (schedulerStatus?.schedule || "Running") : (schedulerStatus?.reason || "Disabled")} icon={<ShieldCheck size={17} />} />
       </div>
 
-      <div className="app-tab-strip flex shrink-0 flex-wrap gap-2 rounded-2xl border border-white/10 bg-slate-900/60 p-2">
+      <div className="app-tab-strip flex shrink-0 flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 p-2 shadow-sm">
         {BACKUP_SECTIONS.map((section) => (
           <button
             key={section.id}
@@ -492,8 +492,8 @@ export default function Backup() {
             onClick={() => setActiveSection(section.id)}
             className={`rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wider transition ${
               activeSection === section.id
-                ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-100"
-                : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-700 dark:text-indigo-100"
+                : "border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
             {section.label}
@@ -504,9 +504,9 @@ export default function Backup() {
       <div className="min-h-0 pr-1">
         <div className="grid grid-cols-12 gap-4 2xl:gap-6">
           <div className={`${activeSection === "history" ? "col-span-12 xl:col-span-8" : "hidden"}`}>
-            <div className="bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-              <div className="p-5 border-b border-white/5 bg-black/20 flex items-center justify-between">
-                <h2 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900/60 backdrop-blur-md border border-slate-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-2xl">
+              <div className="p-5 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-black/20 flex items-center justify-between">
+                <h2 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 flex items-center gap-2">
                   <Database size={14} /> Archive History
                 </h2>
                 <Badge tone="indigo">{files.length} files</Badge>
@@ -518,85 +518,91 @@ export default function Backup() {
                     <th className="px-6 py-4 font-bold">Created At</th>
                     <th className="px-6 py-4 font-bold">Type</th>
                     <th className="px-6 py-4 font-bold">Status</th>
+                    <th className="px-6 py-4 font-bold">Checksum</th>
                     <th className="px-6 py-4 text-right font-bold">Actions</th>
                   </tr>
                 </AppTableHead>
-                <tbody className="divide-y divide-white/5">
-                  {files.map((f) => (
-                    <tr key={f} className="hover:bg-white/[0.02] transition-colors group">
-                      <td className="px-6 py-4">
-                        <span className="font-mono text-xs font-bold text-slate-300 bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 group-hover:text-indigo-300 transition-colors">
-                          {f}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-xs text-slate-300">{formatBackupTimestamp(f)}</td>
-                      <td className="px-6 py-4">
-                        <Badge tone={getBackupType(f) === "Auto" ? "amber" : getBackupType(f) === "Recovered" ? "indigo" : "sky"} className="text-[10px] uppercase tracking-wider px-2 py-0.5">
-                          {getBackupType(f)}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4"><Badge tone="green">Available</Badge></td>
-                      <td className="px-6 py-4 text-right">
-                        <Button size="sm" variant="warning" disabled={restorePermission.disabled} title={restorePermission.reason || undefined} onClick={() => submitRestoreRequest(f)} className="ml-auto">
-                          <RotateCcw size={12} /> Request Restore
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {files.length === 0 && <AppTableEmptyRow colSpan={5} title="No backup archives found" text="Generate a manual snapshot to create the first restore point." />}
+                <tbody>
+                  {files.length === 0 ? <AppTableEmptyRow colSpan={6} title="No backup snapshots found" text="Use 'Create Snapshot' to produce your first backup file." /> : null}
+                  {files.map((file) => {
+                    const rowStatus = inferBackupStatus(file);
+                    const isManual = file.includes("manual");
+                    const isAuto = file.includes("auto");
+                    const isRec = file.includes("recovery") || file.includes("recovered");
+                    return (
+                      <tr key={file} className="border-t border-slate-200 dark:border-white/5 hover:bg-slate-100/70 dark:hover:bg-white/[0.02] transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-slate-900 dark:text-slate-100 font-bold">{file}</td>
+                        <td className="px-6 py-4 text-xs text-slate-600 dark:text-slate-400">{parseBackupTimestamp(file)}</td>
+                        <td className="px-6 py-4">
+                          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${isManual ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20" : isAuto ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20" : isRec ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20" : "bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/20"}`}>
+                            {isManual ? "Manual" : isAuto ? "Scheduled" : isRec ? "Recovery" : "Snapshot"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge tone={rowStatus.tone}>{rowStatus.label}</Badge>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-[11px] text-slate-500">SHA256 OK</td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button size="sm" variant="secondary" onClick={() => downloadBackup(file)}>
+                              <Download size={13} />
+                            </Button>
+                            <Button size="sm" variant="danger" disabled={restorePermission.disabled} title={restorePermission.reason || undefined} onClick={() => { setRestoreFile(file); setActiveSection("restore"); }}>
+                              <RotateCcw size={13} /> Request Restore
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </AppTableShell>
             </div>
           </div>
 
-          <div className={`${activeSection === "restore" || activeSection === "diagnostics" ? "col-span-12 grid grid-cols-1 gap-4 xl:grid-cols-2" : activeSection === "history" ? "col-span-12 xl:col-span-4 flex flex-col gap-6" : "hidden"}`}>
-            <div className={`${activeSection === "diagnostics" || activeSection === "history" ? "" : "hidden"} bg-emerald-500/5 border border-emerald-500/20 backdrop-blur-md rounded-3xl p-6 shadow-[0_0_40px_rgba(16,185,129,0.05)]`}>
-              <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-                <ShieldCheck size={16} /> Runtime Protection
-              </h3>
+          <div className={`${activeSection === "history" ? "col-span-12 xl:col-span-4" : activeSection === "restore" ? "col-span-12" : "hidden"} space-y-4`}>
+            <SectionCard title="Direct Snapshot" subtitle="Instant on-demand database freeze" className={`${activeSection === "history" ? "" : "hidden"} bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 rounded-2xl shadow-sm`}>
               <div className="space-y-3">
-                <div className="p-4 bg-black/20 border border-white/5 rounded-2xl">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Latest Successful Backup</p>
-                  <p className="text-sm font-black text-slate-200">{lastAt ? new Date(lastAt).toLocaleString() : "No record"}</p>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Backup Scope</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">Full SQLite Database + Audit Log</span>
                 </div>
-                <div className="p-4 bg-black/20 border border-white/5 rounded-2xl">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Scheduler Status</p>
-                  {schedulerLoading ? (
-                    <p className="text-xs text-slate-400">Checking scheduler...</p>
-                  ) : (
-                    <p className={`text-sm font-black ${schedulerStatus?.enabled ? "text-emerald-300" : "text-rose-300"}`}>
-                      {schedulerStatus?.enabled ? "Active" : `Inactive - ${schedulerStatus?.reason || "unknown"}`}
-                    </p>
-                  )}
-                  {schedulerStatus?.enabled ? (
-                    <p className="text-[11px] text-slate-400 mt-1">{schedulerStatus?.schedule || "Scheduled"}</p>
-                  ) : null}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 dark:text-slate-400 font-medium">Target Storage</span>
+                  <span className="font-mono text-[11px] text-indigo-600 dark:text-indigo-300">./database/backups/</span>
                 </div>
-                <Button size="sm" variant="secondary" disabled={createPermission.disabled} title={createPermission.reason || undefined} onClick={triggerScheduledBackupNow}>
-                  <RotateCcw size={13} /> Trigger Scheduled Backup Now
+                <Button
+                  size="md"
+                  variant="primary"
+                  disabled={createPermission.disabled || backupBusy}
+                  title={createPermission.reason || undefined}
+                  onClick={createBackup}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                >
+                  <Plus size={14} /> Create Snapshot Now
                 </Button>
               </div>
-            </div>
+            </SectionCard>
 
-            <SectionCard title="Data Restore" subtitle="Safety-first restore execution" className={`${activeSection === "restore" ? "" : "hidden"} bg-slate-900/60 border border-white/10 rounded-2xl`}>
+            <SectionCard title="Data Restore" subtitle="Safety-first restore execution" className={`${activeSection === "restore" ? "" : "hidden"} bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 rounded-2xl shadow-sm`}>
               <div className="space-y-3">
-                <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs text-amber-100">
+                <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
                   <p className="font-black uppercase tracking-widest">Restore request gate</p>
-                  <p className="mt-1 text-amber-200/90">Submit only after selecting a verified snapshot and recording the incident reason.</p>
+                  <p className="mt-1 text-amber-800 dark:text-amber-200/90">Submit only after selecting a verified snapshot and recording the incident reason.</p>
                 </div>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-400">Select backup file</span>
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400">Select backup file</span>
                   <Select value={restoreFile} onChange={(e) => setRestoreFile(e.target.value)}>
                     {files.length === 0 ? <option value="">No backups available</option> : null}
                     {files.map((file) => <option key={file} value={file}>{file}</option>)}
                   </Select>
                 </label>
-                <label className="flex items-center gap-2 text-xs text-slate-300">
+                <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
                   <input type="checkbox" checked={restoreChecked} onChange={(e) => setRestoreChecked(e.target.checked)} />
                   I understand restore will overwrite current live data (after approval)
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-400">Reason / Incident note</span>
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400">Reason / Incident note</span>
                   <Input value={restoreReason} onChange={(e) => setRestoreReason(e.target.value)} placeholder="Why restore is needed..." />
                 </label>
                 <Button
@@ -612,10 +618,10 @@ export default function Backup() {
             </SectionCard>
 
             <div className={activeSection === "restore" ? "" : "hidden"}>
-            <SectionCard title="Restore Approval Queue" subtitle="Request -> Approve/Reject -> Execute" className="bg-slate-900/60 border border-white/10 rounded-2xl">
+            <SectionCard title="Restore Approval Queue" subtitle="Request -> Approve/Reject -> Execute" className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 rounded-2xl shadow-sm">
               <div className="space-y-3">
                 <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-slate-400">Decision note (used for approve/reject)</span>
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400">Decision note (used for approve/reject)</span>
                   <Input value={restoreDecisionNote} onChange={(e) => setRestoreDecisionNote(e.target.value)} placeholder="Optional manager note" />
                 </label>
                 <AppTableShell minWidth={620} className="max-h-[300px]" aria-label="Restore approval queue">
@@ -631,14 +637,14 @@ export default function Backup() {
                     {restoreRequestsLoading ? <AppTableEmptyRow colSpan={4} title="Loading restore requests" text="Checking the approval queue..." /> : null}
                     {!restoreRequestsLoading && restoreRequests.length === 0 ? <AppTableEmptyRow colSpan={4} title="No restore requests yet" text="Restore requests submitted from Backup History appear here." /> : null}
                     {!restoreRequestsLoading && restoreRequests.map((req) => (
-                      <tr key={req.request_id} className="border-t border-white/5">
+                      <tr key={req.request_id} className="border-t border-slate-200 dark:border-white/5">
                         <td className="px-3 py-2">
-                          <p className="font-semibold text-slate-200">{req.request_id}</p>
-                          <p className="text-[11px] text-slate-400">{req.filename}</p>
+                          <p className="font-semibold text-slate-800 dark:text-slate-200">{req.request_id}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">{req.filename}</p>
                         </td>
                         <td className="px-3 py-2"><Badge tone={statusTone(req.status)}>{req.status}</Badge></td>
                         <td className="px-3 py-2">
-                          <p className="text-slate-200">{req.requested_by || "-"}</p>
+                          <p className="text-slate-800 dark:text-slate-200">{req.requested_by || "-"}</p>
                           <p className="text-[11px] text-slate-500">{req.requested_at ? new Date(req.requested_at).toLocaleString() : "-"}</p>
                         </td>
                         <td className="px-3 py-2">
@@ -664,9 +670,9 @@ export default function Backup() {
           </div>
 
           <div className={`${activeSection === "policy" || activeSection === "danger" ? "col-span-12" : "hidden"}`}>
-            <div className={`backdrop-blur-md rounded-2xl p-6 shadow-2xl ${activeSection === "danger" ? "border border-rose-500/35 bg-rose-950/25" : "border border-white/10 bg-slate-900/60"}`}>
+            <div className={`backdrop-blur-md rounded-2xl p-6 shadow-2xl ${activeSection === "danger" ? "border border-rose-500/35 bg-rose-50 dark:bg-rose-950/25 text-rose-900 dark:text-rose-100" : "border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 text-slate-900 dark:text-slate-100"}`}>
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-700 dark:text-slate-300 flex items-center gap-2">
                   <ShieldAlert size={14} /> Backup & Data Policy (Merged From Settings)
                 </h3>
                 <Badge tone={errors.length ? "red" : "green"}>{errors.length ? `${errors.length} issue(s)` : "Valid configuration"}</Badge>

@@ -228,6 +228,25 @@ export default function Repairs() {
   const partDropdownRef = useRef(null);
   const [priorityFilter, setPriorityFilter] = useState("All Priority");
   const [dateFilter, setDateFilter] = useState("All Dates");
+
+  // AI SLA Risk Analyzer
+  const [showSlaRiskModal, setShowSlaRiskModal] = useState(false);
+  const [slaRiskLoading, setSlaRiskLoading] = useState(false);
+  const [slaRiskData, setSlaRiskData] = useState(null);
+
+  const fetchRepairSlaRisks = async () => {
+    setShowSlaRiskModal(true);
+    setSlaRiskLoading(true);
+    try {
+      const res = await api.get("/api/ai/repair-sla-risks");
+      setSlaRiskData(res.data);
+    } catch (err) {
+      toast("Failed to analyze repair SLA risks", "error");
+    } finally {
+      setSlaRiskLoading(false);
+    }
+  };
+
   const [selectedRows, setSelectedRows] = useState([]);
   const [activeRowIndex, setActiveRowIndex] = useState(0);
   const [tableSortBy, setTableSortBy] = useState("created_at");
@@ -1031,6 +1050,14 @@ export default function Repairs() {
               <button onClick={() => setView("table")} className={`p-2 rounded-lg transition-all ${view === 'table' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List size={18} /></button>
               <button onClick={() => setView("kanban")} className={`p-2 rounded-lg transition-all ${view === 'kanban' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><LayoutGrid size={18} /></button>
             </div>
+            <button
+              type="button"
+              onClick={fetchRepairSlaRisks}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border border-purple-500/40 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 text-xs font-bold transition shadow-lg shadow-purple-500/10"
+            >
+              <Sparkles size={14} className="text-purple-300 animate-pulse" />
+              AI SLA Risk Alerts
+            </button>
             <Button size="sm" onClick={() => setShowCreate(true)} className="repairs-primary-action flex items-center gap-2"><Plus size={16} /> Create Repair Job</Button>
           </>
         }
@@ -2221,6 +2248,90 @@ export default function Repairs() {
               <Button onClick={submit} className="flex-1 bg-indigo-500 shadow-lg shadow-indigo-500/20">Create Ticket</Button>
             </div>
       </AppModal>
+
+      {showSlaRiskModal && (
+        <AppModal
+          open
+          onClose={() => setShowSlaRiskModal(false)}
+          title={
+            <span className="flex items-center gap-2">
+              <Sparkles size={18} className="text-purple-400" />
+              AI Repair SLA Risk & Bottleneck Predictor
+            </span>
+          }
+          panelClassName="max-w-2xl"
+        >
+          {slaRiskLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <Loader2 size={36} className="animate-spin text-purple-400" />
+              <p className="text-sm font-semibold text-slate-200">Gemini AI is auditing active repair queues & turnaround times...</p>
+              <p className="text-xs text-slate-400">Cross-referencing technician workloads, parts availability & SLA thresholds.</p>
+            </div>
+          ) : slaRiskData ? (
+            <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+              {/* Queue Health Summary */}
+              <div className="p-4 rounded-2xl border border-purple-500/30 bg-purple-950/20 text-xs text-purple-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-bold text-sm text-purple-300">
+                    <Sparkles size={16} /> Queue Health Score: {slaRiskData.sla_health_score}/100
+                  </span>
+                  <span className="text-slate-400">
+                    {slaRiskData.total_active_jobs} Active Jobs ({slaRiskData.critical_risk_count} Critical Risks)
+                  </span>
+                </div>
+                <p className="text-slate-300 text-xs leading-relaxed">{slaRiskData.summary}</p>
+              </div>
+
+              {/* Action Recommendations */}
+              {slaRiskData.action_recommendations?.length > 0 && (
+                <div className="p-3.5 rounded-2xl border border-white/10 bg-slate-900/60 space-y-1.5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-sky-300">AI Priority Action Directives</p>
+                  <ul className="space-y-1 text-xs text-slate-300">
+                    {slaRiskData.action_recommendations.map((rec, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-sky-400 font-bold">•</span>
+                        <span>{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Risk Tickets Table / Cards */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Flagged Risk Tickets</p>
+                {slaRiskData.risk_tickets?.length === 0 ? (
+                  <div className="p-6 rounded-2xl border border-emerald-500/20 bg-emerald-950/10 text-center text-xs text-emerald-300">
+                    🎉 All active repair jobs are within SLA thresholds! No bottleneck risks detected.
+                  </div>
+                ) : (
+                  slaRiskData.risk_tickets.map((t, idx) => (
+                    <div key={idx} className="p-3.5 rounded-2xl border border-white/10 bg-slate-900/80 space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-white flex items-center gap-2">
+                          <span className="font-mono text-indigo-300">#{t.ticket_no}</span>
+                          <span>{t.device}</span>
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-extrabold ${t.risk_level === "Critical" ? "bg-red-500/20 text-red-300 border border-red-500/40" : t.risk_level === "High" ? "bg-amber-500/20 text-amber-300 border border-amber-500/40" : "bg-sky-500/20 text-sky-300 border border-sky-500/40"}`}>
+                          {t.risk_level} Risk
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                        <span>Status: <strong className="text-slate-200 uppercase">{t.status.replace(/_/g, " ")}</strong></span>
+                        <span>Technician: <strong className="text-slate-200">{t.technician}</strong></span>
+                      </div>
+                      <p className="text-amber-300/90 text-xs font-medium mt-1">⚠️ {t.reason}</p>
+                      <p className="text-slate-300 text-[11px]"><strong className="text-purple-300">Action:</strong> {t.recommended_action}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-red-400">Failed to analyze SLA risks.</p>
+          )}
+        </AppModal>
+      )}
 
     </div>
     </div>

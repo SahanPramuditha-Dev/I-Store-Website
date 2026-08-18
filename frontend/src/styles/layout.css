@@ -27,7 +27,7 @@
   overflow: auto;
   border: 1px solid var(--ds-border-muted);
   border-radius: var(--ds-radius-card);
-  background: rgba(2, 6, 23, 0.32);
+  background: var(--ds-table-bg);
 }
 
 .app-sticky-actions {
@@ -35,7 +35,7 @@
   bottom: 0;
   z-index: 20;
   border-top: 1px solid var(--ds-border-muted);
-  background: rgba(8, 13, 30, 0.94);
+  background: var(--ds-sticky-bg);
   backdrop-filter: blur(12px);
 }
 

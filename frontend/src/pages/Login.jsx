@@ -1,4 +1,4 @@
-import { Eye, EyeOff, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Eye, EyeOff, AlertTriangle, CheckCircle2, Loader2, Sun, Moon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
@@ -71,12 +71,14 @@ export default function Login() {
   const navigate = useNavigate();
   const { identity } = useStoreProfile();
   const pinPanelRef = useRef(null);
+  const [dark, setDark] = useState(() => (localStorage.getItem("theme") ?? "dark") === "dark");
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [fading, setFading] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [activeStaff, setActiveStaff] = useState([]);
+  const [selectedStaffId, setSelectedStaffId] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -153,6 +155,11 @@ export default function Login() {
   const modeLabel = setupRequired ? "Owner Setup" : loginMode === "pin" ? "Staff PIN" : "Password";
 
   useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("theme", dark ? "dark" : "light");
+  }, [dark]);
+
+  useEffect(() => {
     if (window.istore?.updater?.getVersion) {
       window.istore.updater.getVersion().then((res) => {
         if (res?.version) setAppVersion(`v${res.version}`);
@@ -168,17 +175,14 @@ export default function Login() {
       const required = Boolean(res?.data?.setup_required);
       setSetupRequired(required);
       setServiceStatus("online");
-      const token = getAuthValue("token");
-      if (!required && token) {
+      if (!required) {
         try {
-          const staffRes = await api.get("/auth/active-staff");
+          const staffRes = await api.get("/auth/active-staff?require_pin=true");
           if (Array.isArray(staffRes?.data)) {
-            setActiveStaff(staffRes.data);
+            setActiveStaff(staffRes.data.filter((s) => s.has_pin !== false));
           }
         } catch (staffErr) {
-          if (staffErr?.response?.status !== 401) {
-            console.error("Failed to load active staff in checkBootstrapStatus:", staffErr);
-          }
+          console.error("Failed to load active staff in checkBootstrapStatus:", staffErr);
         }
       }
     } catch (err) {
@@ -200,18 +204,15 @@ export default function Login() {
         const required = Boolean(res?.data?.setup_required);
         setSetupRequired(required);
         setServiceStatus("online");
-        const token = getAuthValue("token");
-        if (!required && token) {
-          api.get("/auth/active-staff")
+        if (!required) {
+          api.get("/auth/active-staff?require_pin=true")
             .then((staffRes) => {
               if (active && Array.isArray(staffRes?.data)) {
-                setActiveStaff(staffRes.data);
+                setActiveStaff(staffRes.data.filter((s) => s.has_pin !== false));
               }
             })
             .catch((staffErr) => {
-              if (staffErr?.response?.status !== 401) {
-                console.error("Failed to load active staff on mount:", staffErr);
-              }
+              console.error("Failed to load active staff on mount:", staffErr);
             });
         }
       })
@@ -240,11 +241,48 @@ export default function Login() {
     return () => clearInterval(timer);
   }, []);
 
+  // Global physical keyboard & numpad handler for Staff PIN entry
   useEffect(() => {
-    if (!setupLoading && !setupRequired && loginMode === "pin") {
-      pinPanelRef.current?.focus();
-    }
-  }, [loginMode, setupLoading, setupRequired]);
+    if (loginMode !== "pin" || setupRequired || pinSetupModal || loginSuccess) return;
+
+    const handleGlobalKeyDown = (e) => {
+      // Ignore if user is currently typing in an input/textarea/modal
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+      // Handle standard digits and numpad digits (0-9)
+      const isStandardDigit = e.key >= "0" && e.key <= "9";
+      const isNumpadDigit = e.code && e.code.startsWith("Numpad") && !isNaN(parseInt(e.key, 10));
+
+      if (isStandardDigit || isNumpadDigit) {
+        e.preventDefault();
+        if (!submitting) {
+          setPin((prev) => {
+            if (prev.length >= 4) return prev;
+            return prev + e.key;
+          });
+        }
+      } else if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        if (!submitting) {
+          setPin((prev) => prev.slice(0, -1));
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (pin.length === 4 && !submitting) {
+          handlePinSubmit();
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setLoginMode("password");
+        setError("");
+        setPin("");
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [loginMode, setupRequired, pinSetupModal, loginSuccess, pin, submitting]);
 
   const handleDotClick = (index) => {
     if (index === currentSlideIndex) return;
@@ -376,7 +414,12 @@ export default function Login() {
 
     try {
       const payload = { pin: pinToSubmit };
-      if (staffIdToUse) payload.user_id = staffIdToUse;
+      const effectiveStaffId = staffIdToUse ?? selectedStaffId;
+      if (effectiveStaffId) {
+        payload.user_id = effectiveStaffId;
+        const matched = activeStaff.find((s) => s.id === effectiveStaffId);
+        if (matched?.username) payload.username = matched.username;
+      }
 
       const tokenRes = await api.post("/auth/login-pin", payload);
       await finishLogin(tokenRes, "Staff");
@@ -502,7 +545,18 @@ export default function Login() {
         <div className="exact-login-auth">
           <div className="exact-login-form-shell">
             <header className="exact-login-head">
-              <span className="exact-login-storeline">{shopName}</span>
+              <div className="exact-login-head-top">
+                <span className="exact-login-storeline">{shopName}</span>
+                <button
+                  type="button"
+                  onClick={() => setDark((prev) => !prev)}
+                  className="exact-login-theme-btn"
+                  title={dark ? "Switch to light theme" : "Switch to dark theme"}
+                  aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+                >
+                  {dark ? <Sun size={15} /> : <Moon size={15} />}
+                </button>
+              </div>
               <h1>{setupRequired ? "First-Run Setup" : getGreeting()}</h1>
               <p>{setupRequired ? "Create the first Owner account to activate login." : "Sign in to continue store operations."}</p>
             </header>
@@ -626,32 +680,35 @@ export default function Login() {
               <div
                 ref={pinPanelRef}
                 className={`exact-login-form animate-slide-up stagger-1 ${shakeError ? "error-shake" : ""}`}
-                tabIndex={-1}
-                onKeyDown={(e) => {
-                  if (e.key >= "0" && e.key <= "9") handlePinClick(e.key);
-                  else if (e.key === "Backspace") handlePinDelete();
-                  else if (e.key === "Enter" && pin.length === 4) handlePinSubmit();
-                }}
               >
                 {activeStaff.length > 0 && (
                   <div className="mb-3">
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">Select Staff Account</label>
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Select Staff Account</label>
                     <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
                       {activeStaff.map((staff) => (
                         <button
                           key={staff.id}
                           type="button"
                           onClick={() => {
+                            setSelectedStaffId((prev) => (prev === staff.id ? null : staff.id));
                             if (pin.length === 4) handlePinSubmit(staff.id);
                           }}
-                          className="flex items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-left transition-all group"
+                          className={`flex items-center gap-2 p-2 rounded-xl border transition-all text-left group ${
+                            selectedStaffId === staff.id
+                              ? "ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-950/50 border-indigo-500"
+                              : "bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10"
+                          }`}
                         >
-                          <div className="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs group-hover:scale-105 transition-transform">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs group-hover:scale-105 transition-transform ${
+                            selectedStaffId === staff.id
+                              ? "bg-indigo-600 text-white"
+                              : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400"
+                          }`}>
                             {staff.full_name ? staff.full_name[0].toUpperCase() : staff.username[0].toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-slate-200 truncate">{staff.full_name || staff.username}</p>
-                            <p className="text-[10px] text-slate-400 capitalize">{roleToLabel(staff.role)}</p>
+                            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{staff.full_name || staff.username}</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 capitalize">{roleToLabel(staff.role)}</p>
                           </div>
                         </button>
                       ))}
@@ -810,21 +867,21 @@ export default function Login() {
       </section>
 
       {pinSetupModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
             <div className="text-center space-y-1">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 mb-2">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-2">
                 🔒
               </div>
-              <h3 className="text-lg font-bold text-slate-100">Set Up Your Quick PIN</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Set Up Your Quick PIN</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 Create a 4-digit PIN for quick sign-in to POS and repair stations without entering your full password each time.
               </p>
             </div>
 
             <form onSubmit={handleSaveInitialPin} className="space-y-4 pt-2">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                   4-Digit PIN
                 </label>
                 <input
@@ -834,13 +891,13 @@ export default function Login() {
                   placeholder="e.g. 1234"
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-center text-2xl tracking-[0.5em] font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-center text-2xl tracking-[0.5em] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                   Confirm 4-Digit PIN
                 </label>
                 <input
@@ -850,18 +907,18 @@ export default function Login() {
                   placeholder="e.g. 1234"
                   value={confirmPin}
                   onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-center text-2xl tracking-[0.5em] font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl px-4 py-2.5 text-center text-2xl tracking-[0.5em] font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
-              {error ? <div className="text-rose-400 text-sm text-center">{error}</div> : null}
+              {error ? <div className="text-rose-500 dark:text-rose-400 text-sm text-center">{error}</div> : null}
 
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={handleSkipPinSetup}
                   disabled={submitting}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition-colors text-sm font-medium"
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors text-sm font-medium"
                 >
                   Skip for Now
                 </button>

@@ -85,7 +85,7 @@ export default function AppModal({
 
   return (
     <div
-      className={cx("fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm", className)}
+      className={cx("fixed inset-0 z-[120] flex items-center justify-center bg-black/60 dark:bg-black/75 p-4 backdrop-blur-sm", className)}
       onPointerUp={(event) => {
         // Only close when pointer up happens directly on the overlay (not the panel),
         // and the pointer DID NOT start inside the panel. This avoids closing the
@@ -103,7 +103,7 @@ export default function AppModal({
         aria-labelledby={title ? titleId : undefined}
         aria-label={title ? undefined : "Dialog"}
         className={cx(
-          "flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl",
+          "flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900 shadow-2xl text-slate-900 dark:text-slate-100",
           panelClassName,
         )}
         onClick={(event) => event.stopPropagation()}
@@ -114,13 +114,13 @@ export default function AppModal({
         }}
       >
         {(title || headerActions || onClose) && (
-          <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-200 dark:border-white/10 px-4 py-3 sm:px-5 sm:py-4">
             <div className="min-w-0 flex-1">
               {title ? (
                 titleIsNode ? (
                   <div id={titleId}>{title}</div>
                 ) : (
-                  <h3 id={titleId} className="min-w-0 truncate text-base font-bold text-white">
+                  <h3 id={titleId} className="min-w-0 truncate text-base font-bold text-slate-900 dark:text-white">
                     {title}
                   </h3>
                 )
@@ -132,7 +132,7 @@ export default function AppModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+                  className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 transition hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
                   aria-label="Close dialog"
                 >
                   <X size={15} />
@@ -142,7 +142,7 @@ export default function AppModal({
           </div>
         )}
         <div data-modal-content className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">{children}</div>
-        {footer ? <div className="app-sticky-actions shrink-0 p-4">{footer}</div> : null}
+        {footer ? <div className="app-sticky-actions shrink-0 p-4 border-t border-slate-200 dark:border-white/10">{footer}</div> : null}
       </div>
     </div>
   );

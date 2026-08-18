@@ -5,8 +5,8 @@ import { isOwnerOrAdmin } from "../lib/rbac";
 export function PageTitle({ title, subtitle, action, className = "" }) {
   return <div className={cx("flex min-w-0 items-start justify-between gap-3", className)}>
     <div className="min-w-0">
-      <h1 className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{title}</h1>
-      {subtitle && <p className="mt-1 max-w-3xl text-sm text-slate-400">{subtitle}</p>}
+      <h1 className="truncate text-2xl font-black tracking-tight text-slate-900 dark:text-white xl:text-3xl">{title}</h1>
+      {subtitle && <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
     </div>
     {action ? <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{action}</div> : null}
   </div>;
@@ -28,7 +28,7 @@ export function PageHeader({
     <header
       className={cx(
         "dashboard-hero flex min-w-0 shrink-0 flex-wrap items-end justify-between gap-3 rounded-xl border p-3.5",
-        sticky ? "sticky top-0 z-20 rounded-2xl border border-white/10 bg-slate-950/85 p-3 backdrop-blur-xl" : "",
+        sticky ? "sticky top-0 z-20 rounded-2xl border border-slate-200 bg-white/95 dark:border-white/10 dark:bg-slate-950/85 p-3 backdrop-blur-xl shadow-sm" : "",
         className,
       )}
     >
@@ -38,8 +38,8 @@ export function PageHeader({
             {eyebrow}
           </div>
         ) : null}
-        <h1 className={cx("truncate font-black tracking-tight text-white", compact ? "text-lg xl:text-xl" : "text-xl xl:text-2xl")}>{title}</h1>
-        {subtitle ? <p className={cx("mt-1 max-w-3xl text-slate-300", compact ? "text-xs" : "text-xs xl:text-sm")}>{subtitle}</p> : null}
+        <h1 className={cx("truncate font-black tracking-tight text-slate-900 dark:text-white", compact ? "text-lg xl:text-xl" : "text-xl xl:text-2xl")}>{title}</h1>
+        {subtitle ? <p className={cx("mt-1 max-w-3xl text-slate-600 dark:text-slate-300", compact ? "text-xs" : "text-xs xl:text-sm")}>{subtitle}</p> : null}
         {meta ? <div className="mt-2 flex flex-wrap gap-2">{meta}</div> : null}
       </div>
       {headerAction ? <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{headerAction}</div> : null}
@@ -81,7 +81,7 @@ export function FilterToolbar({
   return (
     <div
       className={cx(
-        "app-filter-toolbar rounded-2xl border border-white/10 bg-slate-900/50",
+        "app-filter-toolbar rounded-2xl border border-slate-200/90 bg-white/90 dark:border-white/10 dark:bg-slate-900/50 backdrop-blur-md shadow-sm",
         compact ? "p-2" : "p-2.5",
         sticky ? "sticky top-0 z-20 backdrop-blur-xl" : "",
         className,
@@ -97,15 +97,15 @@ export function FilterToolbar({
 
 export function StatCard({ title, value, tone = "white", children }) {
   const toneClass =
-    tone === "sky" ? "text-sky-300"
-    : tone === "green" ? "text-emerald-300"
-    : tone === "amber" ? "text-amber-300"
-    : tone === "red" ? "text-rose-300"
-    : "text-white";
+    tone === "sky" ? "text-sky-600 dark:text-sky-300"
+    : tone === "green" ? "text-emerald-600 dark:text-emerald-300"
+    : tone === "amber" ? "text-amber-600 dark:text-amber-300"
+    : tone === "red" ? "text-rose-600 dark:text-rose-300"
+    : "text-slate-900 dark:text-white";
 
   return (
     <div className="panel p-5">
-      <p className="text-slate-400 text-xs uppercase tracking-widest">{title}</p>
+      <p className="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-widest">{title}</p>
       {children ?? <p className={`text-4xl font-bold mt-3 ${toneClass}`}>{value}</p>}
     </div>
   );
@@ -133,7 +133,7 @@ export function KpiCard({
         <div className="min-w-0">
           <p className="text-[11px] text-slate-500 dark:text-slate-300/75 uppercase tracking-[.18em]">{title}</p>
           <p className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white truncate">{value}</p>
-          {hint && <p className="mt-2 text-xs text-slate-400 dark:text-slate-300/70">{hint}</p>}
+          {hint && <p className="mt-2 text-xs text-slate-500 dark:text-slate-300/70">{hint}</p>}
         </div>
         {icon && (
           <div className="kpi-icon">
@@ -354,44 +354,46 @@ export function Select({
 
 const APP_SELECT_INPUT_SX = {
   borderRadius: "12px",
-  background: "rgba(15, 23, 42, 0.92)",
-  color: "#e2e8f0",
+  background: "var(--ds-surface-field, rgba(15, 23, 42, 0.92))",
+  color: "var(--ds-text, #e2e8f0)",
   fontWeight: 600,
   letterSpacing: "0.01em",
   "& fieldset": {
-    borderColor: "rgba(148, 163, 184, 0.2)",
+    borderColor: "var(--ds-border, rgba(148, 163, 184, 0.2))",
   },
   "&:hover fieldset": {
-    borderColor: "rgba(129, 140, 248, 0.45)",
+    borderColor: "rgba(129, 140, 248, 0.55)",
   },
   "&.Mui-focused fieldset": {
-    borderColor: "rgba(129, 140, 248, 0.75)",
-    boxShadow: "0 0 0 3px rgba(79, 70, 229, 0.16)",
+    borderColor: "var(--ds-primary, #6366f1)",
+    boxShadow: "var(--ds-focus-ring, 0 0 0 3px rgba(79, 70, 229, 0.16))",
   },
 };
 
 const APP_SELECT_MENU_PAPER_SX = {
   mt: 1,
-  background: "linear-gradient(165deg, rgba(8, 13, 30, 0.98), rgba(8, 14, 34, 0.97))",
-  color: "#e2e8f0",
-  border: "1px solid rgba(129, 140, 248, 0.25)",
+  background: "var(--ds-surface-elevated, rgba(15, 23, 42, 0.98))",
+  color: "var(--ds-text, #e2e8f0)",
+  border: "1px solid var(--ds-border, rgba(129, 140, 248, 0.25))",
   borderRadius: "12px",
-  boxShadow: "0 18px 36px rgba(2, 6, 23, 0.55)",
+  boxShadow: "var(--ds-shadow-modal, 0 18px 36px rgba(2, 6, 23, 0.55))",
   backdropFilter: "blur(12px)",
   maxHeight: 340,
   "& .MuiMenuItem-root": {
     fontWeight: 600,
-    color: "#e2e8f0",
+    color: "var(--ds-text, #e2e8f0)",
+    fontSize: "13px",
   },
   "& .MuiMenuItem-root:hover": {
-    backgroundColor: "rgba(99, 102, 241, 0.18)",
+    backgroundColor: "rgba(99, 102, 241, 0.12)",
   },
   "& .MuiMenuItem-root.Mui-selected": {
-    backgroundColor: "rgba(79, 70, 229, 0.28)",
-    color: "#e0e7ff",
+    backgroundColor: "rgba(99, 102, 241, 0.2)",
+    color: "var(--ds-primary, #6366f1)",
+    fontWeight: 700,
   },
   "& .MuiMenuItem-root.Mui-selected:hover": {
-    backgroundColor: "rgba(79, 70, 229, 0.36)",
+    backgroundColor: "rgba(99, 102, 241, 0.28)",
   },
 };
 
@@ -488,7 +490,7 @@ export function AppSelect({
         renderValue={(selected) => {
           const normalized = String(selected ?? "");
           if (!normalized && placeholder !== null) {
-            return <span style={{ color: "#94a3b8" }}>{placeholder}</span>;
+            return <span style={{ color: "var(--ds-text-muted, #94a3b8)" }}>{placeholder}</span>;
           }
           return labelByValue.get(normalized) ?? normalized;
         }}
@@ -503,7 +505,7 @@ export function AppSelect({
             display: "flex",
             alignItems: "center",
           },
-          "& .MuiSvgIcon-root": { color: "#cbd5e1" },
+          "& .MuiSvgIcon-root": { color: "var(--ds-text-muted, #94a3b8)" },
           ...selectSx,
         }}
         MenuProps={finalMenuProps}
@@ -615,7 +617,7 @@ export function SearchableSelect({
         onOpen={handleOpen}
         onClose={() => setSearch("")}
         renderValue={() => (
-          <span style={{ color: (value !== "" && value !== null && value !== undefined) ? "#0f172a" : "#64748b", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ color: (value !== "" && value !== null && value !== undefined) ? "var(--ds-text, #0f172a)" : "var(--ds-text-muted, #64748b)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {selectedLabel}
           </span>
         )}
@@ -623,10 +625,6 @@ export function SearchableSelect({
           ...APP_SELECT_INPUT_SX,
           minHeight: sizeConfig.minHeight,
           fontSize: sizeConfig.fontSize,
-          backgroundColor: "#ffffff",
-          color: "#0f172a",
-          border: "1px solid #cbd5e1",
-          boxShadow: "0 0 0 1px rgba(148, 163, 184, 0.18)",
           width: "100%",
           boxSizing: "border-box",
           "& .MuiSelect-select": {
@@ -638,7 +636,7 @@ export function SearchableSelect({
             boxSizing: "border-box",
             width: "100%",
           },
-          "& .MuiSvgIcon-root": { color: "#64748b" },
+          "& .MuiSvgIcon-root": { color: "var(--ds-text-muted, #64748b)" },
         }}
         MenuProps={{
           autoFocus: false,
@@ -650,11 +648,7 @@ export function SearchableSelect({
                 boxSizing: "border-box",
               },
               sx: {
-                background: "#ffffff !important",
-                color: "#0f172a !important",
-                border: "1.5px solid #cbd5e1",
-                borderRadius: "14px",
-                boxShadow: "0 20px 40px rgba(0, 0, 0, 0.12)",
+                ...APP_SELECT_MENU_PAPER_SX,
                 maxHeight: 380,
                 overflowX: "hidden",
                 overflowY: "auto",
@@ -663,25 +657,23 @@ export function SearchableSelect({
                 "& .MuiList-root": {
                   paddingTop: 0,
                   paddingBottom: 0,
-                  backgroundColor: "#ffffff !important",
                   boxSizing: "border-box",
                   width: "100%",
                 },
                 "& .MuiMenuItem-root": {
                   fontWeight: 600,
-                  color: "#1e293b !important",
-                  backgroundColor: "#ffffff !important",
+                  color: "var(--ds-text, #1e293b)",
                   fontSize: "13px",
                   py: "9px",
                   px: "14px",
-                  borderBottom: "1px solid #f1f5f9",
+                  borderBottom: "1px solid var(--ds-border-muted, rgba(148, 163, 184, 0.08))",
                   "&:hover": {
-                    backgroundColor: "#f8fafc !important",
-                    color: "#0284c7 !important",
+                    backgroundColor: "rgba(99, 102, 241, 0.12)",
+                    color: "var(--ds-primary, #6366f1)",
                   },
                   "&.Mui-selected": {
-                    backgroundColor: "#f0f9ff !important",
-                    color: "#0284c7 !important",
+                    backgroundColor: "rgba(99, 102, 241, 0.2)",
+                    color: "var(--ds-primary, #6366f1)",
                     fontWeight: 700,
                   },
                 },
@@ -690,15 +682,15 @@ export function SearchableSelect({
           },
         }}
       >
-        {/* White Search Header Bar */}
+        {/* Search Header Bar */}
         <div
           style={{
             padding: "8px 10px",
             position: "sticky",
             top: 0,
             zIndex: 20,
-            backgroundColor: "#ffffff",
-            borderBottom: "2px solid #e2e8f0",
+            backgroundColor: "var(--ds-surface-elevated, #ffffff)",
+            borderBottom: "1px solid var(--ds-border, #e2e8f0)",
             boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
             boxSizing: "border-box",
             width: "100%",
@@ -713,7 +705,7 @@ export function SearchableSelect({
                 left: "10px",
                 width: "15px",
                 height: "15px",
-                color: "#4f46e5",
+                color: "var(--ds-primary, #4f46e5)",
                 pointerEvents: "none",
                 flexShrink: 0,
               }}
@@ -742,9 +734,9 @@ export function SearchableSelect({
                 fontSize: "12px",
                 fontWeight: 600,
                 borderRadius: "8px",
-                backgroundColor: "#f8fafc",
-                border: "1.5px solid #6366f1",
-                color: "#0f172a",
+                backgroundColor: "var(--ds-surface-field, #f8fafc)",
+                border: "1.5px solid var(--ds-primary, #6366f1)",
+                color: "var(--ds-text, #0f172a)",
                 outline: "none",
                 boxShadow: "0 0 0 3px rgba(99, 102, 241, 0.15)",
                 textOverflow: "ellipsis",
@@ -757,7 +749,7 @@ export function SearchableSelect({
                 style={{
                   position: "absolute",
                   right: "8px",
-                  background: "#e2e8f0",
+                  background: "var(--ds-border-muted, #e2e8f0)",
                   border: "none",
                   borderRadius: "50%",
                   width: "18px",
@@ -765,7 +757,7 @@ export function SearchableSelect({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#475569",
+                  color: "var(--ds-text-secondary, #475569)",
                   cursor: "pointer",
                   fontSize: "11px",
                   fontWeight: "bold",
@@ -779,13 +771,13 @@ export function SearchableSelect({
         </div>
 
         {placeholder && !filteredOptions.some((opt) => (typeof opt === "object" ? opt?.value : opt) === "") && (
-          <MenuItem value="" style={{ color: "#64748b", fontStyle: "italic", fontSize: "12px", backgroundColor: "#ffffff" }}>
+          <MenuItem value="" style={{ color: "var(--ds-text-muted, #64748b)", fontStyle: "italic", fontSize: "12px" }}>
             {placeholder}
           </MenuItem>
         )}
 
         {filteredOptions.length === 0 ? (
-          <MenuItem disabled style={{ fontSize: "12px", color: "#94a3b8", justifyContent: "center", py: "16px", backgroundColor: "#ffffff" }}>
+          <MenuItem disabled style={{ fontSize: "12px", color: "var(--ds-text-muted, #94a3b8)", justifyContent: "center", py: "16px" }}>
             No matching options found
           </MenuItem>
         ) : (
@@ -828,24 +820,24 @@ export function ProductSelect({
         subText: `${p.sku || ""} ${p.barcode || ""}`,
         customRender: (
           <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "3px", py: "3px", boxSizing: "border-box" }}>
-            <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px", lineHeight: "1.3", wordBreak: "break-word" }}>
+            <div style={{ fontWeight: 700, color: "var(--ds-text, #0f172a)", fontSize: "13px", lineHeight: "1.3", wordBreak: "break-word" }}>
               {p.name || "Unnamed Product"}
             </div>
             {p.sku && (
-              <div style={{ fontSize: "11px", fontFamily: "monospace", color: "#64748b", fontWeight: 600, letterSpacing: "0.02em" }}>
+              <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--ds-text-muted, #64748b)", fontWeight: 600, letterSpacing: "0.02em" }}>
                 {p.sku}
               </div>
             )}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginTop: "2px", fontSize: "12px" }}>
               {priceVal !== null ? (
-                <span style={{ color: "#16a34a", fontWeight: 700 }}>
+                <span style={{ color: "var(--ds-success, #16a34a)", fontWeight: 700 }}>
                   LKR {priceVal.toLocaleString("en-LK", { minimumFractionDigits: 2 })}
                 </span>
               ) : (
                 <span />
               )}
               {qtyVal !== null && (
-                <span style={{ color: qtyVal > 0 ? "#4f46e5" : "#dc2626", fontWeight: 700, fontSize: "11px" }}>
+                <span style={{ color: qtyVal > 0 ? "var(--ds-primary, #4f46e5)" : "var(--ds-danger, #dc2626)", fontWeight: 700, fontSize: "11px" }}>
                   {qtyVal > 0 ? `Stock: ${qtyVal}` : "Out of Stock"}
                 </span>
               )}
@@ -889,7 +881,7 @@ export function CustomerSelect({
         label: placeholder,
         subText: "walk-in default",
         customRender: (
-          <div style={{ py: "2px", color: "#64748b", fontStyle: "italic", fontSize: "13px", fontWeight: 600 }}>
+          <div style={{ py: "2px", color: "var(--ds-text-muted, #64748b)", fontStyle: "italic", fontSize: "13px", fontWeight: 600 }}>
             {placeholder}
           </div>
         ),
@@ -904,11 +896,11 @@ export function CustomerSelect({
         subText: `${c.name || ""} ${c.phone || ""} ${c.email || ""}`,
         customRender: (
           <div style={{ display: "flex", flexDirection: "column", width: "100%", gap: "2px", py: "2px", boxSizing: "border-box" }}>
-            <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px", lineHeight: "1.3", wordBreak: "break-word" }}>
+            <div style={{ fontWeight: 700, color: "var(--ds-text, #0f172a)", fontSize: "13px", lineHeight: "1.3", wordBreak: "break-word" }}>
               {c.name || "Unnamed Customer"}
             </div>
             {c.phone && (
-              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>
+              <div style={{ fontSize: "11px", color: "var(--ds-text-muted, #64748b)", fontWeight: 500 }}>
                 {c.phone}
               </div>
             )}
@@ -1162,7 +1154,7 @@ export function AppTableShell({
 
 export function AppTableHead({ children, className = "" }) {
   return (
-    <thead className={cx("sticky top-0 z-10 border-b border-white/10 bg-slate-950/95 text-[10px] uppercase tracking-widest text-slate-500", className)}>
+    <thead className={cx("sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[10px] uppercase tracking-widest text-slate-500 dark:border-white/10 dark:bg-slate-950/95 dark:text-slate-400 backdrop-blur-md", className)}>
       {children}
     </thead>
   );
@@ -1181,12 +1173,12 @@ export function AppTableEmptyRow({ colSpan, title = "No records found", text = "
 export function Loading({ text = "Loading...", className = "", compact = false }) {
   return (
     <div
-      className={cx("grid place-items-center rounded-2xl border border-white/10 bg-slate-900/40 text-sm text-slate-300", compact ? "min-h-[96px]" : "min-h-[180px]", className)}
+      className={cx("grid place-items-center rounded-2xl border border-slate-200/80 bg-white/70 text-sm text-slate-700 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-300 shadow-sm", compact ? "min-h-[96px]" : "min-h-[180px]", className)}
       role="status"
       aria-busy="true"
     >
       <div className="text-center">
-        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-indigo-400/70 border-t-transparent" />
+        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
         <p>{text}</p>
       </div>
     </div>
@@ -1202,9 +1194,9 @@ export function EmptyState({
   icon = null,
 }) {
   return (
-    <div className={cx("rounded-2xl border border-dashed border-white/15 bg-black/20 px-4 text-center", compact ? "py-4" : "py-8", className)}>
-      {icon ? <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-300">{icon}</div> : null}
-      <p className="text-sm font-bold text-slate-200">{title}</p>
+    <div className={cx("rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 dark:border-white/15 dark:bg-black/20 px-4 text-center", compact ? "py-4" : "py-8", className)}>
+      {icon ? <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/5 text-slate-500 dark:text-slate-300 shadow-sm">{icon}</div> : null}
+      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{title}</p>
       {text ? <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">{text}</p> : null}
       {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
     </div>
@@ -1220,11 +1212,11 @@ export function ErrorState({
 }) {
   return (
     <div
-      className={cx("rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 text-sm text-rose-100", compact ? "py-3" : "py-4", className)}
+      className={cx("rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 text-sm text-rose-800 dark:text-rose-100", compact ? "py-3" : "py-4", className)}
       role="alert"
     >
       <p className="font-semibold">{title}</p>
-      {text ? <p className="mt-1 text-xs leading-5 text-rose-100/80">{text}</p> : null}
+      {text ? <p className="mt-1 text-xs leading-5 text-rose-700 dark:text-rose-100/80">{text}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </div>
   );
@@ -1236,10 +1228,10 @@ export function WorkstationNotice({ tone = "amber", title, text, right, classNam
   }
 
   const toneClass =
-    tone === "green" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
-    : tone === "red" ? "border-rose-400/30 bg-rose-500/10 text-rose-100"
-    : tone === "sky" ? "border-sky-400/30 bg-sky-500/10 text-sky-100"
-    : "border-amber-400/30 bg-amber-500/10 text-amber-100";
+    tone === "green" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-100"
+    : tone === "red" ? "border-rose-400/30 bg-rose-500/10 text-rose-800 dark:text-rose-100"
+    : tone === "sky" ? "border-sky-400/30 bg-sky-500/10 text-sky-800 dark:text-sky-100"
+    : "border-amber-400/30 bg-amber-500/10 text-amber-800 dark:text-amber-100";
   return (
     <div className={cx("flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3", toneClass, className)}>
       <div className="min-w-0">
@@ -1253,16 +1245,16 @@ export function WorkstationNotice({ tone = "amber", title, text, right, classNam
 
 export function AppDrawer({ title, subtitle, action, children, onClose, className = "" }) {
   return (
-    <aside className={cx("flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl", className)}>
-      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 p-4">
+    <aside className={cx("flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950/95 shadow-2xl", className)}>
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 dark:border-white/10 p-4">
         <div className="min-w-0">
-          <h3 className="truncate text-base font-black text-white">{title}</h3>
-          {subtitle ? <p className="mt-1 text-xs text-slate-400">{subtitle}</p> : null}
+          <h3 className="truncate text-base font-black text-slate-900 dark:text-white">{title}</h3>
+          {subtitle ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {action}
           {onClose ? (
-            <button type="button" onClick={onClose} className="rounded-lg border border-white/10 px-2 py-1 text-xs font-bold text-slate-300 hover:text-white">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 dark:border-white/10 px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition">
               Close
             </button>
           ) : null}

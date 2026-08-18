@@ -11,7 +11,9 @@ from app.services.ai_service import (
     get_store_context,
     diagnose_repair_ticket,
     forecast_inventory_restock,
-    draft_customer_message
+    draft_customer_message,
+    forecast_financial_trends,
+    analyze_repair_sla_risks
 )
 
 router = APIRouter(prefix="/api/ai", tags=["AI Integration"])
@@ -152,3 +154,20 @@ def ai_draft_message(
         details=request.details,
         db=db
     )
+
+@router.get("/financial-forecast", dependencies=[Depends(require_permission("reports.view"))])
+def ai_financial_forecast(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Predictive CFO analytics: 90-day financial trend projection, margin opportunities & expense savings."""
+    return forecast_financial_trends(db=db)
+
+@router.get("/repair-sla-risks", dependencies=[Depends(require_permission("repairs.view"))])
+def ai_repair_sla_risks(
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """Predictive SLA risk analyzer: monitors active tickets, predicts breaches & alerts managers."""
+    return analyze_repair_sla_risks(db=db)
+

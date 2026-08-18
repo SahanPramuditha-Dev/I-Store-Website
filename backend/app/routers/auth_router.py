@@ -40,7 +40,8 @@ from app.services.security_service import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 class PinLoginIn(BaseModel):
-    username: str
+    username: str | None = None
+    user_id: int | None = None
     pin: str
     remember_me: bool = False
 
@@ -276,20 +277,41 @@ def login_pin(payload: PinLoginIn, request: Request, db: Session = Depends(get_d
     if not bool(security.get("pos_pin_login_enabled", True)):
         raise HTTPException(status_code=400, detail="PIN login is disabled")
 
-    user = db.query(User).filter(User.username.ilike(payload.username.strip())).first()
-    if not user:
-        record_login_failed(db, None, payload.username, request, "Unknown username (PIN)", login_method="pin")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    if not bool(user.is_active) or bool(user.is_deleted):
-        raise HTTPException(status_code=403, detail="Account is inactive")
-    if is_user_locked(user):
-        remaining = remaining_lockout_seconds(user)
-        raise HTTPException(status_code=423, detail=f"Account locked. Try again in {remaining} seconds")
     if not validate_pin(payload.pin, int(security.get("pin_length", 4) or 4)):
         raise HTTPException(status_code=400, detail="Invalid PIN format")
-    if not user.pin_hash or not verify_password(payload.pin, user.pin_hash):
-        record_login_failed(db, user, payload.username, request, "Invalid PIN", login_method="pin")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    user = None
+    if payload.user_id is not None:
+        user = db.query(User).filter(User.id == payload.user_id).first()
+    elif payload.username and payload.username.strip():
+        user = db.query(User).filter(User.username.ilike(payload.username.strip())).first()
+
+    if user:
+        if not bool(user.is_active) or bool(user.is_deleted):
+            raise HTTPException(status_code=403, detail="Account is inactive")
+        if is_user_locked(user):
+            remaining = remaining_lockout_seconds(user)
+            raise HTTPException(status_code=423, detail=f"Account locked. Try again in {remaining} seconds")
+        if not user.pin_hash or not verify_password(payload.pin, user.pin_hash):
+            record_login_failed(db, user, user.username, request, "Invalid PIN", login_method="pin")
+            raise HTTPException(status_code=401, detail="Invalid PIN. Please try again or use password sign-in.")
+    else:
+        # Match PIN across active, non-deleted users who have a PIN configured
+        active_users = db.query(User).filter(
+            User.is_active == True,
+            User.is_deleted == False,
+            User.pin_hash.isnot(None)
+        ).all()
+        matching_users = [u for u in active_users if u.pin_hash and verify_password(payload.pin, u.pin_hash)]
+        if not matching_users:
+            record_login_failed(db, None, payload.username or "PIN_AUTH", request, "Invalid PIN", login_method="pin")
+            raise HTTPException(status_code=401, detail="Invalid PIN or PIN not set for this account.")
+        if len(matching_users) > 1:
+            raise HTTPException(status_code=400, detail="Multiple accounts share this PIN. Please select your staff profile first.")
+        user = matching_users[0]
+        if is_user_locked(user):
+            remaining = remaining_lockout_seconds(user)
+            raise HTTPException(status_code=423, detail=f"Account locked. Try again in {remaining} seconds")
 
     expiry_minutes = int(security.get("session_timeout_minutes", 30) or 30)
     if payload.remember_me:
@@ -466,8 +488,11 @@ def terminate_all_sessions(
 
 
 @router.get("/active-staff")
-def list_active_staff(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    users = db.query(User).filter(User.is_active == True, User.is_deleted == False).all()
+def list_active_staff(require_pin: bool = True, db: Session = Depends(get_db)):
+    query = db.query(User).filter(User.is_active == True, User.is_deleted == False)
+    if require_pin:
+        query = query.filter(User.pin_hash.isnot(None), User.pin_hash != "")
+    users = query.all()
     return [
         {
             "id": u.id,
@@ -475,6 +500,7 @@ def list_active_staff(db: Session = Depends(get_db), _: User = Depends(get_curre
             "full_name": u.full_name,
             "role": u.role,
             "profile_photo": u.profile_photo,
+            "has_pin": bool(u.pin_hash),
         }
         for u in users
     ]

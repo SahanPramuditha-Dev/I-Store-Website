@@ -123,27 +123,27 @@ export default function AdvancePayments() {
       />
 
       <div className="grid shrink-0 grid-cols-2 gap-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+        <div className="rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 p-3 shadow-sm">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Total Advances</p>
-          <p className="mt-1 text-2xl font-black text-white">{stats.count}</p>
+          <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{stats.count}</p>
         </div>
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+        <div className="rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 p-3 shadow-sm">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Received</p>
-          <p className="mt-1 text-2xl font-black text-emerald-300">{stats.received}</p>
+          <p className="mt-1 text-2xl font-black text-emerald-600 dark:text-emerald-300">{stats.received}</p>
         </div>
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+        <div className="rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 p-3 shadow-sm">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Available Balance</p>
-          <p className="mt-1 text-xl font-black text-sky-300">{money(stats.available)}</p>
+          <p className="mt-1 text-xl font-black text-sky-600 dark:text-sky-300">{money(stats.available)}</p>
         </div>
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+        <div className="rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 p-3 shadow-sm">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Refunded</p>
-          <p className="mt-1 text-2xl font-black text-rose-300">{stats.refunded}</p>
+          <p className="mt-1 text-2xl font-black text-rose-600 dark:text-rose-300">{stats.refunded}</p>
         </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60">
-          <div className="grid shrink-0 grid-cols-1 gap-2 border-b border-white/10 p-3 md:grid-cols-[minmax(220px,1fr)_160px_170px_160px]">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 shadow-sm">
+          <div className="grid shrink-0 grid-cols-1 gap-2 border-b border-slate-200 dark:border-white/10 p-3 md:grid-cols-[minmax(220px,1fr)_160px_170px_160px]">
             <label className="relative">
               <Search size={14} className="absolute left-3 top-3 text-slate-500" />
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search receipt, customer, repair, reservation..." className="pl-9" />
@@ -164,41 +164,46 @@ export default function AdvancePayments() {
               <option value="spare_part_order">Spare part order</option>
               <option value="other">Other</option>
             </Select>
-            <Select value={method} onChange={(e) => setMethod(e.target.value)} size="sm">
-              <option value="all">All methods</option>
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="bank_transfer">Bank</option>
-              <option value="mixed">Mixed</option>
-            </Select>
+            <Button size="sm" variant="secondary" onClick={() => { setQuery(""); setStatus("all"); setType("all"); }} className="w-full">
+              Reset Filters
+            </Button>
           </div>
-          <AppTableShell minWidth={680} aria-label="Advance payments ledger">
+          <AppTableShell minWidth={760} className="flex-1" aria-label="Advance payments table">
               <AppTableHead>
                 <tr>
-                  <th className="px-4 py-3">Receipt</th>
+                  <th className="px-4 py-3">Receipt / Date</th>
                   <th className="px-4 py-3">Customer</th>
-                  <th className="px-4 py-3">Reference</th>
+                  <th className="px-4 py-3">Linked Record</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3 text-right">Remaining</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </AppTableHead>
-              <tbody className="divide-y divide-white/5">
+              <tbody>
                 {filtered.map((row) => (
-                  <tr key={row.id} onClick={() => setSelectedId(row.id)} className={`cursor-pointer hover:bg-white/[0.03] ${selected?.id === row.id ? "bg-indigo-500/10" : ""}`}>
+                  <tr 
+                    key={row.id} 
+                    onClick={() => setSelectedId(row.id)} 
+                    className={cx(
+                      "cursor-pointer border-b border-slate-200 dark:border-white/5 transition hover:bg-slate-100/70 dark:hover:bg-white/5",
+                      selected?.id === row.id ? "bg-indigo-50/70 dark:bg-indigo-500/10" : "",
+                    )}
+                  >
                     <td className="px-4 py-3">
-                      <p className="font-mono font-black text-slate-100">{row.advance_number}</p>
-                      <p className="text-[11px] text-slate-500">{dateTime(row.payment_date)}</p>
+                      <p className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">{row.advance_number}</p>
+                      <p className="text-[10px] text-slate-500">{time(row.created_at)}</p>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-slate-200">{row.customer_name || "Walk-in"}</p>
-                      <p className="text-[11px] text-slate-500">{row.advance_type || "-"}</p>
+                      <p className="font-semibold text-slate-800 dark:text-slate-200">{row.customer_name || "Walk-in customer"}</p>
+                      <p className="text-[10px] text-slate-500">{row.customer_phone || "-"}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-300">{row.repair_ticket_no || row.reservation_number || "-"}</td>
+                    <td className="px-4 py-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                      {row.repair_ticket_no ? `Repair: ${row.repair_ticket_no}` : row.reservation_number ? `Res: ${row.reservation_number}` : row.reference_type || "-"}
+                    </td>
                     <td className="px-4 py-3"><StatusBadge status={row.status} domain="payment" label={row.status || "-"} /></td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-100">{money(row.amount)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-sky-300">{money(row.remaining_amount)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-slate-100">{money(row.amount)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-sky-600 dark:text-sky-300">{money(row.remaining_amount)}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <Button size="sm" variant="secondary" onClick={(event) => { event.stopPropagation(); printReceipt(row); }}><Printer size={12} /> Print</Button>
@@ -213,13 +218,13 @@ export default function AdvancePayments() {
           </AppTableShell>
         </section>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950/70 shadow-sm">
           {selected ? (
             <>
-              <div className="border-b border-white/10 p-4">
+              <div className="border-b border-slate-200 dark:border-white/10 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-mono text-sm font-black text-white">{selected.advance_number}</p>
+                    <p className="font-mono text-sm font-black text-slate-900 dark:text-white">{selected.advance_number}</p>
                     <p className="mt-1 text-xs text-slate-500">{selected.customer_name || "Walk-in customer"}</p>
                   </div>
                   <StatusBadge status={selected.status} domain="payment" label={selected.status || "-"} />
@@ -236,14 +241,14 @@ export default function AdvancePayments() {
                   ["Repair", selected.repair_ticket_no || "-"],
                   ["Reservation", selected.reservation_number || "-"],
                 ].map(([label, value]) => (
-                  <div key={label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <div key={label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 px-3 py-2">
                     <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">{label}</span>
-                    <span className="text-right text-xs font-bold text-slate-200">{value}</span>
+                    <span className="text-right text-xs font-bold text-slate-800 dark:text-slate-200">{value}</span>
                   </div>
                 ))}
-                {selected.notes ? <p className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-400">{selected.notes}</p> : null}
+                {selected.notes ? <p className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-3 text-xs text-slate-600 dark:text-slate-400">{selected.notes}</p> : null}
               </div>
-              <div className="grid shrink-0 grid-cols-1 gap-2 border-t border-white/10 p-4">
+              <div className="grid shrink-0 grid-cols-1 gap-2 border-t border-slate-200 dark:border-white/10 p-4">
                 <Button size="sm" variant="secondary" onClick={() => printReceipt(selected)}><Printer size={13} /> Reprint Receipt</Button>
                 <Button
                   size="sm"

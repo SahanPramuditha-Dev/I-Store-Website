@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   Coins,
   Edit3,
+  Globe,
   Palette,
   Printer,
   Receipt,
@@ -28,6 +29,7 @@ import FinancialSettingsPanel from "../components/settings/FinancialSettingsPane
 import RepairSettingsPanel from "../components/settings/RepairSettingsPanel";
 import NotificationsSettingsPanel from "../components/settings/NotificationsSettingsPanel";
 import AppearanceSettingsPanel from "../components/settings/AppearanceSettingsPanel";
+import CustomerPortalSettingsPanel from "../components/settings/CustomerPortalSettingsPanel";
 import SystemApisSettingsPanel from "../components/settings/SystemApisSettingsPanel";
 import SoftwareUpdatesSettingsPanel from "../components/settings/SoftwareUpdatesSettingsPanel";
 import AppModal from "../components/layout/AppModal";
@@ -38,6 +40,7 @@ const TABS = [
   { id: "business_ops", label: "Business Ops", group: "Operations", icon: BriefcaseBusiness },
   { id: "financial_settings", label: "Financial Settings", group: "Finance", icon: Coins },
   { id: "repair_settings", label: "Repair Settings", group: "Operations", icon: Wrench },
+  { id: "customer_portal", label: "Customer Portal", group: "Online", icon: Globe },
   { id: "invoice_receipt_design", label: "Invoice & Receipt Design", group: "Documents", icon: Receipt },
   { id: "notifications_alerts", label: "Notifications & Alerts", group: "System", icon: Bell },
   { id: "appearance_display", label: "Appearance & Display", group: "System", icon: Palette },
@@ -63,6 +66,7 @@ const SECTION_KEYS = [
   "business_ops",
   "financial_settings",
   "repair_settings",
+  "customer_portal",
   "invoice_receipt_design",
   "notifications_alerts",
   "appearance_display",
@@ -1013,6 +1017,19 @@ export default function Settings() {
     />
   );
 
+  const renderCustomerPortalSettings = () => (
+    <CustomerPortalSettingsPanel
+      sectionValue={state?.customer_portal || {}}
+      onSectionChange={(nextSection) => setSection("customer_portal", nextSection)}
+      onSaveSection={() => saveSection("customer_portal")}
+      saving={!!saving.customer_portal}
+      toast={toast}
+      confirm={confirm}
+      prompt={prompt}
+      storeProfile={state?.store_profile || {}}
+    />
+  );
+
   const renderSystemApisSettings = () => (
     <SystemApisSettingsPanel
       sectionValue={state?.system_apis || {}}
@@ -1087,6 +1104,8 @@ export default function Settings() {
           ? renderFinancialSettings()
           : activeTab === "repair_settings"
           ? renderRepairSettings()
+          : activeTab === "customer_portal"
+          ? renderCustomerPortalSettings()
           : activeTab === "invoice_receipt_design"
           ? renderInvoiceCustomizer()
           : activeTab === "notifications_alerts"

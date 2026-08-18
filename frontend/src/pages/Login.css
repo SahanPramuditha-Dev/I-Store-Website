@@ -150,6 +150,7 @@
   background: rgba(38, 36, 51, 0.7);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -163,10 +164,37 @@
   min-height: 0;
 }
 
+.exact-login-head-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.exact-login-theme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #c7d2fe;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.exact-login-theme-btn:hover {
+  background: rgba(143, 109, 253, 0.22);
+  border-color: rgba(143, 109, 253, 0.5);
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
 .exact-login-storeline {
   display: inline-flex;
   max-width: 100%;
-  margin-bottom: 8px;
   color: #b9c3ff;
   font-size: 11px;
   font-weight: 900;
@@ -281,6 +309,12 @@
   display: flex;
   flex-direction: column;
   gap: 11px;
+  outline: none;
+}
+
+.exact-login-form:focus,
+.exact-login-form:focus-visible {
+  outline: none;
 }
 
 .exact-login-field {
@@ -584,6 +618,7 @@
 
   .exact-login-auth {
     padding: 22px 16px;
+    border-left: 0;
   }
 
   .exact-login-form-shell {
@@ -642,12 +677,7 @@
 
 /* Enhancing exact-login-field interactions */
 .exact-login-field input {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.exact-login-field input:focus {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(152, 134, 255, 0.15), 0 0 0 2px rgba(152, 134, 255, 0.4);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .exact-login-submit {
@@ -1105,3 +1135,267 @@
   font-weight: 600;
   margin-top: 1px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROFESSIONAL LIGHT THEME OVERRIDES (html:not(.dark))
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html:not(.dark) .exact-login-shell {
+  background:
+    radial-gradient(1200px 620px at 6% 12%, rgba(99, 102, 241, 0.09), transparent 60%),
+    radial-gradient(760px 520px at 94% 92%, rgba(79, 70, 229, 0.07), transparent 54%),
+    #f8fafc;
+}
+
+html:not(.dark) .exact-login-window {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow:
+    0 24px 70px -12px rgba(15, 23, 42, 0.12),
+    0 10px 28px -8px rgba(15, 23, 42, 0.06),
+    0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+html:not(.dark) .exact-login-visual {
+  background-color: #1e1b4b;
+}
+
+html:not(.dark) .exact-login-auth {
+  background: #ffffff;
+  border-left: 1px solid #e2e8f0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html:not(.dark) .exact-login-theme-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+html:not(.dark) .exact-login-theme-btn:hover {
+  background: #e0e7ff;
+  border-color: #818cf8;
+  color: #4338ca;
+}
+
+html:not(.dark) .exact-login-storeline {
+  color: #4f46e5;
+}
+
+html:not(.dark) .exact-login-head h1 {
+  color: #0f172a;
+}
+
+html:not(.dark) .exact-login-head p {
+  color: #64748b;
+}
+
+html:not(.dark) .exact-login-head a {
+  color: #4f46e5;
+}
+
+html:not(.dark) .exact-login-system-pill {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
+html:not(.dark) .exact-login-system-pill strong {
+  color: #64748b;
+}
+
+html:not(.dark) .exact-login-system-pill.is-online {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #16a34a;
+}
+
+html:not(.dark) .exact-login-system-pill.is-offline {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+html:not(.dark) .exact-login-offline {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+html:not(.dark) .exact-login-offline button {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+html:not(.dark) .exact-login-checking {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+
+html:not(.dark) .exact-login-field input {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+html:not(.dark) .exact-login-field input::placeholder {
+  color: #94a3b8;
+}
+
+html:not(.dark) .exact-login-field input:focus {
+  background: #ffffff;
+  border-color: #6366f1;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12), 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+html:not(.dark) .exact-login-eye {
+  color: #64748b;
+}
+
+html:not(.dark) .exact-login-eye:hover {
+  color: #1e293b;
+}
+
+html:not(.dark) .exact-login-remember {
+  color: #334155;
+}
+
+html:not(.dark) .remember-hint {
+  color: #64748b;
+}
+
+html:not(.dark) .exact-login-remember input[type="checkbox"] {
+  background-color: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+}
+
+html:not(.dark) .exact-login-remember input[type="checkbox"]:hover {
+  border-color: #6366f1;
+  background-color: #eef2ff;
+}
+
+html:not(.dark) .exact-login-remember input[type="checkbox"]:checked {
+  background-color: #4f46e5;
+  border-color: #4f46e5;
+  box-shadow: 0 0 10px rgba(79, 70, 229, 0.35);
+}
+
+html:not(.dark) .exact-login-error {
+  color: #dc2626;
+}
+
+html:not(.dark) .password-strength-box {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+html:not(.dark) .password-strength-header {
+  color: #64748b;
+}
+
+html:not(.dark) .strength-bar-track {
+  background: #e2e8f0;
+}
+
+html:not(.dark) .rule-item.unmet {
+  color: #94a3b8;
+}
+
+html:not(.dark) .rule-item.met {
+  color: #16a34a;
+}
+
+html:not(.dark) .password-mismatch-warning {
+  color: #d97706;
+}
+
+html:not(.dark) .exact-login-submit {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.26);
+}
+
+html:not(.dark) .exact-login-submit:hover:enabled {
+  box-shadow: 0 14px 32px rgba(79, 70, 229, 0.34);
+}
+
+html:not(.dark) .exact-login-toggle-mode {
+  color: #4f46e5;
+}
+
+html:not(.dark) .exact-login-toggle-mode:hover {
+  color: #3730a3;
+}
+
+html:not(.dark) .pin-dot {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+html:not(.dark) .pin-dot.filled {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  box-shadow: 0 0 12px rgba(79, 70, 229, 0.4);
+}
+
+html:not(.dark) .pin-pad button {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+html:not(.dark) .pin-pad button:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+html:not(.dark) .switcher-title {
+  color: #64748b;
+}
+
+html:not(.dark) .switcher-card {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+html:not(.dark) .switcher-card:hover {
+  background: #eef2ff;
+  border-color: #818cf8;
+}
+
+html:not(.dark) .switcher-card.selected {
+  background: #e0e7ff;
+  border-color: #4f46e5;
+  box-shadow: 0 0 12px rgba(79, 70, 229, 0.2), inset 0 0 0 1px #4f46e5;
+}
+
+html:not(.dark) .switcher-avatar-wrapper {
+  background: #e0e7ff;
+  border-color: #cbd5e1;
+}
+
+html:not(.dark) .switcher-avatar-initials {
+  color: #4338ca;
+}
+
+html:not(.dark) .switcher-name {
+  color: #1e293b;
+}
+
+html:not(.dark) .login-success-subtext {
+  color: #475569;
+}
+
+html:not(.dark) .login-success-progress-track {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+html:not(.dark) .login-particle {
+  background: rgba(99, 102, 241, 0.25);
+}
+

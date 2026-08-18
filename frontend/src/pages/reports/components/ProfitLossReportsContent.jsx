@@ -25,7 +25,13 @@ import {
   Percent,
   TrendingUp,
   Wallet,
+  Sparkles,
+  ArrowUpRight,
+  ShieldAlert,
+  Loader2,
 } from "lucide-react";
+import api from "../../../lib/api";
+import AppModal from "../../../components/layout/AppModal";
 import { Badge, KpiCard, SectionCard, Table, Select } from "../../../components/UI";
 
 const MONEY_LOCALE = "en-LK";
@@ -208,6 +214,24 @@ export default function ProfitLossReportsContent({
   const [categoryFilter, setCategoryFilter] = useState("both");
   const [scenarioExpensePct, setScenarioExpensePct] = useState(10);
   const [previousYearCompare, setPreviousYearCompare] = useState(false);
+
+  // AI Financial Forecast & Profit Predictor
+  const [showForecastModal, setShowForecastModal] = useState(false);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastData, setForecastData] = useState(null);
+
+  const fetchAIFinancialForecast = async () => {
+    setShowForecastModal(true);
+    setForecastLoading(true);
+    try {
+      const res = await api.get("/api/ai/financial-forecast");
+      setForecastData(res.data);
+    } catch (err) {
+      console.error("Failed to generate AI financial forecast:", err);
+    } finally {
+      setForecastLoading(false);
+    }
+  };
 
   const referenceDate = useMemo(() => {
     return toDate(dateTo) || new Date();
@@ -596,7 +620,20 @@ export default function ProfitLossReportsContent({
 
   return (
     <>
-      <SectionCard title="P&L Filters" subtitle="Date range mode and category scope">
+      <SectionCard 
+        title="P&L Filters & Intelligence" 
+        subtitle="Date range mode, category scope, and AI predictive CFO models"
+        action={
+          <button
+            type="button"
+            onClick={fetchAIFinancialForecast}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border border-purple-500/40 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 text-xs font-bold transition shadow-lg shadow-purple-500/10"
+          >
+            <Sparkles size={14} className="text-purple-300 animate-pulse" />
+            AI Financial & Margin Forecast
+          </button>
+        }
+      >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <div className="flex flex-wrap gap-2">
             {["month", "quarter", "year", "custom"].map((preset) => (
@@ -894,6 +931,119 @@ export default function ProfitLossReportsContent({
           </div>
         </SectionCard>
       </div>
+
+      {showForecastModal && (
+        <AppModal
+          open
+          onClose={() => setShowForecastModal(false)}
+          title={
+            <span className="flex items-center gap-2">
+              <Sparkles size={18} className="text-purple-400" />
+              AI Financial Trend & Profit Predictor (CFO Agent)
+            </span>
+          }
+          panelClassName="max-w-2xl"
+        >
+          {forecastLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <Loader2 size={36} className="animate-spin text-purple-400" />
+              <p className="text-sm font-semibold text-slate-200">Gemini AI is analyzing 90-day historic ledger data...</p>
+              <p className="text-xs text-slate-400">Evaluating revenue velocity, COGS margins, expense overhead & service yields.</p>
+            </div>
+          ) : forecastData ? (
+            <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+              {/* Executive Summary Card */}
+              <div className="p-4 rounded-2xl border border-purple-500/30 bg-purple-950/20 text-xs text-purple-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-bold text-sm text-purple-300">
+                    <Sparkles size={16} /> Projected Next Month Trajectory
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase font-black tracking-wider ${forecastData.revenue_growth_trend === "positive" ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : forecastData.revenue_growth_trend === "declining" ? "bg-rose-500/20 text-rose-300 border border-rose-500/40" : "bg-sky-500/20 text-sky-300 border border-sky-500/40"}`}>
+                    {forecastData.revenue_growth_trend} ({forecastData.growth_rate_pct > 0 ? "+" : ""}{forecastData.growth_rate_pct}%)
+                  </span>
+                </div>
+                <p className="text-slate-300 text-xs leading-relaxed">{forecastData.forecast_summary}</p>
+              </div>
+
+              {/* 4 Projected Key Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="p-3 rounded-xl border border-white/10 bg-slate-900/60">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Projected Revenue</p>
+                  <p className="text-base font-black text-white mt-1">LKR {Number(forecastData.projected_revenue_next_month || 0).toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-xl border border-white/10 bg-slate-900/60">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Projected COGS</p>
+                  <p className="text-base font-black text-amber-300 mt-1">LKR {Number(forecastData.projected_cogs_next_month || 0).toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-xl border border-white/10 bg-slate-900/60">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Est. Expenses</p>
+                  <p className="text-base font-black text-rose-300 mt-1">LKR {Number(forecastData.projected_expenses_next_month || 0).toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-xl border border-white/10 bg-slate-900/60">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Projected Net Profit</p>
+                  <p className="text-base font-black text-emerald-400 mt-1">
+                    LKR {Number(forecastData.projected_net_profit_next_month || 0).toLocaleString()}
+                    <span className="text-[10px] block font-normal text-emerald-300/80">({forecastData.projected_margin_pct}% margin)</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* High Margin Opportunities */}
+              {forecastData.high_margin_opportunities?.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                    <ArrowUpRight size={14} /> High-Margin Profit Opportunities
+                  </p>
+                  <div className="space-y-1">
+                    {forecastData.high_margin_opportunities.map((opp, idx) => (
+                      <div key={idx} className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-950/20 text-xs text-slate-200 flex items-start gap-2">
+                        <span className="text-emerald-400 font-bold">•</span>
+                        <span>{opp}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cost Saving Recommendations */}
+              {forecastData.cost_saving_recommendations?.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                    <Calculator size={14} /> AI Cost-Optimization Recommendations
+                  </p>
+                  <div className="space-y-1">
+                    {forecastData.cost_saving_recommendations.map((rec, idx) => (
+                      <div key={idx} className="p-2.5 rounded-xl border border-sky-500/20 bg-sky-950/20 text-xs text-slate-200 flex items-start gap-2">
+                        <span className="text-sky-400 font-bold">•</span>
+                        <span>{rec}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Risk Flags */}
+              {forecastData.risk_flags?.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <ShieldAlert size={14} /> Margin Squeeze & Risk Alerts
+                  </p>
+                  <div className="space-y-1">
+                    {forecastData.risk_flags.map((risk, idx) => (
+                      <div key={idx} className="p-2.5 rounded-xl border border-amber-500/20 bg-amber-950/20 text-xs text-amber-200 flex items-start gap-2">
+                        <span className="text-amber-400 font-bold">⚠️</span>
+                        <span>{risk}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-red-400">Failed to generate AI financial forecast.</p>
+          )}
+        </AppModal>
+      )}
     </>
   );
 }
