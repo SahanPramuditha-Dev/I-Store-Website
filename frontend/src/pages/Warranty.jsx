@@ -2198,7 +2198,7 @@ export default function Warranty() {
         open={showCreateWarranty}
         onClose={() => setShowCreateWarranty(false)}
         title="Create Warranty Record"
-        panelClassName="max-w-2xl bg-slate-950"
+        panelClassName="max-w-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10"
       >
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2">
               <input
@@ -2270,7 +2270,7 @@ export default function Warranty() {
         onClose={() => setDrawerOpen(false)}
         title={selectedWarranty?.warranty_id || "Warranty Details"}
         subtitle="Warranty Details"
-        panelClassName="sm:max-w-xl bg-slate-950"
+        panelClassName="sm:max-w-xl bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-white/10"
         headerActions={selectedWarranty ? (
           <Button size="sm" variant="secondary" onClick={() => openWarrantyCertificate(selectedWarranty)}>
             <FileText size={12} /> Print Certificate

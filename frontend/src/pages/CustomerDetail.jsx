@@ -942,32 +942,32 @@ export default function CustomerDetail() {
         isOpen={showWaModal}
         onClose={() => setShowWaModal(false)}
         title={`Send WhatsApp to ${customer.name}`}
-        panelClassName="max-w-lg bg-[#0f172a]"
+        panelClassName="max-w-lg bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-white/10"
         headerActions={
-          <button onClick={() => setShowWaModal(false)} className="text-slate-400 hover:text-white transition-colors cursor-pointer"><X size={20}/></button>
+          <button onClick={() => setShowWaModal(false)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"><X size={20}/></button>
         }
       >
         <form onSubmit={handleSendDirectWa}>
           <div className="p-6 space-y-4">
             <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Recipient Mobile</label>
-              <div className="bg-slate-950 border border-white/10 rounded-xl p-3 text-xs font-mono text-emerald-400">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 block mb-1">Recipient Mobile</label>
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-white/10 rounded-xl p-3 text-xs font-mono text-emerald-800 dark:text-emerald-400">
                 +{customer.whatsapp_number || customer.phone}
               </div>
             </div>
             <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Message Body</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 block mb-1">Message Body</label>
               <textarea
                 rows={5}
                 required
                 value={waMsgText}
                 onChange={(e) => setWaMsgText(e.target.value)}
                 placeholder="Type personalized message to customer..."
-                className="w-full bg-slate-950 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500 leading-relaxed font-sans"
+                className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-white/10 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 leading-relaxed font-sans"
               />
             </div>
           </div>
-          <div className="p-6 border-t border-white/5 bg-white/[0.02] flex gap-3">
+          <div className="p-6 border-t border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/[0.02] flex gap-3">
             <button type="button" onClick={() => setShowWaModal(false)} className="btn btn-ghost flex-1">Cancel</button>
             <button
               type="submit"

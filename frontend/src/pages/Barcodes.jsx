@@ -2392,7 +2392,7 @@ export default function Barcodes() {
             {!previewTemplate && <div className="text-sm text-slate-400">No active template selected.</div>}
             {!!previewTemplate && (
               <div className="space-y-3">
-                <div className="rounded-xl border border-white/10 bg-slate-950 p-3 overflow-auto">
+                <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-950 p-3 overflow-auto">
                   <LabelPreview template={previewTemplate} data={previewData} scale={3} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">

@@ -1039,7 +1039,7 @@ export default function ReturnsRefunds() {
         open={refundModalOpen && !!selectedReturn}
         onClose={() => setRefundModalOpen(false)}
         title="Issue Refund"
-        panelClassName="max-w-md border-indigo-500/30 bg-slate-900"
+        panelClassName="max-w-md border border-slate-200 dark:border-indigo-500/30 bg-white dark:bg-slate-900"
       >
         <div className="space-y-4 p-5">
           {selectedReturn && (
@@ -1108,7 +1108,7 @@ export default function ReturnsRefunds() {
         open={exchangeModalOpen && !!selectedReturn}
         onClose={() => setExchangeModalOpen(false)}
         title="Process Exchange Case"
-        panelClassName="max-w-md border-indigo-500/30 bg-slate-900"
+        panelClassName="max-w-md border border-slate-200 dark:border-indigo-500/30 bg-white dark:bg-slate-900"
       >
         <div className="space-y-4 p-5">
           {selectedReturn && (
@@ -1166,7 +1166,7 @@ export default function ReturnsRefunds() {
         open={creditModalOpen && !!selectedReturn}
         onClose={() => setCreditModalOpen(false)}
         title="Issue Store Credit"
-        panelClassName="max-w-md border-indigo-500/30 bg-slate-900"
+        panelClassName="max-w-md border border-slate-200 dark:border-indigo-500/30 bg-white dark:bg-slate-900"
       >
         <div className="space-y-4 p-5">
           {selectedReturn && (
