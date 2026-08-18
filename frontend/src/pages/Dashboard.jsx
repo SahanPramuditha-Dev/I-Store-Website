@@ -1218,10 +1218,10 @@ export default function Dashboard() {
                   key={action.label}
                   type="button"
                   onClick={() => navigate(action.to)}
-                  className="dashboard-action-tile flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition"
+                  className="dashboard-action-tile flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/60 dark:hover:bg-slate-800/60 px-3 py-2 text-left transition"
                 >
-                  <span className="dashboard-action-icon grid h-7 w-7 place-items-center rounded-lg">{action.icon}</span>
-                  <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{action.label}</span>
+                  <span className="dashboard-action-icon grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 dark:bg-indigo-500/20 dark:border-indigo-500/30 dark:text-indigo-300">{action.icon}</span>
+                  <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{action.label}</span>
                 </button>
               ))}
             </div>

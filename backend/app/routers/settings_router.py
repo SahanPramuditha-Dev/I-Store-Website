@@ -1239,6 +1239,14 @@ def update_settings_section(section_key: str, payload: dict, db: Session = Depen
     state[section_key] = merged_section
     _save_setting_dict(db, SETTINGS_STATE_KEY, state)
     _sync_legacy_settings_from_state(db, state)
+
+    if section_key == "backup_data":
+        try:
+            from app.services.backup_scheduler import reload_backup_scheduler
+            reload_backup_scheduler(db)
+        except Exception as sched_err:
+            logger.warning(f"Failed to reload backup scheduler: {sched_err}")
+
     return merged_section
 
 

@@ -394,22 +394,25 @@ def _refresh_notifications(db: Session) -> dict:
         ):
             created += 1
 
-    # 5. Backup freshness check
-    last_backup_row = db.query(AppSetting).filter(AppSetting.key == "last_backup_at").first()
-    last_backup_at = _parse_dt(last_backup_row.value if last_backup_row else None)
+    # 5. Backup freshness check (based on verified recovery point)
+    last_verified_row = db.query(AppSetting).filter(AppSetting.key == "last_verified_backup_at").first()
+    if not last_verified_row or not last_verified_row.value:
+        last_verified_row = db.query(AppSetting).filter(AppSetting.key == "last_backup_at").first()
+
+    last_backup_at = _parse_dt(last_verified_row.value if last_verified_row else None)
     last_backup_at = _normalize_naive_utc(last_backup_at)
     backup_is_stale = not last_backup_at or (now - last_backup_at) > timedelta(hours=48)
     if backup_is_stale:
         title = "Backup Stale"
         if not last_backup_at:
-            message = "No successful backup recorded in the system."
+            message = "No verified recovery point recorded in the system."
         else:
             delta = now - last_backup_at
             days = delta.days
             hours = int(delta.seconds // 3600)
             time_ago = f"{days}d ago" if days > 0 else f"{hours}h ago"
             formatted_time = last_backup_at.strftime("%b %d, %Y at %I:%M %p")
-            message = f"Last backup was {time_ago} ({formatted_time})."
+            message = f"Last verified backup was {time_ago} ({formatted_time})."
         if _add_or_update_notification(
             db,
             notif_type="Backup Warning",

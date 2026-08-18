@@ -3676,6 +3676,26 @@ html:not(.dark) .dashboard-table-card table .text-emerald-300 {
   color: #059669 !important;
 }
 
+html:not(.dark) .dashboard-action-tile {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .dashboard-action-tile:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .dashboard-action-tile span.font-semibold {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .dashboard-action-icon {
+  background: #eef2ff !important;
+  border: 1px solid #c7d2fe !important;
+  color: #4f46e5 !important;
+}
+
 html:not(.dark) .dashboard-notifications {
   background: #ffffff !important;
   border-color: #cbd5e1 !important;

@@ -158,6 +158,16 @@ def _run_startup_tasks() -> None:
         if not BACKUP_SCHEDULER_AVAILABLE:
             logger.warning("Backup scheduler disabled (missing optional dependency: apscheduler).")
 
+        # Startup Catch-Up Backup Check (runs immediate backup if overdue)
+        try:
+            from app.services.backup_service import check_and_run_catchup_backup
+            with SessionLocal() as _db:
+                catchup_res = check_and_run_catchup_backup(_db, max_age_hours=24.0)
+                if catchup_res and catchup_res.get("status") == "success":
+                    logger.info(f"Startup catch-up backup completed: {catchup_res.get('filename')}")
+        except Exception as catchup_err:
+            logger.warning(f"Startup catch-up backup note: {catchup_err}")
+
         logger.info("Application startup complete.")
     except Exception as e:
         logger.error(f"Startup failed: {e}")

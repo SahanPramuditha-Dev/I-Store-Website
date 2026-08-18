@@ -11,7 +11,7 @@ from typing import Any
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -34,7 +34,16 @@ from app.models import (
     User,
 )
 from app.services.activity_service import log_activity
-from app.services.backup_service import create_backup, list_backup_filenames, restore_backup
+from app.services.backup_service import (
+    LAST_BACKUP_KEY,
+    LAST_VERIFIED_BACKUP_KEY,
+    _safe_backup_path,
+    create_backup,
+    is_backup_in_progress,
+    list_backup_filenames,
+    restore_backup,
+    test_restore_backup,
+)
 from app.utils.time import utcnow
 
 router = APIRouter(prefix="/backup", tags=["backup"])
@@ -832,8 +841,37 @@ def create_backup_endpoint(is_auto: bool = False, db: Session = Depends(get_db),
 
 @router.get("/last", dependencies=[Depends(require_permission("backup.view"))])
 def get_last_backup(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    row = db.query(AppSetting).filter(AppSetting.key == "last_backup_at").first()
-    return {"last_backup_at": row.value if row else None}
+    row_last = db.query(AppSetting).filter(AppSetting.key == LAST_BACKUP_KEY).first()
+    row_verified = db.query(AppSetting).filter(AppSetting.key == LAST_VERIFIED_BACKUP_KEY).first()
+    return {
+        "last_backup_at": row_last.value if row_last else None,
+        "last_verified_backup_at": row_verified.value if row_verified else (row_last.value if row_last else None),
+    }
+
+
+@router.get("/download/{filename}", dependencies=[Depends(require_permission("backup.view"))])
+def download_backup_file(filename: str, _=Depends(get_current_user)):
+    try:
+        target = _safe_backup_path(filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="Backup file not found")
+
+    return FileResponse(
+        path=str(target),
+        filename=target.name,
+        media_type="application/octet-stream",
+    )
+
+
+@router.post("/test-restore/{filename}", dependencies=[Depends(require_permission("backup.view"))])
+def test_restore_endpoint(filename: str, _=Depends(get_current_user)):
+    try:
+        result = test_restore_backup(filename)
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("", dependencies=[Depends(require_permission("backup.view"))])
@@ -1273,28 +1311,42 @@ def export_system_data(payload: BackupExportRequest, db: Session = Depends(get_d
 
 
 @router.get("/scheduler/status", dependencies=[Depends(require_permission("backup.view"))])
-def get_scheduler_status(_=Depends(get_current_user)):
+def get_scheduler_status(db: Session = Depends(get_db), _=Depends(get_current_user)):
     try:
         from app.services.backup_scheduler import get_scheduler
     except Exception:
-        return {"enabled": False, "reason": "Scheduler service unavailable"}
+        get_scheduler = lambda: None
 
     scheduler = get_scheduler()
-    if not settings.backup_schedule_enabled:
-        return {"enabled": False, "reason": "Disabled in configuration"}
-    if scheduler is None:
-        return {"enabled": False, "reason": "Scheduler not initialized"}
-    if not scheduler.running:
-        return {"enabled": False, "reason": "Scheduler not running"}
-    job = scheduler.get_job("daily_backup")
-    if not job:
-        return {"enabled": False, "reason": "Daily backup job not found"}
+    job = scheduler.get_job("daily_backup") if scheduler and scheduler.running else None
+
+    row_last = db.query(AppSetting).filter(AppSetting.key == LAST_BACKUP_KEY).first()
+    row_verified = db.query(AppSetting).filter(AppSetting.key == LAST_VERIFIED_BACKUP_KEY).first()
+
+    # Cloud status evaluation
+    from app.services.firebase_backup import is_firebase_ready, list_remote_backups
+    cloud_ready = is_firebase_ready()
+    cloud_backups = list_remote_backups() if cloud_ready else []
+    latest_cloud = cloud_backups[0] if cloud_backups else None
+
+    local_files = list_backup_filenames()
+    local_status = "verified" if row_verified and row_verified.value else "none" if not local_files else "unverified"
+    cloud_status = "verified" if (latest_cloud and cloud_ready) else "not_configured" if not settings.firebase_backup_enabled else "upload_failed"
+
     return {
-        "enabled": True,
-        "scheduler_running": scheduler.running,
-        "job_name": job.name,
-        "job_id": job.id,
-        "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+        "enabled": bool(job is not None or settings.backup_schedule_enabled),
+        "scheduler_running": bool(scheduler and scheduler.running),
+        "job_name": job.name if job else "Automated Backup Job",
+        "job_id": job.id if job else None,
+        "next_run_time": job.next_run_time.isoformat() if (job and job.next_run_time) else None,
+        "last_backup_at": row_last.value if row_last else None,
+        "last_verified_backup_at": row_verified.value if row_verified else None,
+        "backup_in_progress": is_backup_in_progress(),
+        "local_backup_status": local_status,
+        "local_backup_count": len(local_files),
+        "cloud_backup_enabled": bool(settings.firebase_backup_enabled),
+        "cloud_backup_status": cloud_status,
+        "latest_cloud_backup": latest_cloud,
         "schedule": f"{settings.backup_schedule_hour:02d}:{settings.backup_schedule_minute:02d} daily ({settings.backup_schedule_timezone})",
         "keep_count": settings.backup_keep_local,
     }
@@ -1319,3 +1371,59 @@ def trigger_backup_now(db: Session = Depends(get_db), user: User = Depends(get_c
         raise HTTPException(status_code=500, detail=str(exc))
     except Exception:
         raise HTTPException(status_code=500, detail="Scheduled backup failed")
+
+
+@router.get("/cloud/list", dependencies=[Depends(require_permission("backup.view"))])
+def list_cloud_backups_endpoint(_=Depends(get_current_user)):
+    from app.services.firebase_backup import list_remote_backups
+    return list_remote_backups()
+
+
+@router.post("/cloud/test-restore", dependencies=[Depends(require_permission("backup.view"))])
+def test_restore_cloud_backup_endpoint(payload: dict, _=Depends(get_current_user)):
+    blob_name = payload.get("blob_name")
+    if not blob_name:
+        raise HTTPException(status_code=400, detail="blob_name is required")
+    from app.services.firebase_backup import download_backup
+    import tempfile
+    with tempfile.NamedTemporaryFile(prefix="cloud_test_", suffix=Path(blob_name).suffix, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        dl_res = download_backup(blob_name, str(tmp_path))
+        if not dl_res.get("success"):
+            raise HTTPException(status_code=500, detail=f"Cloud download failed: {dl_res.get('reason')}")
+        test_res = test_restore_backup(tmp_path)
+        test_res["blob_name"] = blob_name
+        return test_res
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@router.post("/cloud/restore", dependencies=[Depends(require_permission("backup.restore"))])
+def restore_cloud_backup_endpoint(payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    _require_owner(user)
+    blob_name = payload.get("blob_name")
+    if not blob_name:
+        raise HTTPException(status_code=400, detail="blob_name is required")
+    from app.services.firebase_backup import download_backup
+    backup_dir = Path(settings.backup_folder)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    local_target = backup_dir / Path(blob_name).name
+    dl_res = download_backup(blob_name, str(local_target))
+    if not dl_res.get("success"):
+        raise HTTPException(status_code=500, detail=f"Cloud download failed: {dl_res.get('reason')}")
+    try:
+        result = restore_backup(db, local_target.name)
+        log_activity(
+            db=db,
+            user_id=user.id,
+            action="CloudRestore",
+            entity_type="Backup",
+            entity_id=0,
+            description=f"Cloud backup restored: {blob_name}",
+            new_value=result,
+            is_reversible=False,
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))

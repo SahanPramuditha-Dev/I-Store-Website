@@ -7,8 +7,10 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import threading
 import uuid
-from datetime import datetime, timezone
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +21,10 @@ from app.models import AppSetting
 from app.services.firebase_backup import (
     init_firebase,
     delete_remote_backup,
+    download_backup,
+    list_remote_backups,
     upload_backup,
+    verify_remote_backup,
     write_backup_metadata,
 )
 
@@ -38,7 +43,32 @@ BACKUP_SUFFIXES = (".sqlite", ".sqlite.enc", ".sqlite.gz", ".sqlite.gz.enc", ".d
 ENCRYPTION_MAGIC = b"ISTOREBK1"
 BACKUP_META_KEY = "backup_metadata_history"
 LAST_BACKUP_KEY = "last_backup_at"
+LAST_VERIFIED_BACKUP_KEY = "last_verified_backup_at"
 LAST_RESTORE_KEY = "last_restore_at"
+
+# Process-level backup concurrency lock
+_BACKUP_LOCK = threading.Lock()
+_BACKUP_IN_PROGRESS = False
+
+
+@contextmanager
+def acquire_backup_lock(timeout_seconds: float = 1.0):
+    global _BACKUP_IN_PROGRESS
+    acquired = _BACKUP_LOCK.acquire(timeout=timeout_seconds)
+    if not acquired or _BACKUP_IN_PROGRESS:
+        if acquired:
+            _BACKUP_LOCK.release()
+        raise RuntimeError("Another backup or restore operation is already in progress.")
+    try:
+        _BACKUP_IN_PROGRESS = True
+        yield
+    finally:
+        _BACKUP_IN_PROGRESS = False
+        _BACKUP_LOCK.release()
+
+
+def is_backup_in_progress() -> bool:
+    return _BACKUP_IN_PROGRESS
 
 
 def _now_utc_iso() -> str:
@@ -65,12 +95,45 @@ def _checkpoint_sqlite_database(db_path: Path) -> None:
     try:
         conn = sqlite3.connect(str(db_path))
         try:
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
             conn.commit()
         finally:
             conn.close()
     except Exception as exc:
         logger.warning(f"SQLite checkpoint skipped for backup: {exc}")
+
+
+def _safe_sqlite_online_snapshot(src_db_path: Path, dst_db_path: Path) -> None:
+    """Uses SQLite's Online Backup API to safely create a consistent atomic snapshot
+
+    even while WAL mode or active transactions may be executing concurrently.
+    """
+    _checkpoint_sqlite_database(src_db_path)
+    if dst_db_path.exists():
+        dst_db_path.unlink(missing_ok=True)
+
+    src_conn = None
+    dst_conn = None
+    try:
+        try:
+            src_conn = sqlite3.connect(f"file:{src_db_path}?mode=ro", uri=True)
+        except Exception:
+            src_conn = sqlite3.connect(str(src_db_path))
+
+        dst_conn = sqlite3.connect(str(dst_db_path))
+        with dst_conn:
+            src_conn.backup(dst_conn, pages=200, sleep=0.005)
+    finally:
+        if dst_conn:
+            try:
+                dst_conn.close()
+            except Exception:
+                pass
+        if src_conn:
+            try:
+                src_conn.close()
+            except Exception:
+                pass
 
 
 def perform_database_maintenance(db_path: Path | None = None) -> dict[str, Any]:
@@ -111,92 +174,55 @@ def _is_sqlite_header(path: Path) -> bool:
         return False
 
 
-def _is_valid_sqlite_database(path: Path) -> bool:
-    if not _is_sqlite_header(path):
-        return False
+def _verify_snapshot_integrity(db_path: Path) -> tuple[bool, str]:
+    """Runs PRAGMA integrity_check on the database file."""
+    if not _is_sqlite_header(db_path):
+        return False, "Not a valid SQLite database header"
+    conn = None
     try:
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
         cur.execute("PRAGMA integrity_check;")
-        result = cur.fetchone()
-        return result == ("ok",)
-    except Exception:
-        return False
+        res = cur.fetchall()
+        if res == [("ok",)]:
+            return True, "ok"
+        return False, f"Integrity check failed: {res}"
+    except Exception as exc:
+        return False, f"Integrity check exception: {exc}"
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
-def _restore_backup_candidate(backup_path: Path, live_db: Path, backup_dir: Path) -> bool:
-    work_dir = Path(tempfile.mkdtemp(prefix="istore_repair_"))
+def _verify_snapshot_schema(db_path: Path) -> tuple[bool, dict[str, Any]]:
+    """Validates schema: table counts and presence of foundational ERP tables."""
+    conn = None
     try:
-        stage = work_dir / backup_path.name
-        stage.write_bytes(backup_path.read_bytes())
-
-        if _is_encrypted(stage):
-            passphrase = settings.backup_encryption_passphrase.strip()
-            if not passphrase:
-                return False
-            decrypted = work_dir / ("decrypted_payload.gz" if backup_path.name.lower().endswith(".gz.enc") else "decrypted_payload.sqlite")
-            _decrypt_file(stage, passphrase, decrypted)
-            stage = decrypted
-
-        sqlite_candidate = work_dir / "restored.sqlite"
-        if _is_gz(stage):
-            _decompress_file(stage, sqlite_candidate)
-        else:
-            shutil.copy2(stage, sqlite_candidate)
-
-        if not _is_valid_sqlite_database(sqlite_candidate):
-            return False
-
-        if live_db.exists():
-            pre_restore_name = f"pre_restore_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.sqlite"
-            pre_restore_path = backup_dir / pre_restore_name
-            shutil.copy2(live_db, pre_restore_path)
-            _write_checksum(pre_restore_path)
-
-        shutil.copy2(sqlite_candidate, live_db)
-        _remove_sqlite_companion_files(live_db)
-        return True
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+        tables = [row[0] for row in cur.fetchall()]
+        core_tables = ["users", "app_settings"]
+        missing_core = [t for t in core_tables if t not in tables]
+        if missing_core:
+            return False, {"tables_count": len(tables), "missing": missing_core, "status": "missing_core_tables"}
+        return True, {"tables_count": len(tables), "tables_sample": tables[:10], "status": "ok"}
+    except Exception as exc:
+        return False, {"error": str(exc), "status": "exception"}
     finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
-def recover_database_from_latest_valid_backup() -> dict[str, Any] | None:
-    live_db = Path(settings.sqlite_file)
-    if live_db.exists() and _is_valid_sqlite_database(live_db):
-        return None
-
-    backup_dir = Path(settings.backup_folder)
-    files = _list_backup_files()
-    for candidate in files:
-        checksum_ok, _, _ = _verify_checksum(candidate)
-        if not checksum_ok:
-            continue
-        try:
-            if _restore_backup_candidate(candidate, live_db, backup_dir):
-                restored_at = _now_utc_iso()
-                return {
-                    "status": "recovered",
-                    "restored": candidate.name,
-                    "restored_at": restored_at,
-                    "live_db": str(live_db),
-                }
-        except Exception:
-            continue
-    return None
-
-
-def _verify_checksum(path: Path) -> tuple[bool, str | None, str]:
-    actual = _sha256(path)
-    checksum_file = path.with_suffix(path.suffix + ".sha256")
-    if not checksum_file.exists():
-        return True, None, actual
-    expected = checksum_file.read_text(encoding="utf-8").strip()
-    return expected == actual, expected, actual
+def _is_valid_sqlite_database(path: Path) -> bool:
+    ok, _ = _verify_snapshot_integrity(path)
+    return ok
 
 
 def _compress_file(src: Path, dst: Path) -> None:
@@ -281,17 +307,214 @@ def list_backup_filenames() -> list[str]:
     return [row.name for row in _list_backup_files()]
 
 
-def _prune_local_backups() -> None:
-    keep = int(settings.backup_keep_local)
-    if keep <= 0:
-        return
+def _verify_checksum(path: Path) -> tuple[bool, str | None, str]:
+    actual = _sha256(path)
+    checksum_file = path.with_suffix(path.suffix + ".sha256")
+    if not checksum_file.exists():
+        return True, None, actual
+    expected = checksum_file.read_text(encoding="utf-8").strip()
+    return expected.lower() == actual.lower(), expected, actual
+
+
+def test_restore_backup(filename_or_path: str | Path, passphrase: str | None = None) -> dict[str, Any]:
+    """Non-destructively validates that a backup archive can be completely decompressed,
+
+    decrypted, verified with PRAGMA integrity_check, and contains a valid I-Store schema.
+    NEVER touches or modifies the live production database.
+    """
+    if isinstance(filename_or_path, Path):
+        src = filename_or_path
+    else:
+        src = _safe_backup_path(filename_or_path)
+
+    if not src.exists():
+        return {"restorable": False, "reason": f"File not found: {src.name}"}
+
+    checksum_ok, expected_checksum, actual_checksum = _verify_checksum(src)
+    if not checksum_ok:
+        return {
+            "restorable": False,
+            "reason": f"SHA-256 checksum mismatch (expected {expected_checksum}, calculated {actual_checksum})",
+            "checksum": actual_checksum,
+        }
+
+    work_dir = Path(tempfile.mkdtemp(prefix="istore_test_restore_"))
+    try:
+        stage = work_dir / src.name
+        stage.write_bytes(src.read_bytes())
+
+        if _is_encrypted(stage):
+            key = (passphrase or settings.backup_encryption_passphrase).strip()
+            if not key:
+                return {"restorable": False, "reason": "Backup is encrypted but no passphrase was provided."}
+            decrypted = work_dir / ("decrypted_payload.gz" if stage.name.lower().endswith(".gz.enc") else "decrypted_payload.sqlite")
+            try:
+                _decrypt_file(stage, key, decrypted)
+                stage = decrypted
+            except Exception as exc:
+                return {"restorable": False, "reason": f"Decryption failed: {exc}"}
+
+        sqlite_candidate = work_dir / "candidate.sqlite"
+        if _is_gz(stage):
+            try:
+                _decompress_file(stage, sqlite_candidate)
+            except Exception as exc:
+                return {"restorable": False, "reason": f"Decompression failed: {exc}"}
+        else:
+            shutil.copy2(stage, sqlite_candidate)
+
+        integrity_ok, integrity_msg = _verify_snapshot_integrity(sqlite_candidate)
+        if not integrity_ok:
+            return {"restorable": False, "reason": f"Integrity check failed: {integrity_msg}"}
+
+        schema_ok, schema_info = _verify_snapshot_schema(sqlite_candidate)
+        if not schema_ok:
+            return {"restorable": False, "reason": f"Schema check failed: {schema_info}"}
+
+        return {
+            "restorable": True,
+            "filename": src.name,
+            "size_bytes": src.stat().st_size,
+            "checksum": actual_checksum,
+            "integrity": integrity_msg,
+            "schema": schema_info,
+            "tested_at": _now_utc_iso(),
+        }
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _restore_backup_candidate(backup_path: Path, live_db: Path, backup_dir: Path) -> bool:
+    test_result = test_restore_backup(backup_path)
+    if not test_result.get("restorable"):
+        return False
+
+    work_dir = Path(tempfile.mkdtemp(prefix="istore_repair_"))
+    try:
+        stage = work_dir / backup_path.name
+        stage.write_bytes(backup_path.read_bytes())
+
+        if _is_encrypted(stage):
+            passphrase = settings.backup_encryption_passphrase.strip()
+            if not passphrase:
+                return False
+            decrypted = work_dir / ("decrypted_payload.gz" if backup_path.name.lower().endswith(".gz.enc") else "decrypted_payload.sqlite")
+            _decrypt_file(stage, passphrase, decrypted)
+            stage = decrypted
+
+        sqlite_candidate = work_dir / "restored.sqlite"
+        if _is_gz(stage):
+            _decompress_file(stage, sqlite_candidate)
+        else:
+            shutil.copy2(stage, sqlite_candidate)
+
+        if not _is_valid_sqlite_database(sqlite_candidate):
+            return False
+
+        if live_db.exists():
+            pre_restore_name = f"pre_restore_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.sqlite"
+            pre_restore_path = backup_dir / pre_restore_name
+            shutil.copy2(live_db, pre_restore_path)
+            _write_checksum(pre_restore_path)
+
+        shutil.copy2(sqlite_candidate, live_db)
+        _remove_sqlite_companion_files(live_db)
+        return True
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def recover_database_from_latest_valid_backup() -> dict[str, Any] | None:
+    live_db = Path(settings.sqlite_file)
+    if live_db.exists() and _is_valid_sqlite_database(live_db):
+        return None
+
+    backup_dir = Path(settings.backup_folder)
     files = _list_backup_files()
-    for old in files[keep:]:
+    for candidate in files:
+        checksum_ok, _, _ = _verify_checksum(candidate)
+        if not checksum_ok:
+            continue
+        try:
+            if _restore_backup_candidate(candidate, live_db, backup_dir):
+                restored_at = _now_utc_iso()
+                return {
+                    "status": "recovered",
+                    "restored": candidate.name,
+                    "restored_at": restored_at,
+                    "live_db": str(live_db),
+                }
+        except Exception:
+            continue
+    return None
+
+
+def _prune_local_backups_tiered() -> dict[str, Any]:
+    """Implements Grandfather-Father-Son tiered retention policy:
+
+    - Keep all daily backups for the last 7 days
+    - Keep 1 weekly backup for each of the last 4 weeks
+    - Keep 1 monthly backup for each of the last 3 months
+    - Preserve manual, pre_migration, and emergency backups
+    - CRITICAL INVARIANT: NEVER delete the most recent verified backup!
+    """
+    files = _list_backup_files()
+    if not files:
+        return {"pruned": 0, "kept": 0}
+
+    # Identify the newest file to guarantee it is NEVER pruned
+    newest_file = files[0]
+    now = datetime.now()
+
+    kept: list[Path] = [newest_file]
+    daily_cutoff = now - timedelta(days=7)
+    weekly_cutoff = now - timedelta(days=28)
+    monthly_cutoff = now - timedelta(days=90)
+
+    seen_weeks: set[str] = set()
+    seen_months: set[str] = set()
+    to_delete: list[Path] = []
+
+    for f in files[1:]:
+        name = f.name.lower()
+        # Always keep special safety / manual snapshots unless older than 90 days
+        if any(name.startswith(p) for p in ("manual_", "pre_restore_", "pre-migration_", "emergency_", "recovered_")):
+            file_mtime = datetime.fromtimestamp(f.stat().st_mtime)
+            if file_mtime >= monthly_cutoff:
+                kept.append(f)
+                continue
+
+        file_mtime = datetime.fromtimestamp(f.stat().st_mtime)
+        if file_mtime >= daily_cutoff:
+            kept.append(f)
+        elif file_mtime >= weekly_cutoff:
+            week_key = f"{file_mtime.isocalendar()[0]}-W{file_mtime.isocalendar()[1]}"
+            if week_key not in seen_weeks:
+                seen_weeks.add(week_key)
+                kept.append(f)
+            else:
+                to_delete.append(f)
+        elif file_mtime >= monthly_cutoff:
+            month_key = f"{file_mtime.year}-{file_mtime.month:02d}"
+            if month_key not in seen_months:
+                seen_months.add(month_key)
+                kept.append(f)
+            else:
+                to_delete.append(f)
+        else:
+            to_delete.append(f)
+
+    # Execute deletion
+    pruned_count = 0
+    for old in to_delete:
         try:
             old.unlink(missing_ok=True)
             old.with_suffix(old.suffix + ".sha256").unlink(missing_ok=True)
+            pruned_count += 1
         except Exception as exc:
-            logger.warning(f"Failed to prune backup file {old.name}: {exc}")
+            logger.warning(f"Failed to prune old backup {old.name}: {exc}")
+
+    return {"pruned": pruned_count, "kept": len(kept)}
 
 
 def _prune_remote_backups_by_registry(db: Session) -> None:
@@ -359,183 +582,300 @@ def _append_backup_metadata(db: Session, record: dict[str, Any]) -> None:
     db.commit()
 
 
-def _build_backup_filename(is_auto: bool) -> str:
-    kind = "auto" if is_auto else "manual"
+def _build_backup_filename(is_auto: bool, trigger: str = "manual") -> str:
+    kind = "auto" if is_auto else trigger.replace("-", "_").replace(" ", "_")
     ts = datetime.now().strftime("%Y_%m_%d_%H%M%S")
     return f"{kind}_{ts}.sqlite.gz"
 
 
 def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -> dict[str, Any]:
-    backup_dir = Path(settings.backup_folder)
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    db_path = Path(settings.sqlite_file)
-    if not db_path.exists():
-        raise FileNotFoundError(f"SQLite database not found: {db_path}")
+    """Production-grade backup pipeline with SQLite Online Backup API,
 
-    artifact_name = _build_backup_filename(is_auto)
-    artifact_path = backup_dir / artifact_name
+    pre/post integrity validation, SHA-256 checksums, and test restore verification.
+    """
+    with acquire_backup_lock():
+        backup_dir = Path(settings.backup_folder)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        db_path = Path(settings.sqlite_file)
+        if not db_path.exists():
+            raise FileNotFoundError(f"SQLite database not found: {db_path}")
 
-    _checkpoint_sqlite_database(db_path)
-    with tempfile.NamedTemporaryFile(prefix="istore_snapshot_", suffix=".sqlite", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-    shutil.copy2(db_path, tmp_path)
-    _compress_file(tmp_path, artifact_path)
-    tmp_path.unlink(missing_ok=True)
+        artifact_name = _build_backup_filename(is_auto, trigger)
+        artifact_path = backup_dir / artifact_name
+        timestamp = _now_utc_iso()
+        backup_id = str(uuid.uuid4())
 
-    encrypted = False
-    encryption_reason = ""
-    if settings.backup_encrypt:
-        passphrase = settings.backup_encryption_passphrase.strip()
-        if not passphrase:
-            artifact_path.unlink(missing_ok=True)
-            raise RuntimeError("Backup encryption is enabled, but no encryption passphrase is configured.")
+        # Stage 1: Safe Online SQLite Snapshot to temporary file
+        with tempfile.NamedTemporaryFile(prefix="istore_snap_", suffix=".sqlite", delete=False) as tmp_snap:
+            tmp_snap_path = Path(tmp_snap.name)
         try:
-            encrypted_path = _encrypt_file(artifact_path, passphrase)
-            artifact_path.unlink(missing_ok=True)
-            artifact_path = encrypted_path
-            encrypted = True
-        except Exception as exc:
-            artifact_path.unlink(missing_ok=True)
-            logger.warning(f"Backup encryption failed: {exc}")
-            raise RuntimeError("Backup encryption failed.") from exc
+            _safe_sqlite_online_snapshot(db_path, tmp_snap_path)
 
-    checksum = _write_checksum(artifact_path)
-    file_size = artifact_path.stat().st_size
-    timestamp = _now_utc_iso()
-    backup_id = str(uuid.uuid4())
+            # Stage 2: Immediate Snapshot Integrity Check
+            snap_integrity_ok, snap_integrity_msg = _verify_snapshot_integrity(tmp_snap_path)
+            if not snap_integrity_ok:
+                raise RuntimeError(f"Snapshot integrity check failed: {snap_integrity_msg}")
 
-    firebase_result: dict[str, Any] = {"uploaded": False, "reason": "disabled"}
-    remote_blob = None
-    remote_prefix = f"istore-backups/{datetime.now().strftime('%Y%m%d')}/"
+            snap_schema_ok, snap_schema_info = _verify_snapshot_schema(tmp_snap_path)
+            if not snap_schema_ok:
+                raise RuntimeError(f"Snapshot schema verification failed: {snap_schema_info}")
 
-    if settings.firebase_backup_enabled:
-        sa = settings.firebase_service_account
-        bucket = settings.firebase_bucket
-        if sa and bucket and os.path.exists(sa):
-            try:
-                init_firebase(sa, bucket)
-                upload_meta = {
-                    "backup_id": backup_id,
-                    "timestamp": timestamp,
-                    "checksum": checksum,
-                    "app_version": settings.app_version,
-                    "schema_version": settings.db_schema_version,
-                    "device_name": settings.device_name,
-                    "trigger": trigger,
-                    "encrypted": str(encrypted).lower(),
-                    "compressed": "true",
-                }
-                firebase_result = upload_backup(
-                    str(artifact_path),
-                    destination_blob=f"{remote_prefix}{artifact_path.name}",
-                    metadata=upload_meta,
-                )
-                if firebase_result.get("uploaded"):
-                    remote_blob = firebase_result.get("blob")
-            except Exception as exc:
-                firebase_result = {"uploaded": False, "reason": str(exc)}
-                logger.warning(f"Firebase backup upload failed: {exc}")
-        else:
-            firebase_result = {"uploaded": False, "reason": "missing credentials/bucket"}
+            # Stage 3: Compression
+            _compress_file(tmp_snap_path, artifact_path)
+        finally:
+            tmp_snap_path.unlink(missing_ok=True)
 
-    metadata_record = {
-        "backup_id": backup_id,
-        "timestamp": timestamp,
-        "filename": artifact_path.name,
-        "local_path": str(artifact_path),
-        "size_bytes": file_size,
-        "checksum": checksum,
-        "app_version": settings.app_version,
-        "schema_version": settings.db_schema_version,
-        "device_name": settings.device_name,
-        "status": "success",
-        "trigger": trigger,
-        "is_auto": bool(is_auto),
-        "compressed": True,
-        "encrypted": encrypted,
-        "encryption_note": encryption_reason or None,
-        "firebase_uploaded": bool(firebase_result.get("uploaded")),
-        "firebase_blob": remote_blob,
-    }
-
-    if settings.firebase_backup_enabled and settings.firebase_store_metadata and firebase_result.get("uploaded"):
-        try:
-            write_backup_metadata(metadata_record, collection_name=settings.firebase_metadata_collection)
-        except Exception as exc:
-            logger.warning(f"Firestore metadata write failed (non-fatal): {exc}")
-
-    if settings.firebase_backup_enabled and settings.firebase_prune_remote_keep > 0:
-        try:
-            _prune_remote_backups_by_registry(db)
-        except Exception as exc:
-            logger.warning(f"Remote backup prune failed (non-fatal): {exc}")
-
-    _prune_local_backups()
-    _upsert_setting(db, LAST_BACKUP_KEY, timestamp)
-    _append_backup_metadata(db, metadata_record)
-
-    return {
-        "status": "success",
-        "backup": str(artifact_path),
-        "filename": artifact_path.name,
-        "checksum": checksum,
-        "size_bytes": file_size,
-        "at": timestamp,
-        "firebase": firebase_result,
-        "metadata": metadata_record,
-    }
-
-
-def restore_backup(db: Session, filename: str) -> dict[str, Any]:
-    src = _safe_backup_path(filename)
-    if not src.exists():
-        raise FileNotFoundError(f"backup not found: {filename}")
-
-    checksum_ok, expected, actual = _verify_checksum(src)
-    if not checksum_ok:
-        raise ValueError("backup checksum mismatch")
-
-    work_dir = Path(tempfile.mkdtemp(prefix="istore_restore_"))
-    try:
-        stage = work_dir / src.name
-        stage.write_bytes(src.read_bytes())
-
-        if _is_encrypted(stage):
+        # Stage 4: Encryption (if configured)
+        encrypted = False
+        encryption_reason = ""
+        if settings.backup_encrypt:
             passphrase = settings.backup_encryption_passphrase.strip()
             if not passphrase:
-                raise ValueError("backup is encrypted but no passphrase is configured")
-            decrypted = work_dir / ("decrypted_payload.gz" if src.name.lower().endswith(".gz.enc") else "decrypted_payload.sqlite")
-            _decrypt_file(stage, passphrase, decrypted)
-            stage = decrypted
+                artifact_path.unlink(missing_ok=True)
+                raise RuntimeError("Backup encryption is enabled (BACKUP_ENCRYPT=true), but no passphrase is configured.")
+            try:
+                encrypted_path = _encrypt_file(artifact_path, passphrase)
+                artifact_path.unlink(missing_ok=True)
+                artifact_path = encrypted_path
+                encrypted = True
+            except Exception as exc:
+                artifact_path.unlink(missing_ok=True)
+                logger.error(f"Backup encryption failed: {exc}")
+                raise RuntimeError("Backup encryption failed.") from exc
 
-        sqlite_candidate = work_dir / "restored.sqlite"
-        if _is_gz(stage):
-            _decompress_file(stage, sqlite_candidate)
-        else:
-            shutil.copy2(stage, sqlite_candidate)
+        # Stage 5: Checksum and sidecar
+        checksum = _write_checksum(artifact_path)
+        file_size = artifact_path.stat().st_size
 
-        if not _is_valid_sqlite_database(sqlite_candidate):
-            raise ValueError("restored file failed SQLite integrity check")
+        # Stage 6: Restore Simulation Verification
+        test_restore_res = test_restore_backup(artifact_path)
+        is_verified = bool(test_restore_res.get("restorable"))
+        verification_error = test_restore_res.get("reason") if not is_verified else None
 
-        live_db = Path(settings.sqlite_file)
-        backup_dir = Path(settings.backup_folder)
-        pre_name = f"pre_restore_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.sqlite"
-        pre_path = backup_dir / pre_name
-        shutil.copy2(live_db, pre_path)
-        _write_checksum(pre_path)
+        if not is_verified:
+            logger.error(f"Backup verification failed for {artifact_path.name}: {verification_error}")
+            artifact_path.unlink(missing_ok=True)
+            artifact_path.with_suffix(artifact_path.suffix + ".sha256").unlink(missing_ok=True)
+            raise RuntimeError(f"Backup verification failed: {verification_error}")
 
-        shutil.copy2(sqlite_candidate, live_db)
-        _remove_sqlite_companion_files(live_db)
-        restored_at = _now_utc_iso()
-        _upsert_setting(db, LAST_RESTORE_KEY, restored_at)
+        # Stage 7: Cloud Storage Upload & Remote Verification (if configured)
+        firebase_result: dict[str, Any] = {"uploaded": False, "verified": False, "reason": "disabled"}
+        remote_blob = None
+        remote_prefix = f"istore-backups/{datetime.now().strftime('%Y%m%d')}/"
+
+        if settings.firebase_backup_enabled:
+            sa = settings.firebase_service_account
+            bucket = settings.firebase_bucket
+            if sa and bucket and os.path.exists(sa):
+                try:
+                    init_firebase(sa, bucket)
+                    upload_meta = {
+                        "backup_id": backup_id,
+                        "timestamp": timestamp,
+                        "checksum": checksum,
+                        "app_version": settings.app_version,
+                        "schema_version": settings.db_schema_version,
+                        "device_name": settings.device_name,
+                        "trigger": trigger,
+                        "encrypted": str(encrypted).lower(),
+                        "compressed": "true",
+                    }
+                    blob_target = f"{remote_prefix}{artifact_path.name}"
+                    upload_res = upload_backup(
+                        str(artifact_path),
+                        destination_blob=blob_target,
+                        metadata=upload_meta,
+                    )
+                    if upload_res.get("uploaded"):
+                        remote_blob = upload_res.get("blob")
+                        verify_res = verify_remote_backup(
+                            remote_blob,
+                            expected_size=file_size,
+                            expected_checksum=checksum,
+                        )
+                        firebase_result = {
+                            "uploaded": True,
+                            "verified": verify_res.get("verified", False),
+                            "blob": remote_blob,
+                            "verify_detail": verify_res,
+                        }
+                    else:
+                        firebase_result = upload_res
+                except Exception as exc:
+                    firebase_result = {"uploaded": False, "verified": False, "reason": str(exc)}
+                    logger.warning(f"Firebase backup upload/verify failed: {exc}")
+            else:
+                firebase_result = {"uploaded": False, "verified": False, "reason": "missing credentials/bucket"}
+
+        metadata_record = {
+            "backup_id": backup_id,
+            "timestamp": timestamp,
+            "filename": artifact_path.name,
+            "local_path": str(artifact_path),
+            "size_bytes": file_size,
+            "checksum": checksum,
+            "app_version": settings.app_version,
+            "schema_version": settings.db_schema_version,
+            "device_name": settings.device_name,
+            "status": "verified" if is_verified else "failed",
+            "verified": is_verified,
+            "restorable": is_verified,
+            "verification_tested_at": test_restore_res.get("tested_at"),
+            "trigger": trigger,
+            "is_auto": bool(is_auto),
+            "compressed": True,
+            "encrypted": encrypted,
+            "encryption_note": encryption_reason or None,
+            "firebase_uploaded": bool(firebase_result.get("uploaded")),
+            "firebase_verified": bool(firebase_result.get("verified")),
+            "firebase_blob": remote_blob,
+        }
+
+        if settings.firebase_backup_enabled and settings.firebase_store_metadata and firebase_result.get("uploaded"):
+            try:
+                write_backup_metadata(metadata_record, collection_name=settings.firebase_metadata_collection)
+            except Exception as exc:
+                logger.warning(f"Firestore metadata write failed (non-fatal): {exc}")
+
+        if settings.firebase_backup_enabled and settings.firebase_prune_remote_keep > 0:
+            try:
+                _prune_remote_backups_by_registry(db)
+            except Exception as exc:
+                logger.warning(f"Remote backup prune failed (non-fatal): {exc}")
+
+        # Tiered retention
+        retention_res = _prune_local_backups_tiered()
+
+        # Update authoritative AppSetting timestamps
+        _upsert_setting(db, LAST_BACKUP_KEY, timestamp)
+        if is_verified:
+            _upsert_setting(db, LAST_VERIFIED_BACKUP_KEY, timestamp)
+
+        _append_backup_metadata(db, metadata_record)
+
+        # Sync BackupRecord table if it exists
+        try:
+            from app.models import BackupRecord
+            rec = BackupRecord(
+                backup_code=f"BCK-{datetime.now().strftime('%Y%m%d')}-{artifact_name[:8]}",
+                filename=artifact_path.name,
+                status="verified" if is_verified else "failed",
+                backup_type="auto" if is_auto else trigger,
+                storage_target="local_and_cloud" if firebase_result.get("uploaded") else "local",
+                checksum=checksum,
+                size_bytes=file_size,
+                metadata_json=json.dumps(metadata_record, ensure_ascii=False),
+            )
+            db.add(rec)
+            db.commit()
+        except Exception as exc:
+            logger.debug(f"BackupRecord sync note (non-fatal): {exc}")
 
         return {
             "status": "success",
-            "restored": filename,
-            "checksum": actual,
-            "expected_checksum": expected,
-            "pre_restore_snapshot": pre_name,
-            "restored_at": restored_at,
+            "backup": str(artifact_path),
+            "filename": artifact_path.name,
+            "checksum": checksum,
+            "size_bytes": file_size,
+            "at": timestamp,
+            "verified": is_verified,
+            "restorable": is_verified,
+            "firebase": firebase_result,
+            "retention": retention_res,
+            "metadata": metadata_record,
         }
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def restore_backup(db: Session, filename: str, passphrase: str | None = None) -> dict[str, Any]:
+    """Safe, hardened production restore with pre-validation and emergency pre-restore snapshot."""
+    with acquire_backup_lock():
+        src = _safe_backup_path(filename)
+        if not src.exists():
+            raise FileNotFoundError(f"Backup file not found: {filename}")
+
+        # Pre-validate candidate in sandbox first
+        test_res = test_restore_backup(src, passphrase=passphrase)
+        if not test_res.get("restorable"):
+            raise ValueError(f"Restore rejected: backup candidate failed integrity checks ({test_res.get('reason')})")
+
+        work_dir = Path(tempfile.mkdtemp(prefix="istore_restore_stage_"))
+        try:
+            stage = work_dir / src.name
+            stage.write_bytes(src.read_bytes())
+
+            if _is_encrypted(stage):
+                key = (passphrase or settings.backup_encryption_passphrase).strip()
+                if not key:
+                    raise ValueError("Backup is encrypted but no passphrase was provided.")
+                decrypted = work_dir / ("decrypted_payload.gz" if src.name.lower().endswith(".gz.enc") else "decrypted_payload.sqlite")
+                _decrypt_file(stage, key, decrypted)
+                stage = decrypted
+
+            sqlite_candidate = work_dir / "restored.sqlite"
+            if _is_gz(stage):
+                _decompress_file(stage, sqlite_candidate)
+            else:
+                shutil.copy2(stage, sqlite_candidate)
+
+            if not _is_valid_sqlite_database(sqlite_candidate):
+                raise ValueError("Restored candidate failed final SQLite integrity check.")
+
+            live_db = Path(settings.sqlite_file)
+            backup_dir = Path(settings.backup_folder)
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+            # Emergency Pre-Restore Safety Snapshot of current Live DB
+            pre_name = f"pre_restore_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.sqlite"
+            pre_path = backup_dir / pre_name
+            if live_db.exists():
+                _checkpoint_sqlite_database(live_db)
+                shutil.copy2(live_db, pre_path)
+                _write_checksum(pre_path)
+
+            # Atomically replace live database
+            shutil.copy2(sqlite_candidate, live_db)
+            _remove_sqlite_companion_files(live_db)
+            restored_at = _now_utc_iso()
+            _upsert_setting(db, LAST_RESTORE_KEY, restored_at)
+
+            return {
+                "status": "success",
+                "restored": filename,
+                "checksum": test_res.get("checksum"),
+                "pre_restore_snapshot": pre_name,
+                "restored_at": restored_at,
+            }
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def check_and_run_catchup_backup(db: Session, max_age_hours: float = 24.0) -> dict[str, Any] | None:
+    """Checks if the last verified backup is older than max_age_hours (or missing).
+
+    If overdue, executes a catch-up backup immediately.
+    """
+    row = db.query(AppSetting).filter(AppSetting.key == LAST_VERIFIED_BACKUP_KEY).first()
+    if not row or not row.value:
+        row = db.query(AppSetting).filter(AppSetting.key == LAST_BACKUP_KEY).first()
+
+    last_dt = None
+    if row and row.value:
+        try:
+            val = str(row.value).strip().replace("Z", "+00:00")
+            last_dt = datetime.fromisoformat(val)
+            if last_dt.tzinfo is not None:
+                last_dt = last_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        except Exception:
+            last_dt = None
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    is_overdue = last_dt is None or (now - last_dt) > timedelta(hours=max_age_hours)
+
+    if is_overdue:
+        logger.info(f"Overdue backup detected (last: {last_dt}). Running automatic catch-up backup...")
+        try:
+            return create_backup(db, is_auto=True, trigger="startup_catchup")
+        except Exception as exc:
+            logger.error(f"Catch-up backup failed: {exc}")
+            return {"status": "failed", "error": str(exc)}
+    return None

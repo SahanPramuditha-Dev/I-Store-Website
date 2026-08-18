@@ -1104,4 +1104,225 @@
   margin: 0 2px;
 }
 
+/* ==========================================================================
+   AI Assistant Light Mode Overrides
+   ========================================================================== */
+html:not(.dark) .ai-assistant-panel {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 25px 60px -10px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.15) !important;
+}
+
+html:not(.dark) .ai-assistant-header {
+  background: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .ai-name-text {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-status-indicator {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-icon-btn {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-icon-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-role-tabs-bar {
+  background: #f1f5f9 !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .ai-role-tabs-label {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-role-pill {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+html:not(.dark) .ai-role-pill:hover {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-role-pill.active {
+  background: #eef2ff !important;
+  border-color: #818cf8 !important;
+  color: #4f46e5 !important;
+  font-weight: 700 !important;
+}
+
+html:not(.dark) .ai-quick-title {
+  color: #475569 !important;
+}
+
+html:not(.dark) .ai-chip-card {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+html:not(.dark) .ai-chip-card:hover {
+  background: #ffffff !important;
+  border-color: #818cf8 !important;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12) !important;
+}
+
+html:not(.dark) .ai-chip-label {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-chip-category {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-assistant-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+
+html:not(.dark) .ai-message-container.model .ai-message-bubble {
+  background: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+html:not(.dark) .ai-md-p {
+  color: #1e293b !important;
+}
+
+html:not(.dark) .ai-md-strong {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-md-em {
+  color: #475569 !important;
+}
+
+html:not(.dark) .ai-md-code {
+  background: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  color: #0369a1 !important;
+}
+
+html:not(.dark) .ai-section-heading h2,
+html:not(.dark) .ai-section-heading h3,
+html:not(.dark) .ai-section-heading h4 {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-section-title-banner {
+  background: rgba(168, 85, 247, 0.12) !important;
+  color: #7e22ce !important;
+  border-left-color: #9333ea !important;
+}
+
+html:not(.dark) .ai-md-list-item, 
+html:not(.dark) .ai-md-num-item {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+html:not(.dark) .ai-action-chips-container {
+  border-top-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .ai-action-chips-title {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-action-nav-chip {
+  background: #eef2ff !important;
+  border-color: #c7d2fe !important;
+  color: #4f46e5 !important;
+}
+
+html:not(.dark) .ai-action-nav-chip:hover {
+  background: #e0e7ff !important;
+  border-color: #818cf8 !important;
+  color: #3730a3 !important;
+}
+
+html:not(.dark) .ai-action-btn {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-action-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-assistant-footer {
+  background: #f8fafc !important;
+  border-top-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .ai-input-pill {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .ai-input-pill:focus-within {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+  background: #ffffff !important;
+}
+
+html:not(.dark) .ai-assistant-textarea {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-assistant-textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html:not(.dark) .ai-pill-tool-btn {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-pill-tool-btn:hover:not(:disabled) {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-followup-pill {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+html:not(.dark) .ai-followup-pill:hover {
+  background: #eef2ff !important;
+  border-color: #818cf8 !important;
+  color: #4f46e5 !important;
+}
+
+html:not(.dark) .ai-attachment-preview-bar {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+html:not(.dark) .ai-attachment-name {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .ai-footer-hint {
+  color: #64748b !important;
+}
+
+html:not(.dark) .ai-footer-hint kbd {
+  background: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+
 
