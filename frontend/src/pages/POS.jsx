@@ -2421,24 +2421,24 @@ export default function POS() {
 
         {/* RIGHT PANEL: CHECKOUT RAIL + QUICK ACTIONS */}
         <div className="min-h-0 flex flex-col gap-3 overflow-y-auto custom-scrollbar sticky top-0">
-          <div className="rounded-2xl border border-indigo-500/20 bg-slate-950/95 p-3.5 shadow-2xl backdrop-blur-xl space-y-4">
+          <div className="rounded-2xl border border-slate-200 dark:border-indigo-500/20 bg-white dark:bg-slate-950/95 p-3.5 shadow-sm dark:shadow-2xl backdrop-blur-xl space-y-4">
             
             {/* Header & Tab Switcher */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
+            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-white/10">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                <div className="p-1.5 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 dark:border-indigo-500/30">
                   <Wallet size={15} />
                 </div>
                 <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-white">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
                     {rightPanelTab === "checkout" ? "Billing & Checkout" : "Return / Exchange"}
                   </h3>
-                  <p className="text-[10px] text-slate-400">
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
                     {rightPanelTab === "checkout" ? "Express Cashier Terminal" : "Return lookup and exchange processing"}
                   </p>
                 </div>
               </div>
-              <div className="inline-flex rounded-full border border-white/10 bg-black/40 p-1 shrink-0">
+              <div className="inline-flex rounded-full border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-black/40 p-1 shrink-0">
                 {[
                   { key: "checkout", label: "Checkout" },
                   { key: "return", label: "Returns" },
@@ -2449,8 +2449,8 @@ export default function POS() {
                     onClick={() => setRightPanelTab(tab.key)}
                     className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
                       rightPanelTab === tab.key
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/40"
-                        : "text-slate-400 hover:text-white"
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                     }`}
                   >
                     {tab.label}
@@ -2464,9 +2464,9 @@ export default function POS() {
 
                 {/* 1. CUSTOMER SELECTION */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] uppercase font-bold tracking-widest text-slate-400">
-                    <span className="flex items-center gap-1.5"><User size={12} className="text-indigo-400" /> Customer</span>
-                    {customerId && <span className="text-emerald-400 text-[10px] lowercase font-medium">customer selected</span>}
+                  <div className="flex items-center justify-between text-[10px] uppercase font-bold tracking-widest text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1.5"><User size={12} className="text-indigo-600 dark:text-indigo-400" /> Customer</span>
+                    {customerId && <span className="text-emerald-600 dark:text-emerald-400 text-[10px] lowercase font-medium">customer selected</span>}
                   </div>
                   <div className="flex items-center gap-2">
                     <CustomerSelect
@@ -2481,10 +2481,10 @@ export default function POS() {
                     <button
                       type="button"
                       onClick={() => setShowNewCustomerModal(true)}
-                      className="shrink-0 rounded-xl border border-indigo-400/30 bg-indigo-500/10 px-2.5 py-2 text-[11px] font-bold text-indigo-300 hover:bg-indigo-500/20 transition flex items-center gap-1"
+                      className="shrink-0 rounded-xl border border-indigo-200 dark:border-indigo-400/30 bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-2 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition flex items-center gap-1"
                       title="Add new customer (Alt+N)"
                     >
-                      +New <span className="text-[8px] opacity-70 bg-indigo-950 px-1 py-0.5 rounded border border-indigo-400/20">Alt+N</span>
+                      +New <span className="text-[8px] opacity-70 bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 px-1 py-0.5 rounded border border-indigo-300 dark:border-indigo-400/20">Alt+N</span>
                     </button>
                   </div>
 
@@ -2492,10 +2492,10 @@ export default function POS() {
                   {customerId && (
                     <div className="grid grid-cols-1 gap-2 pt-1">
                       {/* Advances Card */}
-                      <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/20 p-2.5">
+                      <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/20 p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-300">Advances</p>
-                          <span className="text-[10px] font-bold text-emerald-200 bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30">Applied: LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800 dark:text-emerald-300">Advances</p>
+                          <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-500/30">Applied: LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</span>
                         </div>
                         {availableAdvances.length === 0 ? (
                           <p className="mt-1 text-[10px] text-slate-500">No available advances for this customer.</p>
@@ -2504,12 +2504,12 @@ export default function POS() {
                             {availableAdvances.map((row) => (
                               <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
                                 <div className="min-w-0">
-                                  <div className="truncate text-[10px] font-bold text-emerald-200">{row.advance_number}</div>
-                                  <div className="truncate text-[10px] text-slate-400">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
+                                  <div className="truncate text-[10px] font-bold text-emerald-900 dark:text-emerald-200">{row.advance_number}</div>
+                                  <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
                                 </div>
                                 <input
                                   type="number"
-                                  className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-right text-[11px] text-white outline-none focus:border-emerald-400"
+                                  className="rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-black/40 px-2 py-1 text-right text-[11px] text-slate-900 dark:text-white outline-none focus:border-emerald-400"
                                   min={0}
                                   max={Number(row.remaining_amount || 0)}
                                   value={selectedAdvanceMap[row.id] || ""}
@@ -2521,7 +2521,7 @@ export default function POS() {
                                 />
                                 <button
                                   type="button"
-                                  className="rounded-lg border border-emerald-400/30 bg-emerald-500/20 py-1 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/30 transition"
+                                  className="rounded-lg border border-emerald-300 dark:border-emerald-400/30 bg-emerald-100 dark:bg-emerald-500/20 py-1 text-[10px] font-bold text-emerald-800 dark:text-emerald-200 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 transition"
                                   onClick={() => {
                                     const maxAmount = Number(row.remaining_amount || 0);
                                     setSelectedAdvanceMap((prev) => ({ ...prev, [row.id]: maxAmount }));
@@ -2536,10 +2536,10 @@ export default function POS() {
                       </div>
 
                       {/* Store Credits Card */}
-                      <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-2.5">
+                      <div className="rounded-xl border border-cyan-200 dark:border-cyan-500/20 bg-cyan-50 dark:bg-cyan-950/20 p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan-300">Store Credits</p>
-                          <span className="text-[10px] font-bold text-cyan-200 bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/30">Applied: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-cyan-800 dark:text-cyan-300">Store Credits</p>
+                          <span className="text-[10px] font-bold text-cyan-800 dark:text-cyan-200 bg-cyan-100 dark:bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-300 dark:border-cyan-500/30">Applied: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</span>
                         </div>
                         {availableCredits.length === 0 ? (
                           <p className="mt-1 text-[10px] text-slate-500">No available store credits.</p>
@@ -2548,12 +2548,12 @@ export default function POS() {
                             {availableCredits.map((row) => (
                               <div key={row.id} className="grid grid-cols-[1fr,64px,52px] items-center gap-1">
                                 <div className="min-w-0">
-                                  <div className="truncate text-[10px] font-bold text-cyan-200">{row.credit_number}</div>
-                                  <div className="truncate text-[10px] text-slate-400">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
+                                  <div className="truncate text-[10px] font-bold text-cyan-900 dark:text-cyan-200">{row.credit_number}</div>
+                                  <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">Rem: LKR {Math.round(Number(row.remaining_amount || 0)).toLocaleString()}</div>
                                 </div>
                                 <input
                                   type="number"
-                                  className="rounded-lg border border-cyan-500/30 bg-black/40 px-2 py-1 text-right text-[11px] text-white outline-none focus:border-cyan-400"
+                                  className="rounded-lg border border-slate-300 dark:border-cyan-500/30 bg-white dark:bg-black/40 px-2 py-1 text-right text-[11px] text-slate-900 dark:text-white outline-none focus:border-cyan-400"
                                   min={0}
                                   max={Number(row.remaining_amount || 0)}
                                   value={selectedCreditMap[row.id] || ""}
@@ -2565,7 +2565,7 @@ export default function POS() {
                                 />
                                 <button
                                   type="button"
-                                  className="rounded-lg border border-cyan-400/30 bg-cyan-500/20 py-1 text-[10px] font-bold text-cyan-200 hover:bg-cyan-500/30 transition"
+                                  className="rounded-lg border border-cyan-300 dark:border-cyan-400/30 bg-cyan-100 dark:bg-cyan-500/20 py-1 text-[10px] font-bold text-cyan-800 dark:text-cyan-200 hover:bg-cyan-200 dark:hover:bg-cyan-500/30 transition"
                                   onClick={() => {
                                     const maxAmount = Number(row.remaining_amount || 0);
                                     setSelectedCreditMap((prev) => ({ ...prev, [row.id]: maxAmount }));
@@ -2583,38 +2583,38 @@ export default function POS() {
                 </div>
 
                 {/* 2. ORDER SUMMARY & DUE NOW HERO */}
-                <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-950/20 via-slate-900/90 to-slate-950 p-3.5 shadow-xl shadow-amber-950/20 space-y-2.5">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <div className="rounded-2xl border border-slate-200 dark:border-amber-400/30 bg-slate-50 dark:bg-gradient-to-b dark:from-amber-950/20 dark:via-slate-900/90 dark:to-slate-950 p-3.5 shadow-sm dark:shadow-xl space-y-2.5">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
                     <span>Subtotal ({cart.reduce((sum, item) => sum + Number(item.quantity || 1), 0)} items)</span>
-                    <span className="font-semibold text-slate-200">LKR {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-200">LKR {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                   {discountAmount > 0 && (
-                    <div className="flex items-center justify-between text-[11px] text-emerald-400">
+                    <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400">
                       <span>Discount ({discountMode === 'percent' ? `${discountValue}%` : 'Flat'})</span>
                       <span className="font-semibold">- LKR {discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                   )}
                   {Number(taxAmount || 0) > 0 && (
-                    <div className="flex items-center justify-between text-[11px] text-sky-400">
+                    <div className="flex items-center justify-between text-[11px] text-sky-700 dark:text-sky-400">
                       <span>Tax</span>
                       <span className="font-semibold">+ LKR {Number(taxAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                   )}
-                  <div className="border-t border-white/10 pt-2 flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300">Total Amount</span>
-                    <span className="text-sm font-black text-indigo-200">LKR {Math.round(grandTotal).toLocaleString()}</span>
+                  <div className="border-t border-slate-200 dark:border-white/10 pt-2 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Total Amount</span>
+                    <span className="text-sm font-black text-slate-900 dark:text-indigo-200">LKR {Math.round(grandTotal).toLocaleString()}</span>
                   </div>
 
                   {(appliedAdvanceTotal > 0 || appliedStoreCreditTotal > 0) && (
                     <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
                       {appliedAdvanceTotal > 0 && (
-                        <div className="rounded-lg bg-black/40 px-2.5 py-1 text-emerald-300 border border-emerald-500/20 flex justify-between">
+                        <div className="rounded-lg bg-emerald-50 dark:bg-black/40 px-2.5 py-1 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20 flex justify-between">
                           <span>Advance:</span>
                           <strong>-LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</strong>
                         </div>
                       )}
                       {appliedStoreCreditTotal > 0 && (
-                        <div className="rounded-lg bg-black/40 px-2.5 py-1 text-cyan-300 border border-cyan-500/20 flex justify-between">
+                        <div className="rounded-lg bg-cyan-50 dark:bg-black/40 px-2.5 py-1 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/20 flex justify-between">
                           <span>Credit:</span>
                           <strong>-LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</strong>
                         </div>
@@ -2623,39 +2623,39 @@ export default function POS() {
                   )}
 
                   {/* PROMINENT DUE NOW HERO BOX */}
-                  <div className="rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent p-3 flex items-center justify-between shadow-inner mt-2">
+                  <div className="rounded-xl border border-amber-300 dark:border-amber-400/40 bg-amber-50 dark:bg-gradient-to-r dark:from-amber-500/20 dark:via-amber-500/10 dark:to-transparent p-3 flex items-center justify-between shadow-inner mt-2">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-300/90">DUE NOW</p>
-                      <p className="text-2xl sm:text-3xl font-black leading-none text-white tracking-tight mt-0.5">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300/90">DUE NOW</p>
+                      <p className="text-2xl sm:text-3xl font-black leading-none text-slate-950 dark:text-white tracking-tight mt-0.5">
                         LKR {Math.round(dueAfterCredits).toLocaleString()}
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-200 text-[10px] font-extrabold uppercase">
+                    <span className="px-2.5 py-1 rounded-full bg-amber-200 dark:bg-amber-400/20 border border-amber-300 dark:border-amber-400/30 text-amber-900 dark:text-amber-200 text-[10px] font-extrabold uppercase">
                       {cart.length} {cart.length === 1 ? 'Item' : 'Items'}
                     </span>
                   </div>
                 </div>
 
                 {/* 3. DISCOUNT BAR */}
-                <div className="rounded-xl border border-white/10 bg-black/30 p-2.5 space-y-2">
+                <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/30 p-2.5 space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-                      <Percent size={13} className="text-indigo-400" />
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <Percent size={13} className="text-indigo-600 dark:text-indigo-400" />
                       <span>Discount</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <div className="flex items-center gap-1 rounded-lg bg-black/50 p-0.5 border border-white/10">
+                      <div className="flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-black/50 p-0.5 border border-slate-200 dark:border-white/10">
                         <button
                           type="button"
                           onClick={() => setDiscountMode('amount')}
-                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'amount' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'amount' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
                         >
                           LKR
                         </button>
                         <button
                           type="button"
                           onClick={() => setDiscountMode('percent')}
-                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'percent' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'percent' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
                         >
                           %
                         </button>
@@ -2663,7 +2663,7 @@ export default function POS() {
                       <input
                         aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
                         type="number"
-                        className="w-24 bg-black/40 border border-white/10 rounded-lg px-2.5 py-1 text-right text-xs font-bold text-white outline-none focus:border-indigo-500"
+                        className="w-24 bg-white dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-2.5 py-1 text-right text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                         placeholder={discountMode === 'percent' ? '0 %' : '0 LKR'}
                         value={discountValue}
                         onChange={e => updateDiscountValue(e.target.value)}
@@ -2672,7 +2672,7 @@ export default function POS() {
                   </div>
                   <div className="text-[10px] text-right">
                     {discountError ? (
-                      <span className="text-rose-400 font-semibold">{discountError}</span>
+                      <span className="text-rose-600 dark:text-rose-400 font-semibold">{discountError}</span>
                     ) : (
                       <span className="text-slate-500">
                         {discountMode === 'percent' ? `Max allowed: ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max allowed: LKR ${Math.round(maxDiscountAllowed)}`}
@@ -2683,9 +2683,9 @@ export default function POS() {
 
                 {/* 4. PAYMENT METHOD SELECTOR */}
                 <div className="space-y-2">
-                  <div className="text-[10px] uppercase font-bold tracking-widest text-slate-400 flex items-center justify-between">
+                  <div className="text-[10px] uppercase font-bold tracking-widest text-slate-500 dark:text-slate-400 flex items-center justify-between">
                     <span>Payment Method</span>
-                    <span className="text-indigo-400 font-bold text-[10px]">{paymentMethod}</span>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-bold text-[10px]">{paymentMethod}</span>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
@@ -2705,15 +2705,15 @@ export default function POS() {
                           onClick={() => setPaymentMethod(item.id)}
                           className={`flex items-center justify-between rounded-xl border px-2.5 py-2 text-[11px] font-extrabold transition-all shadow-sm ${
                             isActive
-                              ? "border-indigo-400/90 bg-gradient-to-r from-indigo-600/30 to-purple-600/30 text-white shadow-indigo-950/40 ring-1 ring-indigo-400/50"
-                              : "border-white/10 bg-black/30 text-slate-400 hover:border-white/20 hover:text-white hover:bg-black/50"
+                              ? "border-indigo-600 bg-indigo-50 text-indigo-900 dark:border-indigo-400/90 dark:bg-gradient-to-r dark:from-indigo-600/30 dark:to-purple-600/30 dark:text-white shadow-indigo-500/10 dark:shadow-indigo-950/40 ring-1 ring-indigo-500/30 dark:ring-indigo-400/50"
+                              : "border-slate-200 dark:border-white/10 bg-white dark:bg-black/30 text-slate-700 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20 hover:text-slate-950 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-black/50"
                           }`}
                         >
                           <span className="flex items-center gap-1.5">
-                            <IconComponent size={13} className={isActive ? "text-indigo-300" : "text-slate-500"} />
+                            <IconComponent size={13} className={isActive ? "text-indigo-600 dark:text-indigo-300" : "text-slate-400 dark:text-slate-500"} />
                             {item.label}
                           </span>
-                          <span className={`rounded px-1 py-0.5 text-[8px] font-bold border ${isActive ? "bg-indigo-500/30 border-indigo-400/40 text-indigo-200" : "bg-black/40 border-white/5 text-slate-500"}`}>
+                          <span className={`rounded px-1 py-0.5 text-[8px] font-bold border ${isActive ? "bg-indigo-100 dark:bg-indigo-500/30 border-indigo-200 dark:border-indigo-400/40 text-indigo-700 dark:text-indigo-200" : "bg-slate-100 dark:bg-black/40 border-slate-200 dark:border-white/5 text-slate-500"}`}>
                             {item.key}
                           </span>
                         </button>
@@ -2723,17 +2723,17 @@ export default function POS() {
 
                   {/* DYNAMIC PAYMENT INPUTS */}
                   {paymentMethod === "Cash" && (
-                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 space-y-2">
+                    <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/20 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5 shrink-0">
-                          <Banknote size={14} className="text-emerald-400" /> Cash Received
+                        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 shrink-0">
+                          <Banknote size={14} className="text-emerald-600 dark:text-emerald-400" /> Cash Received
                         </span>
                         <div className="relative">
                           <input
                             aria-label="Cash given amount"
                             ref={cashInputRef}
                             type="number"
-                            className="w-32 bg-black/60 border border-emerald-500/40 rounded-lg px-2.5 py-1 text-right text-base font-black text-emerald-300 outline-none focus:border-emerald-400 placeholder:text-slate-600"
+                            className="w-32 bg-white dark:bg-black/60 border border-emerald-300 dark:border-emerald-500/40 rounded-lg px-2.5 py-1 text-right text-base font-black text-emerald-800 dark:text-emerald-300 outline-none focus:border-emerald-400 placeholder:text-slate-400 dark:placeholder:text-slate-600"
                             placeholder="0.00"
                             value={cashReceived}
                             onChange={e => setCashReceived(e.target.value)}
@@ -2760,7 +2760,7 @@ export default function POS() {
                               key={`rail-cash-${i}`}
                               type="button"
                               onClick={() => setCashReceived(amt)}
-                              className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 py-1.5 text-[10px] font-bold text-emerald-200 hover:bg-emerald-500/25 transition"
+                              className="rounded-lg border border-emerald-300 dark:border-emerald-500/25 bg-white dark:bg-emerald-500/10 py-1.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-500/25 transition shadow-sm"
                             >
                               {i === 0 ? "EXACT" : `LKR ${amt.toLocaleString()}`}
                             </button>
@@ -2771,14 +2771,14 @@ export default function POS() {
                       {/* Change / Balance Banner */}
                       {cashReceived !== "" && (
                         signedChange >= 0 ? (
-                          <div className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-2 text-center shadow-inner">
-                            <div className="text-[10px] font-black uppercase tracking-wider text-emerald-300">CHANGE TO RETURN</div>
-                            <div className="text-xl font-black text-emerald-200 mt-0.5">LKR {change.toLocaleString()}</div>
+                          <div className="mt-2 rounded-lg border border-emerald-300 dark:border-emerald-500/40 bg-emerald-100/80 dark:bg-emerald-500/20 px-3 py-2 text-center shadow-inner">
+                            <div className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">CHANGE TO RETURN</div>
+                            <div className="text-xl font-black text-emerald-900 dark:text-emerald-200 mt-0.5">LKR {change.toLocaleString()}</div>
                           </div>
                         ) : (
-                          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-2 text-center shadow-inner">
-                            <div className="text-[10px] font-black uppercase tracking-wider text-amber-300">BALANCE DUE</div>
-                            <div className="text-xl font-black text-amber-200 mt-0.5">LKR {Math.abs(signedChange).toLocaleString()}</div>
+                          <div className="mt-2 rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-100/80 dark:bg-amber-500/20 px-3 py-2 text-center shadow-inner">
+                            <div className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300">BALANCE DUE</div>
+                            <div className="text-xl font-black text-amber-900 dark:text-amber-200 mt-0.5">LKR {Math.abs(signedChange).toLocaleString()}</div>
                           </div>
                         )
                       )}
@@ -2786,30 +2786,30 @@ export default function POS() {
                   )}
 
                   {paymentMethod === "Mixed" && (
-                    <div className="rounded-xl border border-white/10 bg-black/40 p-3 space-y-2">
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/40 p-3 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <label className="block space-y-1">
-                          <span className="text-[10px] font-bold uppercase text-slate-400">Cash Amount</span>
-                          <input ref={cashInputRef} type="number" className="w-full rounded-lg border border-emerald-500/30 bg-black/50 px-2.5 py-1 text-sm font-bold text-emerald-300 outline-none focus:border-emerald-400" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
+                          <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Cash Amount</span>
+                          <input ref={cashInputRef} type="number" className="w-full rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-white dark:bg-black/50 px-2.5 py-1 text-sm font-bold text-emerald-800 dark:text-emerald-300 outline-none focus:border-emerald-400" value={cashReceived} onChange={e => setCashReceived(e.target.value)} />
                         </label>
                         <label className="block space-y-1">
-                          <span className="text-[10px] font-bold uppercase text-slate-400">Card Amount</span>
-                          <input type="number" className="w-full rounded-lg border border-sky-500/30 bg-black/50 px-2.5 py-1 text-sm font-bold text-sky-300 outline-none focus:border-sky-400" value={cardAmount} onChange={e => setCardAmount(e.target.value)} />
+                          <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Card Amount</span>
+                          <input type="number" className="w-full rounded-lg border border-sky-300 dark:border-sky-500/30 bg-white dark:bg-black/50 px-2.5 py-1 text-sm font-bold text-sky-800 dark:text-sky-300 outline-none focus:border-sky-400" value={cardAmount} onChange={e => setCardAmount(e.target.value)} />
                         </label>
                       </div>
-                      <div className={`text-right text-xs font-bold pt-1 ${netRemaining <= 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                      <div className={`text-right text-xs font-bold pt-1 ${netRemaining <= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
                         {netRemaining <= 0 ? "Fully Paid" : `Remaining Due: LKR ${Math.round(Math.max(0, netRemaining)).toLocaleString()}`}
                       </div>
                     </div>
                   )}
 
                   {(paymentMethod === "Card" || paymentMethod === "Bank Transfer" || paymentMethod === "Mixed") && (
-                    <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-slate-400 shrink-0">Ref / Transaction #</span>
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/40 px-3 py-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 shrink-0">Ref / Transaction #</span>
                       <input
                         ref={paymentRefInputRef}
                         type="text"
-                        className="w-full max-w-[180px] bg-transparent text-right text-xs font-bold text-sky-300 outline-none placeholder:text-slate-600"
+                        className="w-full max-w-[180px] bg-transparent text-right text-xs font-bold text-sky-700 dark:text-sky-300 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-600"
                         placeholder="Card/Bank reference..."
                         value={paymentReference}
                         onChange={(e) => setPaymentReference(e.target.value)}
@@ -2818,7 +2818,7 @@ export default function POS() {
                   )}
 
                   {paymentMethod === "Store Credit" && (
-                    <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-2.5 text-right text-xs font-bold text-cyan-300">
+                    <div className="rounded-xl border border-cyan-200 dark:border-cyan-500/30 bg-cyan-50 dark:bg-cyan-950/20 p-2.5 text-right text-xs font-bold text-cyan-800 dark:text-cyan-300">
                       Credit Applied: LKR {Math.round(appliedStoreCreditTotal).toLocaleString()} | Remaining Due: LKR {Math.round(dueAfterCredits).toLocaleString()}
                     </div>
                   )}
@@ -2930,12 +2930,12 @@ export default function POS() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
+                <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 p-3">
                   <div className="grid gap-2 sm:grid-cols-[1fr,auto]">
                     <div className="relative">
                       <input
                         type="text"
-                        className="w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 pl-8 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-400/80 transition"
+                        className="w-full rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-950/80 px-3 py-2 pl-8 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-indigo-500 dark:focus:border-indigo-400/80 transition"
                         placeholder="Invoice #, customer name, or phone"
                         value={returnInvoiceLookup}
                         onChange={(e) => setReturnInvoiceLookup(e.target.value)}
@@ -2946,7 +2946,7 @@ export default function POS() {
                           }
                         }}
                       />
-                      <Search size={14} className="absolute left-2.5 top-3 text-slate-500" />
+                      <Search size={14} className="absolute left-2.5 top-3 text-slate-400 dark:text-slate-500" />
                     </div>
                     <button
                       type="button"
@@ -2961,26 +2961,26 @@ export default function POS() {
 
                 {returnInvoicePayload?.selected_invoice ? (
                   <div className="space-y-3">
-                    <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/30 p-3 text-xs text-slate-300 shadow-sm">
+                    <div className="rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-950/30 p-3 text-xs text-slate-700 dark:text-slate-300 shadow-sm">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <span className="text-[10px] uppercase tracking-widest font-bold text-indigo-300">Invoice Ref</span>
-                          <p className="font-bold text-white text-sm">{returnInvoicePayload.selected_invoice.invoice_no}</p>
-                          <p className="text-slate-400 mt-0.5">{returnInvoicePayload.selected_invoice.customer_name || "Walk-in Customer"} • {returnInvoicePayload.selected_invoice.customer_phone || "—"}</p>
+                          <span className="text-[10px] uppercase tracking-widest font-bold text-indigo-700 dark:text-indigo-300">Invoice Ref</span>
+                          <p className="font-bold text-slate-900 dark:text-white text-sm">{returnInvoicePayload.selected_invoice.invoice_no}</p>
+                          <p className="text-slate-500 dark:text-slate-400 mt-0.5">{returnInvoicePayload.selected_invoice.customer_name || "Walk-in Customer"} • {returnInvoicePayload.selected_invoice.customer_phone || "—"}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] uppercase tracking-widest text-slate-400">Payment Method</p>
-                          <span className="inline-block mt-0.5 rounded-md bg-white/10 px-2 py-0.5 font-bold text-indigo-200 text-xs">
+                          <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400">Payment Method</p>
+                          <span className="inline-block mt-0.5 rounded-md bg-indigo-100 dark:bg-white/10 px-2 py-0.5 font-bold text-indigo-900 dark:text-indigo-200 text-xs">
                             {returnInvoicePayload.selected_invoice.payment_method || "Cash"}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3">
-                      <div className="flex items-center justify-between gap-2 mb-2.5 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        <span className="flex items-center gap-1.5"><Tag size={12} className="text-indigo-400" /> Eligible Return Items</span>
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 font-bold text-slate-300">{(returnInvoicePayload.selected_invoice.items || []).filter((row) => Number(row.returnable_qty || 0) > 0).length} available</span>
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        <span className="flex items-center gap-1.5"><Tag size={12} className="text-indigo-600 dark:text-indigo-400" /> Eligible Return Items</span>
+                        <span className="rounded-full bg-slate-200 dark:bg-white/10 px-2 py-0.5 font-bold text-slate-700 dark:text-slate-300">{(returnInvoicePayload.selected_invoice.items || []).filter((row) => Number(row.returnable_qty || 0) > 0).length} available</span>
                       </div>
                       {returnInvoicePayload.selected_invoice.items?.length ? (
                         <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-0.5">
@@ -2995,34 +2995,34 @@ export default function POS() {
                                 onClick={() => setSelectedReturnItem(row)}
                                 className={`w-full rounded-xl border p-3 text-left transition ${
                                   isSelected
-                                    ? "border-indigo-400/80 bg-indigo-500/20 shadow-md shadow-indigo-950/50 ring-1 ring-indigo-400/40"
+                                    ? "border-indigo-600 bg-indigo-50 dark:border-indigo-400/80 dark:bg-indigo-500/20 shadow-md shadow-indigo-500/10 dark:shadow-indigo-950/50 ring-1 ring-indigo-500/30 dark:ring-indigo-400/40"
                                     : isEligible
-                                      ? "border-white/10 bg-slate-950/70 hover:border-indigo-400/40 hover:bg-slate-900"
-                                      : "border-white/5 bg-white/[0.02] opacity-50 cursor-not-allowed"
+                                      ? "border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950/70 hover:border-indigo-300 dark:hover:border-indigo-400/40 hover:bg-slate-50 dark:hover:bg-slate-900"
+                                      : "border-slate-200 dark:border-white/5 bg-slate-100 dark:bg-white/[0.02] opacity-50 cursor-not-allowed"
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="min-w-0">
-                                    <div className={`font-bold text-xs truncate ${isSelected ? "text-white" : "text-slate-200"}`}>{row.product_name}</div>
-                                    <div className="text-[11px] font-semibold text-emerald-400 mt-0.5">Unit price: LKR {Math.round(Number(row.unit_price || 0)).toLocaleString()}</div>
+                                    <div className={`font-bold text-xs truncate ${isSelected ? "text-indigo-900 dark:text-white" : "text-slate-900 dark:text-slate-200"}`}>{row.product_name}</div>
+                                    <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">Unit price: LKR {Math.round(Number(row.unit_price || 0)).toLocaleString()}</div>
                                   </div>
                                   <span className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider transition ${
                                     isSelected
-                                      ? "bg-indigo-500 text-white shadow-sm"
+                                      ? "bg-indigo-600 text-white shadow-sm"
                                       : isEligible
-                                        ? "bg-white/10 text-slate-200 hover:bg-white/20"
-                                        : "bg-white/5 text-slate-500"
+                                        ? "bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-white/20"
+                                        : "bg-slate-200 dark:bg-white/5 text-slate-400 dark:text-slate-500"
                                   }`}>
                                     {isSelected ? "Selected" : isEligible ? "Select" : "Returned"}
                                   </span>
                                 </div>
-                                <div className="mt-2.5 grid grid-cols-3 gap-1.5 text-[10px] text-slate-400 border-t border-white/5 pt-2">
-                                  <div>Sold: <span className="font-bold text-slate-200">{row.sold_qty}</span></div>
-                                  <div>Returned: <span className="font-bold text-slate-200">{row.already_returned_qty}</span></div>
-                                  <div>Eligible: <span className={`font-extrabold ${isEligible ? "text-emerald-400" : "text-rose-400"}`}>{row.returnable_qty}</span></div>
+                                <div className="mt-2.5 grid grid-cols-3 gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-white/5 pt-2">
+                                  <div>Sold: <span className="font-bold text-slate-800 dark:text-slate-200">{row.sold_qty}</span></div>
+                                  <div>Returned: <span className="font-bold text-slate-800 dark:text-slate-200">{row.already_returned_qty}</span></div>
+                                  <div>Eligible: <span className={`font-extrabold ${isEligible ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>{row.returnable_qty}</span></div>
                                 </div>
                                 {row.serial_number && (
-                                  <div className="mt-1.5 text-[10px] font-mono text-indigo-300/80 bg-indigo-500/10 rounded px-1.5 py-0.5 inline-block">
+                                  <div className="mt-1.5 text-[10px] font-mono text-indigo-700 dark:text-indigo-300/80 bg-indigo-50 dark:bg-indigo-500/10 rounded px-1.5 py-0.5 inline-block border border-indigo-200 dark:border-indigo-400/20">
                                     SN: {row.serial_number}
                                   </div>
                                 )}
@@ -3031,25 +3031,25 @@ export default function POS() {
                           })}
                         </div>
                       ) : (
-                        <div className="text-[11px] text-slate-400 py-3 text-center bg-white/[0.02] rounded-lg">No eligible return items found for this invoice.</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 py-3 text-center bg-slate-100 dark:bg-white/[0.02] rounded-lg">No eligible return items found for this invoice.</div>
                       )}
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-slate-900/50 p-3 space-y-3">
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/50 p-3 space-y-3">
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                           Action
                           <select
                             value={returnAction}
                             onChange={(e) => setReturnAction(e.target.value)}
-                            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold text-white outline-none focus:border-indigo-400"
+                            className="mt-1 w-full rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-950/80 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 dark:focus:border-indigo-400"
                           >
                             <option value="refund">Refund Money</option>
                             <option value="exchange">Exchange Product</option>
                             <option value="store_credit">Issue Store Credit</option>
                           </select>
                         </label>
-                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                           Quantity
                           <input
                             type="number"
@@ -3057,17 +3057,17 @@ export default function POS() {
                             max={selectedReturnItem?.returnable_qty || 1}
                             value={returnQuantity}
                             onChange={(e) => setReturnQuantity(Number(e.target.value || 1))}
-                            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs font-bold text-white outline-none focus:border-indigo-400"
+                            className="mt-1 w-full rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-950/80 px-3 py-2 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 dark:focus:border-indigo-400"
                           />
                         </label>
                       </div>
-                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                      <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                         Notes / Reason
                         <textarea
                           value={returnNotes}
                           onChange={(e) => setReturnNotes(e.target.value)}
                           rows={2.5}
-                          className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/80 px-3 py-2 text-xs text-white outline-none resize-none focus:border-indigo-400"
+                          className="mt-1 w-full rounded-lg border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-950/80 px-3 py-2 text-xs text-slate-900 dark:text-white outline-none resize-none focus:border-indigo-500 dark:focus:border-indigo-400"
                           placeholder="Reason for return/exchange or internal note..."
                         />
                       </label>
@@ -3082,8 +3082,8 @@ export default function POS() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-white/10 bg-slate-950/50 p-6 text-center text-xs text-slate-400">
-                    <p className="font-semibold text-slate-300">No Invoice Selected</p>
+                  <div className="rounded-xl border border-dashed border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/50 p-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">No Invoice Selected</p>
                     <p className="mt-1 text-[11px] text-slate-500">Enter an invoice number or customer lookup above to inspect eligible items for return/exchange.</p>
                   </div>
                 )}
@@ -3322,40 +3322,40 @@ export default function POS() {
         }
       >
         <div className="space-y-4 p-4">
-          <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-center">
-            <div className="mx-auto mb-2 h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-300 grid place-items-center">
+          <div className="rounded-3xl border border-emerald-300 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 p-4 text-center">
+            <div className="mx-auto mb-2 h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 grid place-items-center">
               <Check size={24} />
             </div>
-            <p className="text-sm font-bold uppercase tracking-[0.24em] text-emerald-300">Payment Confirmed</p>
-            <p className="mt-2 text-lg font-black text-white">Sale completed successfully</p>
+            <p className="text-sm font-bold uppercase tracking-[0.24em] text-emerald-800 dark:text-emerald-300">Payment Confirmed</p>
+            <p className="mt-2 text-lg font-black text-slate-900 dark:text-white">Sale completed successfully</p>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
-            <div className="grid gap-2 text-sm text-slate-300">
+          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/80 p-4">
+            <div className="grid gap-2 text-sm text-slate-700 dark:text-slate-300">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-500">Invoice No</span>
-                <span className="font-semibold text-white">{lastSale?.invoice_no || lastSale?.sale_id || lastSale?.id}</span>
+                <span className="font-semibold text-slate-900 dark:text-white">{lastSale?.invoice_no || lastSale?.sale_id || lastSale?.id}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-500">Customer</span>
-                <span className="font-semibold text-white">{lastSale?.customer_name || lastSale?.customer?.name || "Walk-in Customer"}</span>
+                <span className="font-semibold text-slate-900 dark:text-white">{lastSale?.customer_name || lastSale?.customer?.name || "Walk-in Customer"}</span>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-slate-500">Total</span>
-                <span className="font-semibold text-white">LKR {Math.round(lastSale?.total || lastSale?.grand_total || 0).toLocaleString()}</span>
+                <span className="font-semibold text-slate-900 dark:text-white">LKR {Math.round(lastSale?.total || lastSale?.grand_total || 0).toLocaleString()}</span>
               </div>
             </div>
           </div>
 
           {lastSale?.customer?.phone || lastSale?.customer_phone ? (
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
-              <p className="font-semibold text-slate-200">Send invoice to:</p>
-              <p className="mt-1 text-sm text-white">{lastSale?.customer?.phone || lastSale?.customer_phone}</p>
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-3 text-sm text-slate-700 dark:text-slate-300">
+              <p className="font-semibold text-slate-800 dark:text-slate-200">Send invoice to:</p>
+              <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{lastSale?.customer?.phone || lastSale?.customer_phone}</p>
             </div>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
-              <p className="font-semibold text-slate-200">No customer contact available.</p>
-              <p className="mt-1 text-sm text-slate-400">You can print the bill or add the customer for later digital delivery.</p>
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-3 text-sm text-slate-700 dark:text-slate-300">
+              <p className="font-semibold text-slate-800 dark:text-slate-200">No customer contact available.</p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">You can print the bill or add the customer for later digital delivery.</p>
             </div>
           )}
 

@@ -52,6 +52,24 @@ function formatPercentage(value, total) {
   return ratio % 1 === 0 ? `${ratio.toFixed(0)}%` : `${ratio.toFixed(1)}%`;
 }
 
+function formatTransactionDate(dateVal) {
+  if (!dateVal) return { text: "-", isToday: false, isYesterday: false, dateLabel: "", timeStr: "-" };
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return { text: "-", isToday: false, isYesterday: false, dateLabel: "", timeStr: "-" };
+
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+  const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dateLabel = isToday ? "Today" : isYesterday ? "Yesterday" : d.toLocaleDateString([], { month: "short", day: "numeric" });
+
+  return { isToday, isYesterday, dateLabel, timeStr };
+}
+
 function AnalyticsSection() {
   const [isOpen, setIsOpen] = useState(true);
   const [data, setData] = useState(null);
@@ -854,8 +872,8 @@ export default function Dashboard() {
           </SectionCard>
 
           <SectionCard
-            title="Today's Sales"
-            subtitle="Latest transactions & quick actions"
+            title="Recent Transactions"
+            subtitle="Latest sales & quick actions"
             className="dashboard-table-card xl:col-span-6 overflow-hidden"
             right={
               <Button variant="ghost" size="sm" onClick={() => navigate("/pos")}>
@@ -870,7 +888,7 @@ export default function Dashboard() {
                   <tr>
                     <th>Invoice</th>
                     <th>Customer</th>
-                    <th>Time</th>
+                    <th>Date / Time</th>
                     <th>Total</th>
                     <th>Method</th>
                     <th className="text-right">Actions</th>
@@ -879,7 +897,7 @@ export default function Dashboard() {
                 <tbody>
                   {tx.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-sm text-slate-400">No completed sales yet today.</td>
+                      <td colSpan={6} className="py-8 text-center text-sm text-slate-400">No recent transactions found.</td>
                     </tr>
                   ) : tx.slice(0, 6).map((t, idx) => (
                     <tr key={t.id || idx}>
@@ -888,14 +906,18 @@ export default function Dashboard() {
                         <div>{t.customer || "Walk-in"}</div>
                         {t.customer_phone && <div className="text-[10px] text-slate-400 font-normal">{t.customer_phone}</div>}
                       </td>
-                      <td className="text-xs text-slate-400 font-mono">
+                      <td className="text-xs font-mono">
                         {(() => {
-                          const dateVal = t.date || t.created_at || t.timestamp;
-                          if (!dateVal) return "-";
-                          const d = new Date(dateVal);
-                          return isNaN(d.getTime())
-                            ? "-"
-                            : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                          const { isToday, dateLabel, timeStr } = formatTransactionDate(t.date || t.created_at || t.timestamp);
+                          if (timeStr === "-") return <span className="text-slate-400">-</span>;
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-slate-200 font-medium">{timeStr}</span>
+                              <span className={`text-[10px] font-semibold tracking-wide ${isToday ? "text-emerald-400" : "text-slate-400"}`}>
+                                {dateLabel}
+                              </span>
+                            </div>
+                          );
                         })()}
                       </td>
                       <td className="font-semibold text-emerald-300">LKR {(t.total || 0).toLocaleString()}</td>
