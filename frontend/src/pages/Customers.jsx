@@ -471,7 +471,7 @@ export default function Customers() {
             <button
               type="button"
               onClick={(e) => setColumnsMenuAnchor(e.currentTarget)}
-              className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-black/20 text-slate-400 hover:bg-white/10 hover:text-white"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-black/20 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white"
               aria-label="Choose visible columns"
             >
               <FileText size={14} />

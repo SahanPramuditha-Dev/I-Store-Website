@@ -28,6 +28,7 @@ import {
   Wallet,
   RefreshCw,
   MessageSquare,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFetch } from "../hooks/useFetch";
@@ -486,61 +487,105 @@ export default function Layout() {
           </div>
 
           {showNotifications && (
-            <div className="dashboard-notifications animate-in fade-in slide-in-from-top-2 absolute right-3 top-16 z-50 w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-4 shadow-2xl xl:right-5 xl:top-20">
-              <div className="mb-4 flex items-center justify-between gap-2">
-                <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Notifications</h4>
-                {notificationsAllowed ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowNotifications(false);
-                      navigateIfAllowed("/notifications");
-                    }}
-                    className="text-[10px] font-black uppercase tracking-wider text-indigo-300 hover:text-indigo-100"
-                  >
-                    Open Center
-                  </button>
-                ) : null}
-              </div>
-              <div className="space-y-2">
-                {notifications.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`rounded-xl border p-3 border-slate-200 dark:border-white/10 ${item.is_read ? "opacity-60" : ""}`}
-                    onClick={async () => {
-                      if (!item?.id) return;
-                      await api.put(`/notifications/${item.id}/read`).catch(() => {});
-                      refreshNotifications?.();
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</p>
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{String(item.severity || "info")}</span>
-                    </div>
-                    <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-400">{item.message}</p>
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="text-[9px] text-slate-500">{item.source_module || "system"}</span>
-                      {!item.is_acknowledged ? (
-                        <button
-                          type="button"
-                          onClick={async (event) => {
-                            event.stopPropagation();
-                            await api.put(`/notifications/${item.id}/ack`).catch(() => {});
-                            refreshNotifications?.();
-                          }}
-                          className="rounded-md border border-slate-300 dark:border-white/10 px-2 py-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-200 hover:border-indigo-500/50 hover:bg-indigo-50 dark:hover:bg-white/5"
-                        >
-                          Acknowledge
-                        </button>
-                      ) : (
-                        <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-300">Acknowledged</span>
-                      )}
-                    </div>
+            <>
+              {/* Backdrop for outside-click dismiss */}
+              <div
+                className="fixed inset-0 z-[9990]"
+                onClick={() => setShowNotifications(false)}
+              />
+              <div className="dashboard-notifications animate-in fade-in slide-in-from-top-2 fixed sm:absolute right-3 sm:right-5 top-16 sm:top-20 z-[9995] w-[calc(100vw-1.5rem)] sm:w-96 max-h-[calc(100vh-5.5rem)] rounded-2xl p-0 shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
+                <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between gap-2 shrink-0 bg-slate-50/80 dark:bg-slate-950/40">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-400">Notifications</h4>
+                    {notifications.length > 0 && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 font-mono">
+                        {notifications.length}
+                      </span>
+                    )}
                   </div>
-                ))}
-                {notifications.length === 0 && <p className="py-4 text-center text-xs text-slate-500">No alerts</p>}
+                  <div className="flex items-center gap-2">
+                    {notificationsAllowed ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNotifications(false);
+                          navigateIfAllowed("/notifications");
+                        }}
+                        className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300 hover:underline"
+                      >
+                        Open Center
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setShowNotifications(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition"
+                      title="Close"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 overflow-y-auto space-y-2 flex-1 max-h-[calc(100vh-10rem)]">
+                  {notifications.map((item) => {
+                    const severity = String(item.severity || "info").toLowerCase();
+                    const isCritical = severity === "critical" || severity === "danger" || severity === "high";
+                    const isWarning = severity === "warning" || severity === "medium";
+                    return (
+                      <div
+                        key={item.id}
+                        className={`rounded-xl border p-3 transition border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-slate-950/40 hover:border-slate-300 dark:hover:border-white/20 ${item.is_read ? "opacity-60" : ""}`}
+                        onClick={async () => {
+                          if (!item?.id) return;
+                          await api.put(`/notifications/${item.id}/read`).catch(() => {});
+                          refreshNotifications?.();
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{item.title}</p>
+                          <span
+                            className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                              isCritical
+                                ? "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                                : isWarning
+                                ? "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+                                : "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+                            }`}
+                          >
+                            {String(item.severity || "info")}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300 leading-normal">{item.message}</p>
+                        <div className="mt-2.5 flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60 dark:border-white/5">
+                          <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500 uppercase">{item.source_module || "system"}</span>
+                          {!item.is_acknowledged ? (
+                            <button
+                              type="button"
+                              onClick={async (event) => {
+                                event.stopPropagation();
+                                await api.put(`/notifications/${item.id}/ack`).catch(() => {});
+                                refreshNotifications?.();
+                              }}
+                              className="rounded-lg border border-slate-300 dark:border-white/10 px-2.5 py-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-200 bg-white dark:bg-white/5 hover:border-indigo-500/50 hover:bg-indigo-50 dark:hover:bg-white/10 transition"
+                            >
+                              Acknowledge
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Acknowledged</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {notifications.length === 0 && (
+                    <div className="py-8 text-center text-xs text-slate-400">
+                      No alerts
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           {showCommandPalette && (

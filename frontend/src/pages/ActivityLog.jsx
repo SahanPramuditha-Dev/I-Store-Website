@@ -694,50 +694,50 @@ export default function ActivityLog() {
         </SectionCard>
       </div>
 
-      <AppDrawer open={!!selectedEvent} onClose={() => setSelectedEvent(null)} panelClassName="max-w-xl bg-slate-950/95">
+      <AppDrawer open={!!selectedEvent} onClose={() => setSelectedEvent(null)} panelClassName="max-w-xl bg-white dark:bg-slate-950/95 border-l border-slate-200 dark:border-white/10">
         {selectedEvent && (
             <div className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-black text-white">Audit Event Details</h3>
-                  <p className="text-xs text-slate-400 mt-1">Immutable record for accountability and forensic review.</p>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">Audit Event Details</h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Immutable record for accountability and forensic review.</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedEvent(null)}
-                  className="rounded-lg border border-white/10 bg-white/5 p-2 text-slate-300 hover:bg-white/10"
+                  className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10"
                 >
                   <X size={16} />
                 </button>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Timestamp</p>
-                  <p className="text-slate-200 mt-1">{formatDateTime(selectedEvent.timestamp)}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{formatDateTime(selectedEvent.timestamp)}</p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Status</p>
                   <div className="mt-1 flex items-center gap-1">
                     <Badge tone={statusTone(selectedEvent.status)}>{selectedEvent.status}</Badge>
                     <Badge tone={severityTone(selectedEvent.severity)}>{selectedEvent.severity}</Badge>
                   </div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">User</p>
-                  <p className="text-slate-200 mt-1">{selectedEvent.user || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.user || "-"}</p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Role</p>
-                  <p className="text-slate-200 mt-1">{selectedEvent.role || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.role || "-"}</p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Action</p>
-                  <p className="text-slate-200 mt-1">{selectedEvent.action || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.action || "-"}</p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Module</p>
-                  <p className="text-slate-200 mt-1">{selectedEvent.module || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.module || "-"}</p>
                 </div>
               </div>
 

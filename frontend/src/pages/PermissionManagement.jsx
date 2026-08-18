@@ -909,13 +909,13 @@ export default function PermissionManagement() {
 
       {activeTab === "roles" && changedCount > 0 && (
         <div className="fixed bottom-3 left-0 right-0 px-4 z-40">
-          <div className="mx-auto max-w-[1400px] rounded-xl border border-indigo-400/30 bg-slate-950/90 backdrop-blur-md px-3 py-3">
+          <div className="mx-auto max-w-[1400px] rounded-xl border border-slate-200 dark:border-indigo-400/30 bg-white dark:bg-slate-950/90 shadow-xl backdrop-blur-md px-3 py-3">
             <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px_220px] gap-2 items-center">
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-center">
-                <div className="text-xs text-slate-300">
-                  <span className="font-semibold text-amber-200">{changedCount} unsaved changes</span> in {selectedRole?.display_name || "role"}.
-                  {" "}Affected users: <span className="text-slate-100 font-semibold">{affectedUsers.length}</span>,
-                  sessions: <span className="text-slate-100 font-semibold">{affectedSessionsCount}</span>.
+                <div className="text-xs text-slate-700 dark:text-slate-300">
+                  <span className="font-semibold text-amber-600 dark:text-amber-200">{changedCount} unsaved changes</span> in {selectedRole?.display_name || "role"}.
+                  {" "}Affected users: <span className="text-slate-900 dark:text-slate-100 font-semibold">{affectedUsers.length}</span>,
+                  sessions: <span className="text-slate-900 dark:text-slate-100 font-semibold">{affectedSessionsCount}</span>.
                 </div>
                 <Input
                   placeholder="Reason for permission changes"
@@ -923,7 +923,7 @@ export default function PermissionManagement() {
                   onChange={(e) => setChangeReason(e.target.value)}
                 />
               </div>
-              <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+              <label className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
                 <input type="checkbox" checked={confirmSensitive} onChange={(e) => setConfirmSensitive(e.target.checked)} />
                 Confirm Sensitive Changes
               </label>
@@ -938,7 +938,7 @@ export default function PermissionManagement() {
         </div>
       )}
 
-      <AppDrawer open={reviewOpen} onClose={() => setReviewOpen(false)} panelClassName="max-w-xl bg-slate-950">
+      <AppDrawer open={reviewOpen} onClose={() => setReviewOpen(false)} panelClassName="max-w-xl bg-white dark:bg-slate-950 border-l border-slate-200 dark:border-white/10">
             <div className="shrink-0 border-b border-white/10 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1019,7 +1019,7 @@ export default function PermissionManagement() {
         open={roleModal.open}
         onClose={() => setRoleModal({ open: false, mode: "create", values: { ...DEFAULT_ROLE_FORM } })}
         title={roleModal.mode === "create" ? "Create Role" : "Edit Role"}
-        panelClassName="max-w-xl bg-slate-950"
+        panelClassName="max-w-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-white/10"
       >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-4">
               <Input
