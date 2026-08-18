@@ -97,10 +97,11 @@ export function FilterToolbar({
 
 export function StatCard({ title, value, tone = "white", children }) {
   const toneClass =
-    tone === "sky" ? "text-sky-600 dark:text-sky-300"
-    : tone === "green" ? "text-emerald-600 dark:text-emerald-300"
-    : tone === "amber" ? "text-amber-600 dark:text-amber-300"
-    : tone === "red" ? "text-rose-600 dark:text-rose-300"
+    tone === "success" || tone === "green" ? "text-semantic-success"
+    : tone === "warning" || tone === "amber" ? "text-semantic-warning"
+    : tone === "danger" || tone === "red" ? "text-semantic-danger"
+    : tone === "info" || tone === "sky" ? "text-semantic-info"
+    : tone === "ai" || tone === "purple" ? "text-semantic-ai"
     : "text-slate-900 dark:text-white";
 
   return (
@@ -116,15 +117,15 @@ export function KpiCard({
   value,
   hint,
   icon,
-  tone = "sky", // sky | green | amber | red | indigo | violet
+  tone = "info", // info | success | warning | danger | brand | ai
   className = "",
 }) {
   const toneClass =
-    tone === "green" ? "kpi kpi-green"
-    : tone === "amber" ? "kpi kpi-amber"
-    : tone === "red" ? "kpi kpi-red"
-    : tone === "indigo" ? "kpi kpi-indigo"
-    : tone === "violet" ? "kpi kpi-violet"
+    tone === "success" || tone === "green" ? "kpi kpi-green"
+    : tone === "warning" || tone === "amber" ? "kpi kpi-amber"
+    : tone === "danger" || tone === "red" ? "kpi kpi-red"
+    : tone === "brand" || tone === "indigo" ? "kpi kpi-indigo"
+    : tone === "ai" || tone === "violet" || tone === "purple" ? "kpi kpi-violet"
     : "kpi kpi-sky";
 
   return (
@@ -928,11 +929,12 @@ export function CustomerSelect({
 
 export function Badge({ children, className = "", tone = "slate" }) {
   const toneClass =
-    tone === "green" ? "badge badge-green"
-    : tone === "red" ? "badge badge-red"
-    : tone === "amber" ? "badge badge-amber"
-    : tone === "sky" ? "badge badge-sky"
-    : tone === "indigo" ? "badge badge-indigo"
+    tone === "success" || tone === "green" ? "badge badge-success"
+    : tone === "danger" || tone === "red" ? "badge badge-danger"
+    : tone === "warning" || tone === "amber" ? "badge badge-warning"
+    : tone === "info" || tone === "sky" ? "badge badge-info"
+    : tone === "brand" || tone === "indigo" ? "badge badge-indigo"
+    : tone === "ai" || tone === "purple" || tone === "violet" ? "badge badge-ai"
     : "badge badge-slate";
   return <span className={cx(toneClass, className)}>{children}</span>;
 }

@@ -193,10 +193,10 @@ function toneFrom(value) {
 }
 
 function statusTone(status) {
-  if (status === "Verified" || status === "Resolved") return "green";
-  if (status === "Flagged") return "red";
-  if (status === "Pending Review") return "amber";
-  return "indigo";
+  if (status === "Verified" || status === "Resolved") return "success";
+  if (status === "Flagged") return "danger";
+  if (status === "Pending Review") return "warning";
+  return "info";
 }
 
 function formatCell(value) {

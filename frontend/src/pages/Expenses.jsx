@@ -21,10 +21,10 @@ function money(value) {
 
 function statusTone(status) {
   const key = String(status || "").toLowerCase();
-  if (key === "paid") return "green";
-  if (key === "approved") return "sky";
-  if (key === "rejected" || key === "cancelled") return "red";
-  return "amber";
+  if (key === "paid") return "success";
+  if (key === "approved") return "info";
+  if (key === "rejected" || key === "cancelled") return "danger";
+  return "warning";
 }
 
 function emptyForm() {
