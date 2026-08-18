@@ -638,21 +638,21 @@ export default function Inventory() {
       </section>
 
       <div className="min-h-0 flex-1">
-        <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-md">
-          <div className="p-6 border-b border-white/5 space-y-4 bg-white/[0.01]">
+        <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-sm dark:shadow-none backdrop-blur-md">
+          <div className="p-6 border-b border-slate-200 dark:border-white/5 space-y-4 bg-slate-50/50 dark:bg-white/[0.01]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="relative group flex-1 min-w-[220px] xl:min-w-[280px]">
-                <Search size={18} className="absolute left-4 top-3.5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                <Search size={18} className="absolute left-4 top-3.5 text-slate-400 dark:text-slate-500 group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400 transition-colors" />
                 <input
                   ref={searchRef}
                   value={query}
                   onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                   placeholder="Search by product, SKU, barcode, category"
-                  className="w-full bg-[#0f172a] border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/15 transition-all"
+                  className="w-full bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 transition-all"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-[#0f172a] border-white/10 text-xs">
+                <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-white dark:bg-[#0f172a] border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs">
                   <option value="All">All Status</option>
                   <option value="In Stock">In Stock</option>
                   <option value="Low Stock">Low Stock</option>

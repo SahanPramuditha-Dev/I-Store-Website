@@ -82,21 +82,21 @@ function formatDateTime(isoStr) {
 function StatusBadge({ status, loading }) {
   if (loading) {
     return (
-      <div className="flex items-center gap-2 bg-slate-800/80 border border-white/10 text-slate-300 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md">
-        <Loader2 size={13} className="animate-spin text-cyan-400" /> Checking...
+      <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm">
+        <Loader2 size={13} className="animate-spin text-cyan-600 dark:text-cyan-400" /> Checking...
       </div>
     );
   }
 
   const variants = {
-    CONNECTED:    { bg: "bg-emerald-500/15", border: "border-emerald-500/30", text: "text-emerald-300", icon: <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />, label: "CONNECTED" },
-    UNPAIRED:     { bg: "bg-amber-500/15",   border: "border-amber-500/30",   text: "text-amber-300",   icon: <AlertCircle size={13} className="text-amber-400 shrink-0" />,  label: "UNPAIRED — Scan QR" },
-    DISCONNECTED: { bg: "bg-rose-500/15",    border: "border-rose-500/30",    text: "text-rose-300",    icon: <XCircle size={13} className="text-rose-400 shrink-0" />,       label: "DISCONNECTED" },
-    OFFLINE:      { bg: "bg-rose-500/15",    border: "border-rose-500/30",    text: "text-rose-300",    icon: <XCircle size={13} className="text-rose-400 shrink-0" />,       label: "MICROSERVICE OFFLINE" },
+    CONNECTED:    { bg: "bg-emerald-50 dark:bg-emerald-500/15", border: "border-emerald-300 dark:border-emerald-500/30", text: "text-emerald-800 dark:text-emerald-300", icon: <CheckCircle2 size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0" />, label: "CONNECTED" },
+    UNPAIRED:     { bg: "bg-amber-50 dark:bg-amber-500/15",   border: "border-amber-300 dark:border-amber-500/30",   text: "text-amber-800 dark:text-amber-300",   icon: <AlertCircle size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />,  label: "UNPAIRED — Scan QR" },
+    DISCONNECTED: { bg: "bg-rose-50 dark:bg-rose-500/15",    border: "border-rose-300 dark:border-rose-500/30",    text: "text-rose-800 dark:text-rose-300",    icon: <XCircle size={13} className="text-rose-600 dark:text-rose-400 shrink-0" />,       label: "DISCONNECTED" },
+    OFFLINE:      { bg: "bg-rose-50 dark:bg-rose-500/15",    border: "border-rose-300 dark:border-rose-500/30",    text: "text-rose-800 dark:text-rose-300",    icon: <XCircle size={13} className="text-rose-600 dark:text-rose-400 shrink-0" />,       label: "MICROSERVICE OFFLINE" },
   };
-  const v = variants[status] || { bg: "bg-slate-800", border: "border-white/10", text: "text-slate-300", icon: <Loader2 size={13} className="animate-spin" />, label: status || "INITIALIZING" };
+  const v = variants[status] || { bg: "bg-slate-100 dark:bg-slate-800", border: "border-slate-200 dark:border-white/10", text: "text-slate-700 dark:text-slate-300", icon: <Loader2 size={13} className="animate-spin" />, label: status || "INITIALIZING" };
   return (
-    <div className={`flex items-center gap-2 ${v.bg} border ${v.border} ${v.text} px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-md`}>
+    <div className={`flex items-center gap-2 ${v.bg} border ${v.border} ${v.text} px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm`}>
       {v.icon}
       <span>{v.label}</span>
     </div>

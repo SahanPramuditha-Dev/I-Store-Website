@@ -3596,6 +3596,31 @@ html:not(.dark) .dashboard-health-item span.text-slate-200 {
   color: #1e293b !important;
 }
 
+html:not(.dark) .app-tab-strip {
+  background: #ffffff !important;
+  border-color: var(--border-default) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+html:not(.dark) .app-tab-strip a,
+html:not(.dark) .app-tab-strip button {
+  color: #64748b;
+}
+
+html:not(.dark) .app-tab-strip a:hover,
+html:not(.dark) .app-tab-strip button:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+html:not(.dark) .app-tab-strip a.active,
+html:not(.dark) .app-tab-strip button.active,
+html:not(.dark) .app-tab-strip a.is-active,
+html:not(.dark) .app-tab-strip button.is-active {
+  background: var(--brand-primary) !important;
+  color: #ffffff !important;
+}
+
 html:not(.dark) .dashboard-chart-card,
 html:not(.dark) .dashboard-table-card,
 html:not(.dark) .dashboard-actions-card {
@@ -4643,10 +4668,10 @@ html:not(.dark) .repairs-table-shell {
   }
 }
 
-/* Global Recharts Dark Theme Tooltip Contrast Overrides */
+/* Global Recharts Theme-Adaptive Tooltip Overrides */
 .recharts-default-tooltip {
   background-color: #0f172a !important;
-  border: 1px solid rgba(6, 182, 212, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 12px !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7) !important;
   padding: 8px 12px !important;
@@ -4671,6 +4696,34 @@ html:not(.dark) .repairs-table-shell {
 .recharts-tooltip-item-value,
 .recharts-tooltip-item-unit {
   color: #ffffff !important;
+}
+
+html:not(.dark) .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08) !important;
+}
+
+html:not(.dark) .recharts-tooltip-label {
+  color: #4f46e5 !important;
+}
+
+html:not(.dark) .recharts-tooltip-item {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .recharts-tooltip-item-name,
+html:not(.dark) .recharts-tooltip-item-value,
+html:not(.dark) .recharts-tooltip-item-unit {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .recharts-cartesian-grid line {
+  stroke: #f1f5f9 !important;
+}
+
+html:not(.dark) .recharts-text {
+  fill: #64748b !important;
 }
 
 
