@@ -439,7 +439,6 @@ export default function Dashboard() {
     <PageContainer className="dashboard-page pb-4 pr-1">
       <div className="space-y-2.5">
         <PageHeader
-          eyebrow="Live Business Summary"
           title="Dashboard"
           subtitle={`Welcome back, ${username}. Here's what's happening today.`}
           action={

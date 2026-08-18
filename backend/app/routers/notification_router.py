@@ -99,32 +99,54 @@ def _ensure_runtime_schema(db: Session) -> None:
     _RUNTIME_SCHEMA_READY = True
 
 
-def _exists_recent(
-    db: Session,
-    *,
-    notif_type: str,
-    title: str,
-    entity_type: str | None,
-    entity_id: int | None,
-    since: datetime,
-) -> bool:
-    query = db.query(Notification).filter(
-        Notification.type == notif_type,
-        Notification.title == title,
-        Notification.created_at >= since,
-    )
-    if entity_type is None:
-        query = query.filter(Notification.entity_type.is_(None))
-    else:
-        query = query.filter(Notification.entity_type == entity_type)
-    if entity_id is None:
-        query = query.filter(Notification.entity_id.is_(None))
-    else:
-        query = query.filter(Notification.entity_id == entity_id)
-    return query.first() is not None
+def _serialize_notification(row: Notification) -> dict:
+    source = str(row.source_module or "system").lower()
+    notif_type = str(row.type or "").lower()
+
+    action_url = "/notifications"
+    action_label = "View"
+
+    if source == "backup" or "backup" in notif_type:
+        action_url = "/settings"
+        action_label = "Backup Settings"
+    elif source == "inventory" or "stock" in notif_type:
+        action_url = "/inventory"
+        action_label = "View Stock"
+    elif source == "repairs" or "repair" in notif_type:
+        action_url = "/repairs"
+        action_label = "View Repair"
+    elif source == "pos" or "payment" in notif_type or "balance" in notif_type:
+        action_url = "/pos"
+        action_label = "Open POS"
+    elif source == "warranty" or "warranty" in notif_type:
+        action_url = "/warranty"
+        action_label = "View Warranty"
+
+    return {
+        "id": row.id,
+        "type": row.type,
+        "title": row.title,
+        "message": row.message,
+        "is_read": bool(row.is_read),
+        "read_at": row.read_at.isoformat() if row.read_at else None,
+        "is_acknowledged": bool(row.is_acknowledged),
+        "acknowledged_at": row.acknowledged_at.isoformat() if row.acknowledged_at else None,
+        "acknowledged_by_user_id": row.acknowledged_by_user_id,
+        "severity": row.severity or "medium",
+        "source_module": row.source_module or "system",
+        "escalation_level": row.escalation_level or 0,
+        "due_at": row.due_at.isoformat() if row.due_at else None,
+        "entity_type": row.entity_type,
+        "entity_id": row.entity_id,
+        "is_archived": bool(row.is_archived),
+        "archived_at": row.archived_at.isoformat() if row.archived_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "action_url": action_url,
+        "action_label": action_label,
+    }
 
 
-def _add_notification(
+def _add_or_update_notification(
     db: Session,
     *,
     notif_type: str,
@@ -137,16 +159,34 @@ def _add_notification(
     entity_type: str | None = None,
     entity_id: int | None = None,
 ) -> bool:
-    dedupe_since = utcnow() - timedelta(hours=24)
-    if _exists_recent(
-        db,
-        notif_type=notif_type,
-        title=title,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        since=dedupe_since,
-    ):
+    query = db.query(Notification).filter(
+        Notification.is_archived == False,  # noqa: E712
+        Notification.type == notif_type,
+    )
+    if entity_type is not None and entity_id is not None:
+        query = query.filter(
+            Notification.entity_type == entity_type,
+            Notification.entity_id == entity_id,
+        )
+    else:
+        query = query.filter(Notification.title == title)
+
+    existing_items = query.order_by(Notification.created_at.desc()).all()
+    if existing_items:
+        primary = existing_items[0]
+        primary.title = title
+        primary.message = message
+        primary.severity = str(severity or "medium").lower()
+        primary.source_module = source_module
+        primary.escalation_level = int(escalation_level or 0)
+        primary.due_at = due_at
+
+        # Soft-archive any redundant duplicates that piled up previously
+        for duplicate in existing_items[1:]:
+            duplicate.is_archived = True
+            duplicate.archived_at = utcnow()
         return False
+
     db.add(
         Notification(
             type=notif_type,
@@ -159,6 +199,8 @@ def _add_notification(
             entity_type=entity_type,
             entity_id=entity_id,
             is_read=False,
+            is_acknowledged=False,
+            is_archived=False,
             created_at=utcnow(),
         )
     )
@@ -170,6 +212,7 @@ def _refresh_notifications(db: Session) -> dict:
     now = _normalize_naive_utc(utcnow()) or utcnow()
     created = 0
 
+    # 1. Low stock check
     low_stock_items = (
         db.query(InventoryItem)
         .filter(InventoryItem.quantity <= InventoryItem.low_stock_threshold)
@@ -177,21 +220,26 @@ def _refresh_notifications(db: Session) -> dict:
         .limit(50)
         .all()
     )
+    active_low_stock_ids = set()
     for item in low_stock_items:
+        active_low_stock_ids.add(item.id)
         title = f"Low Stock: {item.name}"
-        message = f"{item.name} stock is {int(item.quantity or 0)} (threshold {int(item.low_stock_threshold or 0)})."
-        if _add_notification(
+        qty = int(item.quantity or 0)
+        threshold = int(item.low_stock_threshold or 0)
+        message = f"{item.name} stock is {qty} (minimum threshold is {threshold})."
+        if _add_or_update_notification(
             db,
             notif_type="Low Stock",
             title=title,
             message=message,
-            severity="high" if int(item.quantity or 0) <= 0 else "medium",
+            severity="critical" if qty <= 0 else ("high" if qty <= threshold / 2 else "medium"),
             source_module="inventory",
             entity_type="InventoryItem",
             entity_id=item.id,
         ):
             created += 1
 
+    # 2. Overdue repairs check
     overdue_repairs = (
         db.query(RepairTicket)
         .filter(
@@ -203,18 +251,21 @@ def _refresh_notifications(db: Session) -> dict:
         .limit(50)
         .all()
     )
+    active_overdue_repair_ids = set()
     for repair in overdue_repairs:
         eta = _normalize_naive_utc(repair.estimated_completion)
         if isinstance(eta, str):
             eta = _parse_dt(eta)
         if not isinstance(eta, datetime):
             continue
+        active_overdue_repair_ids.add(repair.id)
         overdue_days = max(0, int((now - eta).total_seconds() // 86400))
         escalation_level = 2 if overdue_days >= 3 else (1 if overdue_days >= 1 else 0)
         severity = "critical" if escalation_level >= 2 else "high"
         title = f"Overdue Repair: {repair.ticket_no}"
-        message = f"Repair {repair.ticket_no} for {repair.device_model} is overdue by {overdue_days} day(s)."
-        if _add_notification(
+        eta_formatted = eta.strftime("%b %d, %Y")
+        message = f"Repair {repair.ticket_no} for {repair.device_model or 'Device'} is overdue by {overdue_days} day(s) (ETA was {eta_formatted})."
+        if _add_or_update_notification(
             db,
             notif_type="Overdue Repair",
             title=title,
@@ -228,6 +279,7 @@ def _refresh_notifications(db: Session) -> dict:
         ):
             created += 1
 
+    # 3. Pending balance on sales
     pending_sales = (
         db.query(Sale)
         .filter(
@@ -240,12 +292,14 @@ def _refresh_notifications(db: Session) -> dict:
         .limit(50)
         .all()
     )
+    active_pending_sale_ids = set()
     for sale in pending_sales:
+        active_pending_sale_ids.add(sale.id)
         invoice_no = sale.invoice_no or f"INV-{sale.id:05d}"
         balance_due = round(float(sale.balance_due or max(0.0, float(sale.total or 0))), 2)
         title = f"Pending Balance: {invoice_no}"
         message = f"Invoice {invoice_no} has outstanding payment of LKR {balance_due:,.2f}."
-        if _add_notification(
+        if _add_or_update_notification(
             db,
             notif_type="Pending Balance",
             title=title,
@@ -257,6 +311,7 @@ def _refresh_notifications(db: Session) -> dict:
         ):
             created += 1
 
+    # 4. Warranty expiry check
     warranty_horizon = now + timedelta(days=7)
     expiring_warranties = (
         db.query(WarrantyRecord)
@@ -269,18 +324,21 @@ def _refresh_notifications(db: Session) -> dict:
         .limit(50)
         .all()
     )
+    active_warranty_ids = set()
     for warranty in expiring_warranties:
         end_date = _normalize_naive_utc(warranty.end_date)
         if isinstance(end_date, str):
             end_date = _parse_dt(end_date)
         if not isinstance(end_date, datetime):
             continue
+        active_warranty_ids.add(warranty.id)
         title = f"Warranty Expiry: {warranty.warranty_code}"
+        end_date_str = end_date.strftime("%b %d, %Y")
         message = (
-            f"Warranty {warranty.warranty_code} for {warranty.product_or_service_name} "
-            f"expires on {end_date.date().isoformat()}."
+            f"Warranty {warranty.warranty_code} for {warranty.product_or_service_name or 'Item'} "
+            f"expires on {end_date_str}."
         )
-        if _add_notification(
+        if _add_or_update_notification(
             db,
             notif_type="Warranty Expiry",
             title=title,
@@ -293,17 +351,23 @@ def _refresh_notifications(db: Session) -> dict:
         ):
             created += 1
 
+    # 5. Backup freshness check
     last_backup_row = db.query(AppSetting).filter(AppSetting.key == "last_backup_at").first()
     last_backup_at = _parse_dt(last_backup_row.value if last_backup_row else None)
     last_backup_at = _normalize_naive_utc(last_backup_at)
-    if not last_backup_at or (now - last_backup_at) > timedelta(hours=48):
+    backup_is_stale = not last_backup_at or (now - last_backup_at) > timedelta(hours=48)
+    if backup_is_stale:
         title = "Backup Stale"
-        message = (
-            "No successful backup found in the last 48 hours."
-            if not last_backup_at
-            else f"Last backup was at {last_backup_at.isoformat()}."
-        )
-        if _add_notification(
+        if not last_backup_at:
+            message = "No successful backup recorded in the system."
+        else:
+            delta = now - last_backup_at
+            days = delta.days
+            hours = int(delta.seconds // 3600)
+            time_ago = f"{days}d ago" if days > 0 else f"{hours}h ago"
+            formatted_time = last_backup_at.strftime("%b %d, %Y at %I:%M %p")
+            message = f"Last backup was {time_ago} ({formatted_time})."
+        if _add_or_update_notification(
             db,
             notif_type="Backup Warning",
             title=title,
@@ -314,6 +378,39 @@ def _refresh_notifications(db: Session) -> dict:
             entity_id=None,
         ):
             created += 1
+
+    # AUTO-RESOLVE: Archive alerts that have resolved
+    auto_resolved_at = utcnow()
+    # Archive replenished low-stock alerts
+    db.query(Notification).filter(
+        Notification.is_archived == False,  # noqa: E712
+        Notification.type == "Low Stock",
+        Notification.entity_type == "InventoryItem",
+        Notification.entity_id.notin_(active_low_stock_ids) if active_low_stock_ids else True,
+    ).update({"is_archived": True, "archived_at": auto_resolved_at}, synchronize_session=False)
+
+    # Archive completed/cancelled/on-time overdue repair alerts
+    db.query(Notification).filter(
+        Notification.is_archived == False,  # noqa: E712
+        Notification.type == "Overdue Repair",
+        Notification.entity_type == "RepairTicket",
+        Notification.entity_id.notin_(active_overdue_repair_ids) if active_overdue_repair_ids else True,
+    ).update({"is_archived": True, "archived_at": auto_resolved_at}, synchronize_session=False)
+
+    # Archive paid/settled sale alerts
+    db.query(Notification).filter(
+        Notification.is_archived == False,  # noqa: E712
+        Notification.type == "Pending Balance",
+        Notification.entity_type == "Sale",
+        Notification.entity_id.notin_(active_pending_sale_ids) if active_pending_sale_ids else True,
+    ).update({"is_archived": True, "archived_at": auto_resolved_at}, synchronize_session=False)
+
+    # Archive resolved backup alerts if backup is now fresh
+    if not backup_is_stale:
+        db.query(Notification).filter(
+            Notification.is_archived == False,  # noqa: E712
+            Notification.source_module == "backup",
+        ).update({"is_archived": True, "archived_at": auto_resolved_at}, synchronize_session=False)
 
     db.commit()
     return {
@@ -335,13 +432,14 @@ def list_notifications(db: Session = Depends(get_db), _=Depends(get_current_user
         _RUNTIME_SCHEMA_READY = False
         _ensure_runtime_schema(db)
         _refresh_notifications(db)
-    return (
+    rows = (
         db.query(Notification)
         .filter(Notification.is_archived == False)  # noqa: E712
         .order_by(Notification.created_at.desc())
         .limit(100)
         .all()
     )
+    return [_serialize_notification(r) for r in rows]
 
 
 @router.post("/refresh", dependencies=[Depends(require_permission("notifications.create"))])
@@ -427,3 +525,4 @@ def clear_all(db: Session = Depends(get_db), user=Depends(get_current_user)):
     )
     db.commit()
     return {"ok": True}
+

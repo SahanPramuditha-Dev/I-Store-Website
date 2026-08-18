@@ -29,6 +29,12 @@ import {
   RefreshCw,
   MessageSquare,
   X,
+  CheckCheck,
+  ExternalLink,
+  AlertTriangle,
+  ShieldAlert,
+  Clock,
+  Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFetch } from "../hooks/useFetch";
@@ -104,6 +110,29 @@ function initials(name) {
   return s.slice(0, 2).toUpperCase();
 }
 
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (diffSec < 60) return "just now";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function getNotificationCategoryIcon(source, type) {
+  const s = String(source || "").toLowerCase();
+  const t = String(type || "").toLowerCase();
+  if (s === "backup" || t.includes("backup")) return <Database size={13} className="text-purple-400 shrink-0" />;
+  if (s === "inventory" || t.includes("stock")) return <Boxes size={13} className="text-amber-400 shrink-0" />;
+  if (s === "repairs" || t.includes("repair")) return <Wrench size={13} className="text-blue-400 shrink-0" />;
+  if (s === "pos" || t.includes("balance") || t.includes("payment")) return <Wallet size={13} className="text-emerald-400 shrink-0" />;
+  if (s === "warranty" || t.includes("warranty")) return <Shield size={13} className="text-cyan-400 shrink-0" />;
+  return <Bell size={13} className="text-slate-400 shrink-0" />;
+}
+
 export default function Layout() {
   const location = useLocation();
   const n = useNavigate();
@@ -112,6 +141,7 @@ export default function Layout() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 1920 : window.innerWidth));
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationTab, setNotificationTab] = useState("all"); // "all" | "unread" | "critical"
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
@@ -138,6 +168,10 @@ export default function Layout() {
   const notifications = useMemo(() => {
     return [...(apiNotifications || [])];
   }, [apiNotifications]);
+
+  const unreadNotifCount = useMemo(() => {
+    return notifications.filter((item) => !item.is_read || !item.is_acknowledged).length;
+  }, [notifications]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -305,44 +339,44 @@ export default function Layout() {
             isMobileShell
               ? `fixed inset-y-0 left-0 z-50 ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}`
               : "relative translate-x-0"
-          } px-3 py-4 xl:py-5 flex min-h-0 flex-col h-full shrink-0 transition-all duration-300 ease-in-out`}
+          } px-3 py-3.5 flex min-h-0 flex-col h-full shrink-0 transition-all duration-300 ease-in-out`}
         >
-          <div className={`dashboard-brand px-2 mb-7 flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between"} gap-3`}>
+          <div className={`dashboard-brand px-1 mb-3.5 pb-3 border-b border-[var(--sidebar-border)] flex items-center ${sidebarCollapsed ? "justify-center" : "justify-between"} gap-2.5`}>
             {showFullSidebarText && (
-              <div className="flex items-center gap-3">
-                <div className="dashboard-brand-mark h-10 w-10 rounded-xl grid place-items-center text-white font-extrabold text-sm">
+              <div className="flex items-center gap-2.5">
+                <div className="dashboard-brand-mark h-9 w-9 rounded-xl grid place-items-center text-white font-extrabold text-sm shadow-sm shrink-0">
                   {brandInitials}
                 </div>
-                <div>
-                  <h1 className="text-xl font-extrabold text-[var(--app-text)]">{shopName}</h1>
-                  <p className="text-[11px] text-slate-400">{softwareName} Business Suite</p>
+                <div className="min-w-0">
+                  <h1 className="text-base font-extrabold text-[var(--app-text)] leading-tight truncate">{shopName}</h1>
+                  <p className="text-[10px] text-slate-400 font-medium truncate leading-tight">{softwareName} Business Suite</p>
                 </div>
               </div>
             )}
             {sidebarCollapsed && (
-              <div className="dashboard-brand-mark h-10 w-10 rounded-xl grid place-items-center text-white font-extrabold text-sm">
+              <div className="dashboard-brand-mark h-9 w-9 rounded-xl grid place-items-center text-white font-extrabold text-sm shadow-sm">
                 {brandInitials}
               </div>
             )}
           </div>
 
-          <nav className="flex-1 space-y-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
+          <nav className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
             {visibleNavGroups.map((group) => (
-              <div key={group.label} className="mb-5">
+              <div key={group.label} className="space-y-0.5">
                 {showFullSidebarText && (
-                  <div className="dashboard-group-label px-3 text-[10px] font-black uppercase tracking-widest mb-2">
+                  <div className="dashboard-group-label px-2.5 pt-1.5 pb-1 text-[9.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 select-none">
                     {group.label}
                   </div>
                 )}
-                {sidebarCollapsed && <div className="mx-2 mb-4 h-px bg-white/10" />}
-                <div className="space-y-1.5">
+                {sidebarCollapsed && <div className="mx-2 my-2 h-px bg-white/10" />}
+                <div className="space-y-0.5">
                   {group.items.map(([to, label, Icon]) => (
                     <NavLink
                       key={to}
                       to={to}
                       title={sidebarCollapsed ? label : ""}
                       className={({ isActive }) =>
-                        `dashboard-nav-link group relative flex items-center gap-3 rounded-xl p-3 transition-all outline-none focus:outline-none focus:ring-0 select-none ${
+                        `dashboard-nav-link group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-all outline-none focus:outline-none focus:ring-0 select-none ${
                           sidebarCollapsed ? "justify-center" : ""
                         } ${isActive ? "is-active" : ""}`
                       }
@@ -350,8 +384,8 @@ export default function Layout() {
                         if (isMobileShell) setMobileSidebarOpen(false);
                       }}
                     >
-                      <Icon size={19} className="shrink-0" />
-                      {showFullSidebarText && <span className="truncate text-sm font-medium">{label}</span>}
+                      <Icon size={17} className="shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" />
+                      {showFullSidebarText && <span className="truncate text-xs font-medium">{label}</span>}
                       {showFullSidebarText && to === "/repairs" && pendingRepairs > 0 && (
                         <span className="dashboard-nav-badge ml-auto">{pendingRepairs}</span>
                       )}
@@ -365,20 +399,20 @@ export default function Layout() {
             ))}
           </nav>
 
-          <div className="mt-auto border-t border-[var(--sidebar-border)] pt-4">
+          <div className="mt-auto border-t border-[var(--sidebar-border)] pt-2.5">
             {showFullSidebarText ? (
-              <div className="dashboard-user-card mb-2 flex items-center gap-3 rounded-2xl border px-3 py-4">
-                <div className="grid h-10 w-10 place-items-center rounded-full border-2 border-white/20 bg-indigo-500 text-xs font-black text-white">
+              <div className="dashboard-user-card mb-1.5 flex items-center gap-2.5 rounded-xl border px-2.5 py-2">
+                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/20 bg-indigo-600 text-xs font-bold text-white shadow-sm">
                   {initials(displayName)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-[var(--app-text)] truncate">{displayName}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{roleLabel}</p>
+                  <p className="text-xs font-bold text-[var(--app-text)] truncate leading-tight">{displayName}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate leading-tight mt-0.5">{roleLabel}</p>
                 </div>
               </div>
             ) : (
-              <div className="flex justify-center mb-2">
-                <div className="grid h-10 w-10 place-items-center rounded-full border-2 border-white/20 bg-indigo-500 text-xs font-black text-white">
+              <div className="flex justify-center mb-1.5">
+                <div className="grid h-8 w-8 place-items-center rounded-lg border border-white/20 bg-indigo-600 text-xs font-bold text-white shadow-sm">
                   {initials(displayName)}
                 </div>
               </div>
@@ -394,10 +428,10 @@ export default function Layout() {
                 clearAuthState();
                 n("/login");
               }}
-              className="dashboard-logout-btn w-full rounded-xl p-3 text-[var(--sidebar-text)] transition justify-center"
+              className="dashboard-logout-btn w-full rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--sidebar-text)] transition flex items-center justify-center gap-2"
             >
-              <LogOut size={18} />
-              {showFullSidebarText && <span className="text-sm font-medium">Logout</span>}
+              <LogOut size={16} />
+              {showFullSidebarText && <span>Logout</span>}
             </button>
           </div>
         </aside>
@@ -462,9 +496,17 @@ export default function Layout() {
                 </div>
               )}
               {notificationsAllowed ? (
-                <button onClick={() => setShowNotifications((v) => !v)} className="dashboard-icon-btn relative" title="Notifications">
+                <button
+                  onClick={() => setShowNotifications((v) => !v)}
+                  className="dashboard-icon-btn relative"
+                  title={unreadNotifCount > 0 ? `${unreadNotifCount} active alert${unreadNotifCount > 1 ? "s" : ""}` : "Notifications"}
+                >
                   <Bell size={18} />
-                  {notifications.length > 0 && <span className="dashboard-notify-dot" />}
+                  {unreadNotifCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white shadow-sm ring-2 ring-white dark:ring-slate-900 animate-in zoom-in-50">
+                      {unreadNotifCount > 99 ? "99+" : unreadNotifCount}
+                    </span>
+                  )}
                 </button>
               ) : null}
               <button
@@ -493,17 +535,31 @@ export default function Layout() {
                 className="fixed inset-0 z-[9990]"
                 onClick={() => setShowNotifications(false)}
               />
-              <div className="dashboard-notifications animate-in fade-in slide-in-from-top-2 fixed sm:absolute right-3 sm:right-5 top-16 sm:top-20 z-[9995] w-[calc(100vw-1.5rem)] sm:w-96 max-h-[calc(100vh-5.5rem)] rounded-2xl p-0 shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
-                <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between gap-2 shrink-0 bg-slate-50/80 dark:bg-slate-950/40">
+              <div className="dashboard-notifications animate-in fade-in slide-in-from-top-2 fixed sm:absolute right-3 sm:right-5 top-16 sm:top-20 z-[9995] w-[calc(100vw-1.5rem)] sm:w-[420px] max-h-[calc(100vh-5.5rem)] rounded-2xl p-0 shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center justify-between gap-2 shrink-0 bg-slate-50/90 dark:bg-slate-950/60">
                   <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-600 dark:text-slate-400">Notifications</h4>
-                    {notifications.length > 0 && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 font-mono">
-                        {notifications.length}
+                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-800 dark:text-slate-200">Alerts & Notifications</h4>
+                    {unreadNotifCount > 0 && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono border border-rose-500/20">
+                        {unreadNotifCount} new
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    {unreadNotifCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await api.put("/notifications/read-all").catch(() => {});
+                          refreshNotifications?.();
+                        }}
+                        className="text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-300 flex items-center gap-1 transition"
+                        title="Mark all as read"
+                      >
+                        <CheckCheck size={12} /> Mark Read
+                      </button>
+                    )}
                     {notificationsAllowed ? (
                       <button
                         type="button"
@@ -511,9 +567,9 @@ export default function Layout() {
                           setShowNotifications(false);
                           navigateIfAllowed("/notifications");
                         }}
-                        className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300 hover:underline"
+                        className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
                       >
-                        Open Center
+                        Center <ExternalLink size={10} />
                       </button>
                     ) : null}
                     <button
@@ -527,60 +583,171 @@ export default function Layout() {
                   </div>
                 </div>
 
-                <div className="p-3 overflow-y-auto space-y-2 flex-1 max-h-[calc(100vh-10rem)]">
-                  {notifications.map((item) => {
-                    const severity = String(item.severity || "info").toLowerCase();
-                    const isCritical = severity === "critical" || severity === "danger" || severity === "high";
-                    const isWarning = severity === "warning" || severity === "medium";
-                    return (
-                      <div
-                        key={item.id}
-                        className={`rounded-xl border p-3 transition border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-slate-950/40 hover:border-slate-300 dark:hover:border-white/20 ${item.is_read ? "opacity-60" : ""}`}
-                        onClick={async () => {
-                          if (!item?.id) return;
-                          await api.put(`/notifications/${item.id}/read`).catch(() => {});
-                          refreshNotifications?.();
-                        }}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight">{item.title}</p>
-                          <span
-                            className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                              isCritical
-                                ? "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                {/* Filter Tabs */}
+                <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-200/80 dark:border-white/5 bg-slate-100/50 dark:bg-slate-950/30 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setNotificationTab("all")}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                      notificationTab === "all"
+                        ? "bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-300 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    All ({notifications.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNotificationTab("unread")}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                      notificationTab === "unread"
+                        ? "bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-300 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    Unread ({unreadNotifCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNotificationTab("critical")}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                      notificationTab === "critical"
+                        ? "bg-white dark:bg-white/10 text-rose-600 dark:text-rose-300 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    Critical (
+                    {
+                      notifications.filter((n) => {
+                        const s = String(n.severity || "").toLowerCase();
+                        return s === "critical" || s === "high";
+                      }).length
+                    }
+                    )
+                  </button>
+                </div>
+
+                {/* Notifications List */}
+                <div className="p-3 overflow-y-auto space-y-2.5 flex-1 max-h-[calc(100vh-12rem)]">
+                  {notifications
+                    .filter((item) => {
+                      if (notificationTab === "unread") return !item.is_read || !item.is_acknowledged;
+                      if (notificationTab === "critical") {
+                        const s = String(item.severity || "").toLowerCase();
+                        return s === "critical" || s === "high";
+                      }
+                      return true;
+                    })
+                    .map((item) => {
+                      const severity = String(item.severity || "info").toLowerCase();
+                      const isCritical = severity === "critical" || severity === "danger";
+                      const isWarning = severity === "warning" || severity === "high" || severity === "medium";
+                      const isUnread = !item.is_read;
+                      const relTime = formatRelativeTime(item.created_at);
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`group rounded-xl border p-3 transition text-left relative cursor-pointer ${
+                            isUnread
+                              ? isCritical
+                                ? "border-rose-500/30 bg-rose-500/[0.04] dark:bg-rose-950/20 hover:border-rose-500/50"
                                 : isWarning
-                                ? "bg-amber-500/10 text-amber-500 border border-amber-500/20"
-                                : "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
-                            }`}
-                          >
-                            {String(item.severity || "info")}
-                          </span>
+                                ? "border-amber-500/30 bg-amber-500/[0.04] dark:bg-amber-950/20 hover:border-amber-500/50"
+                                : "border-indigo-500/30 bg-indigo-500/[0.03] dark:bg-indigo-950/20 hover:border-indigo-500/50"
+                              : "border-slate-200 dark:border-white/5 bg-slate-50/50 dark:bg-slate-950/20 hover:border-slate-300 dark:hover:border-white/15 opacity-75 hover:opacity-100"
+                          }`}
+                          onClick={async () => {
+                            if (!item?.id) return;
+                            if (isUnread) {
+                              await api.put(`/notifications/${item.id}/read`).catch(() => {});
+                              refreshNotifications?.();
+                            }
+                            if (item.action_url) {
+                              setShowNotifications(false);
+                              navigateIfAllowed(item.action_url);
+                            }
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {getNotificationCategoryIcon(item.source_module, item.type)}
+                              <p className="text-xs font-bold text-slate-900 dark:text-white leading-tight truncate">
+                                {item.title}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {relTime && (
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                                  {relTime}
+                                </span>
+                              )}
+                              <span
+                                className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                                  isCritical
+                                    ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                                    : isWarning
+                                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                                    : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                                }`}
+                              >
+                                {String(item.severity || "info")}
+                              </span>
+                            </div>
+                          </div>
+
+                          <p className="mt-1.5 text-[11px] text-slate-600 dark:text-slate-300 leading-normal">
+                            {item.message}
+                          </p>
+
+                          <div className="mt-2.5 flex items-center justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
+                            <span className="text-[9px] font-mono font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                              {item.source_module || "system"}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {item.action_url && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowNotifications(false);
+                                    navigateIfAllowed(item.action_url);
+                                  }}
+                                  className="rounded-lg border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition flex items-center gap-1"
+                                >
+                                  {item.action_label || "Open"} <ExternalLink size={10} />
+                                </button>
+                              )}
+                              {!item.is_acknowledged ? (
+                                <button
+                                  type="button"
+                                  onClick={async (event) => {
+                                    event.stopPropagation();
+                                    await api.put(`/notifications/${item.id}/ack`).catch(() => {});
+                                    refreshNotifications?.();
+                                  }}
+                                  className="rounded-lg border border-slate-300 dark:border-white/10 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-white/5 hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-white/10 transition"
+                                >
+                                  Acknowledge
+                                </button>
+                              ) : (
+                                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                  ✓ Ack
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-300 leading-normal">{item.message}</p>
-                        <div className="mt-2.5 flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60 dark:border-white/5">
-                          <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500 uppercase">{item.source_module || "system"}</span>
-                          {!item.is_acknowledged ? (
-                            <button
-                              type="button"
-                              onClick={async (event) => {
-                                event.stopPropagation();
-                                await api.put(`/notifications/${item.id}/ack`).catch(() => {});
-                                refreshNotifications?.();
-                              }}
-                              className="rounded-lg border border-slate-300 dark:border-white/10 px-2.5 py-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-200 bg-white dark:bg-white/5 hover:border-indigo-500/50 hover:bg-indigo-50 dark:hover:bg-white/10 transition"
-                            >
-                              Acknowledge
-                            </button>
-                          ) : (
-                            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Acknowledged</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+
                   {notifications.length === 0 && (
-                    <div className="py-8 text-center text-xs text-slate-400">
-                      No alerts
+                    <div className="py-10 text-center flex flex-col items-center justify-center">
+                      <div className="h-10 w-10 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mb-2">
+                        <ShieldCheck size={20} />
+                      </div>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">All Clear!</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">No active alerts requiring attention.</p>
                     </div>
                   )}
                 </div>
