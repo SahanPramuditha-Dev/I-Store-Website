@@ -34,11 +34,6 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        {eyebrow ? (
-          <div className="dashboard-hero-chip inline-flex items-center gap-1.5 rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] mb-1">
-            {eyebrow}
-          </div>
-        ) : null}
         <h1 className={cx("truncate font-black tracking-tight text-slate-900 dark:text-white", compact ? "text-lg xl:text-xl" : "text-xl xl:text-2xl")}>{title}</h1>
         {subtitle ? <p className={cx("mt-1 max-w-3xl text-slate-600 dark:text-slate-300", compact ? "text-xs" : "text-xs xl:text-sm")}>{subtitle}</p> : null}
         {meta ? <div className="mt-2 flex flex-wrap gap-2">{meta}</div> : null}
