@@ -37,10 +37,11 @@
 
 const { ipcMain, net } = require("electron");
 const db = require("./local-db");
+const licenseManager = require("./license-manager");
 
 // ── Whitelisted IPC channels ───────────────────────────────────────────────
-const READ_CHANNELS  = new Set(["db:select", "db:selectOne", "db:outbox:list", "db:cursor:get"]);
-const WRITE_CHANNELS = new Set(["db:upsert", "db:delete", "db:outbox:enqueue", "db:outbox:status", "db:outbox:purge", "db:cursor:set"]);
+const READ_CHANNELS  = new Set(["db:select", "db:selectOne", "db:outbox:list", "db:cursor:get", "license:status", "license:getFingerprint"]);
+const WRITE_CHANNELS = new Set(["db:upsert", "db:delete", "db:outbox:enqueue", "db:outbox:status", "db:outbox:purge", "db:cursor:set", "license:activate"]);
 const SYNC_CHANNELS  = new Set(["db:sync:push", "db:sync:pull"]);
 
 // ── Configurable sync endpoint ─────────────────────────────────────────────
@@ -77,6 +78,19 @@ function register() {
   ipcMain.handle("db:auth:setToken", (_e, token) => {
     _authToken = token;
     return true;
+  });
+
+  // ── Licensing Handlers ───────────────────────────────────────────────────
+  ipcMain.handle("license:status", async () => {
+    return licenseManager.verifyOrHeartbeatLicense();
+  });
+
+  ipcMain.handle("license:getFingerprint", async () => {
+    return licenseManager.getHardwareFingerprint();
+  });
+
+  ipcMain.handle("license:activate", async (_e, key) => {
+    return licenseManager.activatePOSDevice(key);
   });
 
   // ── Sync: push outbox to server ──────────────────────────────────────────

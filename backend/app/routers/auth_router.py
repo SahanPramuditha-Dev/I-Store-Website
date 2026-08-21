@@ -242,6 +242,8 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
             "sub": user.username,
             "uid": user.id,
             "role": canonical_role_name(user.role),
+            "org_id": user.organization_id,
+            "branch_id": user.branch_id,
             "jti": token_jti,
             "sid": session_code,
         },

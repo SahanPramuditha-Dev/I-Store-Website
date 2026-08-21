@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, ForeignKey, Text, CheckConstraint, UniqueConstraint, event
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Boolean, ForeignKey, Text, CheckConstraint, UniqueConstraint, JSON, event
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -10,8 +10,10 @@ def utcnow() -> datetime:
 
 
 class BaseHybridModel:
-    """Hybrid Local-First Base Mixin introducing UUID primary keys, store identification, and sync metadata."""
+    """Hybrid Local-First Base Mixin introducing UUID primary keys, tenant scoping, and sync metadata."""
     uuid = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True, index=True)
     store_id = Column(String(36), nullable=True, index=True)
     device_id = Column(String(100), nullable=True, index=True)
     sync_status = Column(String(20), default="synced", index=True)  # pending, syncing, synced, conflict
@@ -44,6 +46,8 @@ class User(Base, BaseHybridModel):
     is_active = Column(Boolean, default=True)
 
     assigned_role = relationship("Role", foreign_keys=[role_id])
+    organization = relationship("Organization", foreign_keys="User.organization_id")
+    branch = relationship("Branch", foreign_keys="User.branch_id")
 
 
 class Role(Base):
@@ -206,6 +210,8 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True)
+    branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     module = Column(String, nullable=False, index=True)
     action = Column(String, nullable=False, index=True)
@@ -219,6 +225,8 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=utcnow, index=True)
 
     user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization", foreign_keys=[organization_id])
+    branch = relationship("Branch", foreign_keys=[branch_id])
 
 
 class SecuritySetting(Base):
@@ -1927,5 +1935,296 @@ class WhatsAppBotRule(Base):
     priority = Column(Integer, default=10)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class WhatsAppConversationSession(Base):
+    __tablename__ = "whatsapp_conversation_sessions"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    phone_number = Column(String(20), unique=True, nullable=False, index=True)
+    state = Column(String(30), default="AI_ACTIVE", index=True)  # AI_ACTIVE, HUMAN_REQUESTED, HUMAN_ACTIVE, AI_RESUMED, CLOSED
+    is_verified = Column(Boolean, default=False)
+    verified_at = Column(DateTime, nullable=True)
+    assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    last_interaction_at = Column(DateTime, default=utcnow, index=True)
+    handover_requested_at = Column(DateTime, nullable=True)
+    csat_requested = Column(Boolean, default=False)
+    csat_requested_at = Column(DateTime, nullable=True)
+    context_data = Column(Text, default="{}", nullable=True)  # JSON dictionary for session memory
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    assigned_user = relationship("User", foreign_keys=[assigned_user_id])
+
+
+class WhatsAppAIInteractionLog(Base):
+    __tablename__ = "whatsapp_ai_interactions"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    phone_number = Column(String(20), nullable=False, index=True)
+    session_id = Column(String(50), nullable=True, index=True)
+    intent = Column(String(50), nullable=True, index=True)  # product_search, repair_query, bill_query, reservation, support, general
+    language = Column(String(20), default="English")  # English, Singlish, Sinhala, Tamil
+    tools_used = Column(Text, default="[]")  # JSON array of tools called
+    resolution_status = Column(String(30), default="RESOLVED", index=True)  # RESOLVED, HANDOVER, FAILED, INCOMPLETE
+    latency_ms = Column(Integer, default=0)
+    model_used = Column(String(50), nullable=True)
+    tokens_used = Column(Integer, default=0)
+    error_detail = Column(Text, nullable=True)
+    sentiment = Column(String(20), nullable=True)  # Positive, Neutral, Negative, Frustrated
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+
+class AICSATResponse(Base):
+    __tablename__ = "ai_csat_responses"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    phone_number = Column(String(20), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    rating = Column(String(20), nullable=False)  # POSITIVE (👍), NEGATIVE (👎), 1-5
+    score = Column(Integer, default=5)  # 5 for positive/1, 1 for negative/2
+    feedback_text = Column(Text, nullable=True)
+    channel = Column(String(20), default="WHATSAPP")
+    resolved_by = Column(String(30), default="AI")  # AI or STAFF
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+    customer = relationship("Customer", foreign_keys=[customer_id])
+
+
+class AIKnowledgeBaseArticle(Base):
+    __tablename__ = "ai_knowledge_base_articles"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    title = Column(String(200), nullable=False, index=True)
+    category = Column(String(100), nullable=False, index=True)  # Warranty Policy, Return & Refund, Payment, Hours, Repair, Delivery, FAQ
+    content = Column(Text, nullable=False)
+    keywords = Column(Text, nullable=True)  # Comma-separated search/retrieval keywords
+    priority = Column(Integer, default=10, index=True)
+    version = Column(Integer, default=1)
+    is_active = Column(Boolean, default=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    updater = relationship("User", foreign_keys=[updated_by])
+
+
+class AIFollowUpRule(Base):
+    __tablename__ = "ai_follow_up_rules"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(150), nullable=False)
+    trigger_type = Column(String(50), nullable=False, unique=True, index=True)  # product_inquiry, repair_inquiry, reservation_draft, cart_abandoned
+    delay_hours = Column(Integer, default=2)  # Wait time after last customer message
+    max_follow_ups = Column(Integer, default=2)
+    quiet_hours_start = Column(String(10), default="21:00")  # HH:MM format
+    quiet_hours_end = Column(String(10), default="08:00")
+    template_body = Column(Text, nullable=False)
+    is_enabled = Column(Boolean, default=True, index=True)
+    stop_on_customer_reply = Column(Boolean, default=True)
+    stop_on_purchase = Column(Boolean, default=True)
+    stop_on_reservation = Column(Boolean, default=True)
+    stop_on_handover = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class AIFollowUpLog(Base):
+    __tablename__ = "ai_follow_up_logs"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    phone_number = Column(String(20), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    rule_id = Column(String(50), ForeignKey("ai_follow_up_rules.id"), nullable=True)
+    trigger_type = Column(String(50), nullable=False, index=True)
+    follow_up_number = Column(Integer, default=1)  # 1 for first follow-up, 2 for second
+    message_body = Column(Text, nullable=False)
+    status = Column(String(30), default="SCHEDULED", index=True)  # SCHEDULED, SENT, CANCELLED, FAILED, OPTED_OUT
+    scheduled_at = Column(DateTime, nullable=False, index=True)
+    sent_at = Column(DateTime, nullable=True)
+    cancel_reason = Column(String(200), nullable=True)
+    customer_replied = Column(Boolean, default=False)
+    reply_received_at = Column(DateTime, nullable=True)
+    error_detail = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    customer = relationship("Customer", foreign_keys=[customer_id])
+    rule = relationship("AIFollowUpRule", foreign_keys=[rule_id])
+
+
+class AIOptOut(Base):
+    __tablename__ = "ai_opt_outs"
+
+    id = Column(String(50), primary_key=True, default=lambda: str(uuid.uuid4()))
+    phone_number = Column(String(20), unique=True, nullable=False, index=True)
+    reason = Column(String(100), default="customer_requested")  # customer_requested, staff_opted_out
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+
+# =========================================================================
+# E-STORE SAAS & MULTI-TENANT ARCHITECTURE MODELS
+# =========================================================================
+
+class SaaSPlan(Base):
+    """SaaS Subscription Plans and feature tier definitions."""
+    __tablename__ = "saas_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)  # starter, pro, enterprise
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    price_monthly = Column(Float, default=0.0)
+    price_yearly = Column(Float, default=0.0)
+    currency = Column(String(10), default="LKR")
+
+    # Resource Limits
+    max_branches = Column(Integer, default=1)
+    max_devices_per_branch = Column(Integer, default=2)
+    max_users = Column(Integer, default=5)
+    max_products = Column(Integer, default=1000)
+
+    # Feature Tiers & Toggles
+    features_config = Column(JSON, default=lambda: {
+        "repairs": True,
+        "warranty": True,
+        "advanced_analytics": False,
+        "api_access": False,
+        "multi_currency": False,
+        "whatsapp_integration": False
+    })
+
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class Organization(Base):
+    """Multi-tenant Organization / Company Account."""
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    uuid = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    slug = Column(String(60), unique=True, nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    legal_name = Column(String(200), nullable=True)
+    tax_number = Column(String(50), nullable=True)
+    contact_email = Column(String(120), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    country = Column(String(10), default="LK")
+    currency = Column(String(10), default="LKR")
+    timezone = Column(String(50), default="Asia/Colombo")
+
+    # Subscription / Status Lifecycle
+    status = Column(String(30), default="active", index=True)  # trialing, active, past_due, suspended, cancelled
+    current_plan_id = Column(Integer, ForeignKey("saas_plans.id"), nullable=True, index=True)
+    trial_ends_at = Column(DateTime, nullable=True)
+    settings = Column(JSON, default=lambda: {})
+
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    # Relationships
+    plan = relationship("SaaSPlan", foreign_keys=[current_plan_id])
+    branches = relationship("Branch", back_populates="organization", cascade="all, delete-orphan")
+    devices = relationship("POSDevice", back_populates="organization", cascade="all, delete-orphan")
+    subscriptions = relationship("Subscription", back_populates="organization", cascade="all, delete-orphan")
+
+
+class Subscription(Base):
+    """Organization Billing & Subscription Records."""
+    __tablename__ = "subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    uuid = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id = Column(Integer, ForeignKey("saas_plans.id"), nullable=False, index=True)
+
+    billing_cycle = Column(String(20), default="monthly")  # monthly, yearly, lifetime
+    status = Column(String(30), default="active", index=True)  # active, past_due, expired, canceled
+
+    current_period_start = Column(DateTime, nullable=False)
+    current_period_end = Column(DateTime, nullable=False)
+    grace_period_end = Column(DateTime, nullable=True)
+
+    amount = Column(Float, default=0.0)
+    currency = Column(String(10), default="LKR")
+    auto_renew = Column(Boolean, default=True)
+    payment_method = Column(String(50), default="manual")
+    cancelled_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    organization = relationship("Organization", back_populates="subscriptions")
+    plan = relationship("SaaSPlan")
+
+
+class Branch(Base):
+    """Physical Shop, Outlet or Warehouse under an Organization."""
+    __tablename__ = "branches"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "code", name="uq_branches_org_code"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    uuid = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    code = Column(String(30), nullable=False)  # COL-01, KND-01
+    name = Column(String(100), nullable=False)
+    address = Column(Text, nullable=True)
+    phone = Column(String(50), nullable=True)
+    email = Column(String(120), nullable=True)
+    is_warehouse = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True, index=True)
+
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    organization = relationship("Organization", back_populates="branches")
+    devices = relationship("POSDevice", back_populates="branch")
+
+
+class POSDevice(Base):
+    """POS Terminal, Device Fingerprint & Remote License Activation."""
+    __tablename__ = "pos_devices"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "device_code", name="uq_devices_org_device_code"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    uuid = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    organization_id = Column(Integer, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    branch_id = Column(Integer, ForeignKey("branches.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    device_code = Column(String(50), nullable=False)  # POS-001
+    device_name = Column(String(100), nullable=True)  # Front Counter 1
+
+    # Hardware Fingerprint & Remote License
+    hardware_uuid = Column(String(150), nullable=True, index=True)  # Unique machine hash
+    license_key = Column(String(100), unique=True, nullable=True, index=True)
+    activation_status = Column(String(30), default="pending", index=True)  # pending, activated, suspended, revoked
+    activated_at = Column(DateTime, nullable=True)
+
+    # Telemetry & Status
+    app_version = Column(String(30), nullable=True)
+    os_info = Column(String(100), nullable=True)
+    last_ip_address = Column(String(45), nullable=True)
+    last_heartbeat_at = Column(DateTime, nullable=True)
+    offline_queue_count = Column(Integer, default=0)
+
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    organization = relationship("Organization", back_populates="devices")
+    branch = relationship("Branch", back_populates="devices")
+
+
+
 
 

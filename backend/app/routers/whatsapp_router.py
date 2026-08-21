@@ -45,7 +45,14 @@ from app.models import (
     WhatsAppAutomationRule,
     WhatsAppQuickReply,
     WhatsAppBotRule,
-    SecuritySetting
+    SecuritySetting,
+    WhatsAppConversationSession,
+    WhatsAppAIInteractionLog,
+    AIKnowledgeBaseArticle,
+    AIFollowUpRule,
+    AIFollowUpLog,
+    AIOptOut,
+    AICSATResponse
 )
 from app.utils.time import format_iso_utc
 from app.utils.whatsapp_helper import (
@@ -545,6 +552,22 @@ async def reconnect_service(
         return {"success": False, "error": f"Failed to reach microservice: {e}"}
 
 
+@router.post("/service/logout")
+async def logout_service(
+    current_user=Depends(require_permission("settings.manage"))
+):
+    """Unlinks current WhatsApp phone number and prepares fresh QR code for new device pairing."""
+    try:
+        headers = {}
+        if WHATSAPP_SERVICE_SECRET:
+            headers["X-Internal-Secret"] = WHATSAPP_SERVICE_SECRET
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(f"{WHATSAPP_SERVICE_URL}/api/logout", headers=headers)
+            return res.json()
+    except Exception as e:
+        return {"success": False, "error": f"Failed to reach microservice: {e}"}
+
+
 # ─── Check Number Proxy ───────────────────────────────────────────────────────
 
 @router.get("/check-number/{phone}")
@@ -891,6 +914,8 @@ class IncomingBotMessage(BaseModel):
     message: str
     fromMe: Optional[bool] = False
     messageId: Optional[str] = None
+    media_base64: Optional[str] = None
+    media_mime_type: Optional[str] = None
 
 
 class ChatSendPayload(BaseModel):
@@ -1272,7 +1297,13 @@ async def handle_incoming_whatsapp_message(
     db.commit()
 
     # 2. Process self-service bot response
-    reply_text = process_incoming_bot_message(db, payload.phone, payload.message)
+    reply_text = process_incoming_bot_message(
+        db,
+        payload.phone,
+        payload.message,
+        media_base64=payload.media_base64,
+        media_mime_type=payload.media_mime_type
+    )
     if not reply_text:
         return {"ok": True, "action": "NO_REPLY_NEEDED"}
 
@@ -1569,4 +1600,471 @@ async def trigger_reminder_jobs(
     threading.Thread(target=send_payment_reminders, args=(db,), daemon=True).start()
     threading.Thread(target=send_repair_overdue_alerts, args=(db,), daemon=True).start()
     return {"ok": True, "message": "Reminder jobs triggered in background"}
+
+
+# ─── Live Staff Takeover & AI State Machine Endpoints ─────────────────────────
+
+@router.post("/chats/{phone}/takeover")
+def takeover_chat(
+    phone: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Staff explicitly takes over a WhatsApp conversation, setting state to HUMAN_ACTIVE.
+    Suppresses AI auto-replies until returned to AI.
+    """
+    from app.services.whatsapp_bot_service import set_ai_pause_for_phone, get_or_create_conversation_session
+
+    clean_phone = normalize_sri_lankan_phone(phone) or phone
+    session = get_or_create_conversation_session(db, clean_phone)
+    session.state = "HUMAN_ACTIVE"
+    session.assigned_user_id = current_user.id if current_user else None
+    session.last_interaction_at = datetime.utcnow()
+    db.commit()
+
+    set_ai_pause_for_phone(clean_phone, hours=24)
+
+    return {
+        "ok": True,
+        "phone": clean_phone,
+        "state": "HUMAN_ACTIVE",
+        "assigned_user": (getattr(current_user, "full_name", None) or getattr(current_user, "username", None) or "Staff"),
+        "message": "Conversation successfully assigned to live staff. AI auto-replies paused."
+    }
+
+
+@router.post("/chats/{phone}/resume-ai")
+def resume_ai_chat(
+    phone: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Staff returns a conversation back to AI automation, setting state to AI_ACTIVE.
+    """
+    from app.services.whatsapp_bot_service import clear_ai_pause_for_phone, get_or_create_conversation_session
+
+    clean_phone = normalize_sri_lankan_phone(phone) or phone
+    session = get_or_create_conversation_session(db, clean_phone)
+    session.state = "AI_ACTIVE"
+    session.assigned_user_id = None
+    session.last_interaction_at = datetime.utcnow()
+    db.commit()
+
+    clear_ai_pause_for_phone(clean_phone)
+
+    return {
+        "ok": True,
+        "phone": clean_phone,
+        "state": "AI_ACTIVE",
+        "message": "AI assistant resumed for this conversation."
+    }
+
+
+@router.get("/chats/{phone}/summary")
+def get_chat_staff_summary(
+    phone: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Generates an instant AI briefing summary for staff members taking over a conversation.
+    """
+    from app.services.ai_service import generate_conversation_staff_summary
+
+    summary = generate_conversation_staff_summary(db, phone)
+    return {"ok": True, "summary": summary}
+
+
+@router.get("/ai-analytics")
+def get_whatsapp_ai_analytics(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retrieves comprehensive ERP dashboard analytics for WhatsApp AI interactions.
+    """
+    since_date = datetime.utcnow() - timedelta(days=days)
+    
+    interactions = (
+        db.query(WhatsAppAIInteractionLog)
+        .filter(WhatsAppAIInteractionLog.created_at >= since_date)
+        .all()
+    )
+
+    total_interactions = len(interactions)
+    resolved_count = sum(1 for i in interactions if i.resolution_status == "RESOLVED")
+    handover_count = sum(1 for i in interactions if i.resolution_status == "HANDOVER")
+    failed_count = sum(1 for i in interactions if i.resolution_status == "FAILED" or i.error_detail)
+    
+    resolution_rate = round((resolved_count / total_interactions * 100), 1) if total_interactions > 0 else 100.0
+    avg_latency = round(sum(i.latency_ms or 0 for i in interactions) / total_interactions, 1) if total_interactions > 0 else 0
+
+    # Intent Breakdown
+    intent_counts = {}
+    for i in interactions:
+        it = i.intent or "general"
+        intent_counts[it] = intent_counts.get(it, 0) + 1
+
+    # Language Breakdown
+    lang_counts = {}
+    for i in interactions:
+        l = i.language or "English"
+        lang_counts[l] = lang_counts.get(l, 0) + 1
+
+    # Tool Usage Breakdown
+    tool_counts = {}
+    for i in interactions:
+        try:
+            tools = json.loads(i.tools_used or "[]")
+            for t in tools:
+                tool_counts[t] = tool_counts.get(t, 0) + 1
+        except Exception:
+            pass
+
+    # CSAT Feedback Metrics
+    csat_responses = (
+        db.query(AICSATResponse)
+        .filter(AICSATResponse.created_at >= since_date)
+        .all()
+    )
+    total_csat = len(csat_responses)
+    positive_csat = sum(1 for c in csat_responses if c.rating == "POSITIVE" or c.score >= 4)
+    negative_csat = sum(1 for c in csat_responses if c.rating == "NEGATIVE" or c.score < 4)
+    csat_satisfaction_rate = round((positive_csat / total_csat * 100), 1) if total_csat > 0 else 100.0
+
+    return {
+        "timeframe_days": days,
+        "total_ai_interactions": total_interactions,
+        "resolved_interactions": resolved_count,
+        "human_handovers": handover_count,
+        "failed_interactions": failed_count,
+        "resolution_success_rate_pct": resolution_rate,
+        "avg_latency_ms": avg_latency,
+        "intent_distribution": intent_counts,
+        "language_distribution": lang_counts,
+        "tool_usage_breakdown": tool_counts,
+        "csat": {
+            "total_reviews": total_csat,
+            "positive_reviews": positive_csat,
+            "negative_reviews": negative_csat,
+            "satisfaction_rate_pct": csat_satisfaction_rate,
+            "recent_feedback": [
+                {
+                    "phone": c.phone_number,
+                    "rating": c.rating,
+                    "score": c.score,
+                    "feedback": c.feedback_text,
+                    "resolved_by": c.resolved_by,
+                    "created_at": format_iso_utc(c.created_at)
+                }
+                for c in csat_responses[-10:]
+            ]
+        }
+    }
+
+
+# ─── AI Knowledge Base Management Endpoints ─────────────────────────────────
+
+class KBArticleCreatePayload(BaseModel):
+    title: str
+    category: str
+    content: str
+    keywords: Optional[str] = ""
+    priority: Optional[int] = 10
+    is_active: Optional[bool] = True
+
+
+class KBArticleUpdatePayload(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    content: Optional[str] = None
+    keywords: Optional[str] = None
+    priority: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class KBPreviewPayload(BaseModel):
+    question: str
+    article_id: Optional[str] = None
+
+
+@router.get("/kb/articles")
+def list_knowledge_base_articles(
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    active_only: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lists all knowledge base articles with optional category and keyword filters."""
+    from app.services.ai_knowledge_base import seed_default_knowledge_base
+    seed_default_knowledge_base(db)
+
+    query = db.query(AIKnowledgeBaseArticle)
+    if active_only:
+        query = query.filter(AIKnowledgeBaseArticle.is_active == True)  # noqa: E712
+    if category and category != "All":
+        query = query.filter(AIKnowledgeBaseArticle.category == category)
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                AIKnowledgeBaseArticle.title.ilike(s),
+                AIKnowledgeBaseArticle.keywords.ilike(s),
+                AIKnowledgeBaseArticle.content.ilike(s)
+            )
+        )
+
+    articles = query.order_by(AIKnowledgeBaseArticle.priority.asc(), desc(AIKnowledgeBaseArticle.updated_at)).all()
+
+    # Get category distribution
+    all_categories = [
+        "Warranty Policy", "Return & Refund Policy", "Payment Methods",
+        "Opening Hours", "Repair Policy", "Delivery Policy", "Product FAQs",
+        "Service FAQs", "Terms & Conditions", "Custom FAQs"
+    ]
+
+    return {
+        "articles": [
+            {
+                "id": a.id,
+                "title": a.title,
+                "category": a.category,
+                "content": a.content,
+                "keywords": a.keywords or "",
+                "priority": a.priority,
+                "version": a.version,
+                "is_active": a.is_active,
+                "created_at": format_iso_utc(a.created_at),
+                "updated_at": format_iso_utc(a.updated_at),
+                "updated_by": a.updater.username if a.updater else "System"
+            }
+            for a in articles
+        ],
+        "categories": all_categories,
+        "total_count": len(articles)
+    }
+
+
+@router.post("/kb/articles")
+def create_knowledge_base_article(
+    payload: KBArticleCreatePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Creates a new store policy / FAQ article in the AI Knowledge Base."""
+    article = AIKnowledgeBaseArticle(
+        title=payload.title.strip(),
+        category=payload.category.strip(),
+        content=payload.content.strip(),
+        keywords=payload.keywords.strip() if payload.keywords else "",
+        priority=payload.priority or 10,
+        version=1,
+        is_active=payload.is_active if payload.is_active is not None else True,
+        created_by=current_user.id if current_user else None,
+        updated_by=current_user.id if current_user else None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(article)
+    db.commit()
+    db.refresh(article)
+    return {"ok": True, "article_id": article.id, "message": "Knowledge base policy created successfully."}
+
+
+@router.put("/kb/articles/{article_id}")
+def update_knowledge_base_article(
+    article_id: str,
+    payload: KBArticleUpdatePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Updates an existing knowledge base policy/article and increments version."""
+    article = db.query(AIKnowledgeBaseArticle).filter(AIKnowledgeBaseArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Knowledge base article not found.")
+
+    if payload.title is not None:
+        article.title = payload.title.strip()
+    if payload.category is not None:
+        article.category = payload.category.strip()
+    if payload.content is not None:
+        article.content = payload.content.strip()
+    if payload.keywords is not None:
+        article.keywords = payload.keywords.strip()
+    if payload.priority is not None:
+        article.priority = payload.priority
+    if payload.is_active is not None:
+        article.is_active = payload.is_active
+
+    article.version = (article.version or 1) + 1
+    article.updated_by = current_user.id if current_user else None
+    article.updated_at = datetime.utcnow()
+
+    db.commit()
+    return {"ok": True, "article_id": article.id, "version": article.version, "message": "Article updated."}
+
+
+@router.delete("/kb/articles/{article_id}")
+def delete_knowledge_base_article(
+    article_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Permanently removes a knowledge base policy."""
+    article = db.query(AIKnowledgeBaseArticle).filter(AIKnowledgeBaseArticle.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found.")
+    db.delete(article)
+    db.commit()
+    return {"ok": True, "message": "Knowledge base article deleted."}
+
+
+@router.post("/kb/preview-ai")
+def preview_knowledge_base_ai_answer(
+    payload: KBPreviewPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Renders an AI answer preview grounded in active store policies.
+    Does NOT send any message to WhatsApp.
+    """
+    from app.services.ai_knowledge_base import preview_ai_answer_with_knowledge_base
+    res = preview_ai_answer_with_knowledge_base(db, payload.question, payload.article_id)
+    return {"ok": True, "preview": res}
+
+
+# ─── AI Follow-Up Automation Endpoints ───────────────────────────────────────
+
+class FollowUpRuleUpdatePayload(BaseModel):
+    is_enabled: Optional[bool] = None
+    delay_hours: Optional[int] = None
+    max_follow_ups: Optional[int] = None
+    quiet_hours_start: Optional[str] = None
+    quiet_hours_end: Optional[str] = None
+    template_body: Optional[str] = None
+
+
+@router.get("/followups/overview")
+def get_follow_up_overview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieves follow-up automation rules, summary metrics, and recent logs."""
+    from app.services.ai_followup_service import seed_default_follow_up_rules
+    seed_default_follow_up_rules(db)
+
+    rules = db.query(AIFollowUpRule).all()
+    logs = db.query(AIFollowUpLog).order_by(desc(AIFollowUpLog.created_at)).limit(50).all()
+    opt_outs = db.query(AIOptOut).all()
+
+    scheduled_count = db.query(AIFollowUpLog).filter(AIFollowUpLog.status == "SCHEDULED").count()
+    sent_count = db.query(AIFollowUpLog).filter(AIFollowUpLog.status == "SENT").count()
+    cancelled_count = db.query(AIFollowUpLog).filter(AIFollowUpLog.status == "CANCELLED").count()
+
+    return {
+        "rules": [
+            {
+                "id": r.id,
+                "name": r.name,
+                "trigger_type": r.trigger_type,
+                "delay_hours": r.delay_hours,
+                "max_follow_ups": r.max_follow_ups,
+                "quiet_hours_start": r.quiet_hours_start,
+                "quiet_hours_end": r.quiet_hours_end,
+                "template_body": r.template_body,
+                "is_enabled": r.is_enabled
+            }
+            for r in rules
+        ],
+        "metrics": {
+            "scheduled_count": scheduled_count,
+            "sent_count": sent_count,
+            "cancelled_count": cancelled_count,
+            "opt_outs_count": len(opt_outs)
+        },
+        "recent_logs": [
+            {
+                "id": l.id,
+                "phone_number": l.phone_number,
+                "trigger_type": l.trigger_type,
+                "follow_up_number": l.follow_up_number,
+                "message_body": l.message_body,
+                "status": l.status,
+                "scheduled_at": format_iso_utc(l.scheduled_at),
+                "sent_at": format_iso_utc(l.sent_at) if l.sent_at else None,
+                "cancel_reason": l.cancel_reason,
+                "customer_replied": l.customer_replied,
+                "created_at": format_iso_utc(l.created_at)
+            }
+            for l in logs
+        ]
+    }
+
+
+@router.put("/followups/rules/{rule_id}")
+def update_follow_up_rule(
+    rule_id: str,
+    payload: FollowUpRuleUpdatePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Updates a follow-up rule configuration (timing, quiet hours, template)."""
+    rule = db.query(AIFollowUpRule).filter(AIFollowUpRule.id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found.")
+
+    if payload.is_enabled is not None:
+        rule.is_enabled = payload.is_enabled
+    if payload.delay_hours is not None:
+        rule.delay_hours = max(1, payload.delay_hours)
+    if payload.max_follow_ups is not None:
+        rule.max_follow_ups = max(1, min(5, payload.max_follow_ups))
+    if payload.quiet_hours_start is not None:
+        rule.quiet_hours_start = payload.quiet_hours_start
+    if payload.quiet_hours_end is not None:
+        rule.quiet_hours_end = payload.quiet_hours_end
+    if payload.template_body is not None:
+        rule.template_body = payload.template_body
+
+    rule.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "message": "Follow-up rule updated successfully."}
+
+
+@router.post("/followups/logs/{log_id}/cancel")
+def cancel_pending_follow_up(
+    log_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Manually cancels a scheduled follow-up message."""
+    item = db.query(AIFollowUpLog).filter(AIFollowUpLog.id == log_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Log entry not found.")
+    if item.status != "SCHEDULED":
+        raise HTTPException(status_code=400, detail=f"Cannot cancel item in status '{item.status}'.")
+
+    item.status = "CANCELLED"
+    item.cancel_reason = f"Manually cancelled by staff user #{current_user.id if current_user else 'sys'}"
+    item.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "message": "Follow-up cancelled."}
+
+
+@router.post("/followups/process-now")
+async def trigger_follow_up_processing(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Manually triggers the background follow-up worker immediately."""
+    from app.services.ai_followup_service import process_due_follow_up_queue
+    res = await process_due_follow_up_queue(db)
+    return {"ok": True, "result": res}
+
+
 

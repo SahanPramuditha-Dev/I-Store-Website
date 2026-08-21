@@ -35,6 +35,10 @@ import {
   ShieldAlert,
   Clock,
   Sparkles,
+  Building2,
+  Store,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFetch } from "../hooks/useFetch";
@@ -177,10 +181,38 @@ export default function Layout() {
   const [backendStatus, setBackendStatus] = useState({ available: true });
   const [checkingBackend, setCheckingBackend] = useState(false);
   const [queueLength, setQueueLength] = useState(0);
+  const [tenantContext, setTenantContext] = useState(null);
+  const [showBranchDropdown, setShowBranchDropdown] = useState(false);
+  const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
   const { data: repairs } = useCachedQuery("repairs", () => api.get("/repairs").then((res) => res.data));
   const { data: dashboardData } = useFetch("/dashboard");
   const { data: apiNotifications, refresh: refreshNotifications } = useFetch("/notifications");
   const { identity } = useStoreProfile();
+
+  const fetchTenantContext = useCallback(() => {
+    api.get("/settings/tenant/context")
+      .then((res) => setTenantContext(res.data))
+      .catch((_err) => {});
+  }, []);
+
+  useEffect(() => {
+    fetchTenantContext();
+  }, [fetchTenantContext]);
+
+  const handleSwitchBranch = async (branchId) => {
+    if (isSwitchingBranch) return;
+    setIsSwitchingBranch(true);
+    try {
+      await api.post(`/settings/tenant/switch-branch/${branchId}`);
+      setShowBranchDropdown(false);
+      fetchTenantContext();
+      window.location.reload();
+    } catch (err) {
+      console.error("Failed to switch branch:", err);
+    } finally {
+      setIsSwitchingBranch(false);
+    }
+  };
 
   const permissions = useMemo(() => loadPermissions(), [location.pathname]);
   const pendingRepairs = useMemo(() => {
@@ -498,11 +530,84 @@ export default function Layout() {
               >
                 {isMobileShell ? <Menu size={19} /> : sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
               </button>
-              <div className="min-w-0">
-                <p className="dashboard-crumb hidden text-xs text-slate-400 sm:block">
-                  {shopName} / <span className="font-semibold text-[var(--app-text)]">{crumb}</span>
-                </p>
-                <p className="truncate text-base font-bold text-[var(--app-text)]">{crumb}</p>
+              <div className="min-w-0 flex items-center gap-2">
+                <div className="hidden sm:block">
+                  <p className="dashboard-crumb text-xs text-slate-400">
+                    {shopName} / <span className="font-semibold text-[var(--app-text)]">{crumb}</span>
+                  </p>
+                  <p className="truncate text-base font-bold text-[var(--app-text)]">{crumb}</p>
+                </div>
+
+                {/* Organization & Branch Context Pill */}
+                {tenantContext && (
+                  <div className="relative ml-2 sm:ml-4">
+                    <button
+                      onClick={() => tenantContext.can_switch_branches && setShowBranchDropdown((v) => !v)}
+                      disabled={!tenantContext.can_switch_branches}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                        tenantContext.can_switch_branches
+                          ? "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800 dark:bg-slate-800/80 dark:hover:bg-slate-800 dark:border-slate-700/80 dark:text-slate-200 cursor-pointer shadow-sm active:scale-95"
+                          : "bg-slate-100 border-slate-300 text-slate-700 dark:bg-slate-900/60 dark:border-slate-800 dark:text-slate-400 cursor-default"
+                      }`}
+                      title={tenantContext.can_switch_branches ? "Click to switch branch" : "Assigned Branch"}
+                    >
+                      <Building2 size={13} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span className="max-w-[120px] md:max-w-[160px] truncate">
+                        {tenantContext.active_branch?.name || "Main Branch"}
+                      </span>
+                      {tenantContext.can_switch_branches && tenantContext.is_multi_branch_enabled && (
+                        <ChevronDown size={13} className={`text-slate-500 dark:text-slate-400 transition-transform ${showBranchDropdown ? "rotate-180" : ""}`} />
+                      )}
+                    </button>
+
+                    {/* Branch Switcher Dropdown */}
+                    {showBranchDropdown && tenantContext.can_switch_branches && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowBranchDropdown(false)} />
+                        <div className="absolute left-0 mt-2 w-64 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                          <div className="px-2.5 py-1.5 border-b border-slate-200 dark:border-slate-800 mb-1.5">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Organization</p>
+                            <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{tenantContext.organization?.name}</p>
+                            <span className="inline-block mt-0.5 text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                              {tenantContext.organization?.plan}
+                            </span>
+                          </div>
+
+                          <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            Switch Branch / Outlet
+                          </div>
+
+                          <div className="space-y-0.5 max-h-48 overflow-y-auto custom-scrollbar">
+                            {tenantContext.available_branches?.map((branch) => {
+                              const isCurrent = branch.id === tenantContext.active_branch?.id;
+                              return (
+                                <button
+                                  key={branch.id}
+                                  onClick={() => handleSwitchBranch(branch.id)}
+                                  disabled={isCurrent || isSwitchingBranch}
+                                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium text-left transition-colors ${
+                                    isCurrent
+                                      ? "bg-blue-50 text-blue-600 dark:bg-blue-600/15 dark:text-blue-400 font-semibold"
+                                      : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <Store size={14} className={isCurrent ? "text-blue-600 dark:text-blue-400 shrink-0" : "text-slate-400 dark:text-slate-500 shrink-0"} />
+                                    <div className="min-w-0">
+                                      <p className="truncate leading-tight font-semibold">{branch.name}</p>
+                                      <p className="text-[10px] text-slate-500 font-mono leading-tight">{branch.code}</p>
+                                    </div>
+                                  </div>
+                                  {isCurrent && <Check size={14} className="text-blue-600 dark:text-blue-400 shrink-0 ml-2" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 xl:gap-3">

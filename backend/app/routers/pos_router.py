@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.constants import SALE_INVENTORY_LINE_TYPES, SALE_LINE_TYPES
 from app.database import get_db
 from app.auth import get_current_user, require_permission
+from app.core.tenant_guard import scope_query, stamp_tenant
 from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.models import (
     AppSetting,
@@ -417,12 +418,15 @@ def get_sale(sale_id: int, db: Session = Depends(get_db), _=Depends(get_current_
 
 @router.get('/recent-transactions', dependencies=[Depends(require_permission("pos.view"))])
 def recent_transactions(
+    request: Request,
     limit: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
+    query = db.query(Sale)
+    query = scope_query(query, Sale, request)
     rows = (
-        db.query(Sale)
+        query
         .order_by(Sale.created_at.desc(), Sale.id.desc())
         .limit(int(limit))
         .all()
@@ -896,6 +900,7 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
         created_by=current_user.id if current_user else None,
         finalized_at=utcnow(),
     )
+    stamp_tenant(sale, request)
     db.add(sale)
     db.flush()
     customer = None
@@ -981,6 +986,7 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
                 serial_id=serial_row.id if serial_row else None,
                 serial_number=serial_text or None,
             )
+            stamp_tenant(sale_item_row, request)
             db.add(sale_item_row)
             db.flush()
             sale_item_rows.append(sale_item_row)

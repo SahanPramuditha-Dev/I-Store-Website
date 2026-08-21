@@ -1,5 +1,6 @@
 import { Children, forwardRef, isValidElement, useState, useMemo, useRef } from "react";
 import { FormControl, MenuItem, Select as MuiSelect } from "@mui/material";
+import { Boxes, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { isOwnerOrAdmin } from "../lib/rbac";
 
 export function PageTitle({ title, subtitle, action, className = "" }) {
@@ -81,7 +82,7 @@ export function FilterToolbar({
   return (
     <div
       className={cx(
-        "app-filter-toolbar rounded-2xl border border-slate-200/90 bg-white/90 dark:border-white/10 dark:bg-slate-900/50 backdrop-blur-md shadow-sm",
+        "app-filter-toolbar rounded-2xl border border-slate-300/90 bg-white/95 dark:border-white/10 dark:bg-slate-900/50 backdrop-blur-md shadow-sm",
         compact ? "p-2" : "p-2.5",
         sticky ? "sticky top-0 z-20 backdrop-blur-xl" : "",
         className,
@@ -1156,7 +1157,7 @@ export function AppTableShell({
 
 export function AppTableHead({ children, className = "" }) {
   return (
-    <thead className={cx("sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[10px] uppercase tracking-widest text-slate-500 dark:border-white/10 dark:bg-slate-950/95 dark:text-slate-400 backdrop-blur-md", className)}>
+    <thead className={cx("sticky top-0 z-10 border-b border-slate-300 bg-slate-50/95 text-[10px] uppercase tracking-widest text-slate-600 dark:border-white/10 dark:bg-slate-950/95 dark:text-slate-400 backdrop-blur-md", className)}>
       {children}
     </thead>
   );
@@ -1175,7 +1176,7 @@ export function AppTableEmptyRow({ colSpan, title = "No records found", text = "
 export function Loading({ text = "Loading...", className = "", compact = false }) {
   return (
     <div
-      className={cx("grid place-items-center rounded-2xl border border-slate-200/80 bg-white/70 text-sm text-slate-700 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-300 shadow-sm", compact ? "min-h-[96px]" : "min-h-[180px]", className)}
+      className={cx("grid place-items-center rounded-2xl border border-slate-300/80 bg-white/90 text-sm text-slate-700 dark:border-white/10 dark:bg-slate-900/40 dark:text-slate-300 shadow-sm", compact ? "min-h-[96px]" : "min-h-[180px]", className)}
       role="status"
       aria-busy="true"
     >
@@ -1196,10 +1197,12 @@ export function EmptyState({
   icon = null,
 }) {
   return (
-    <div className={cx("rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 dark:border-white/15 dark:bg-black/20 px-4 text-center", compact ? "py-4" : "py-8", className)}>
-      {icon ? <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/5 text-slate-500 dark:text-slate-300 shadow-sm">{icon}</div> : null}
+    <div className={cx("rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 dark:border-white/10 dark:bg-slate-950/20 px-6 text-center transition-all", compact ? "py-6" : "py-10", className)}>
+      <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 shadow-sm">
+        {icon || <Boxes size={22} className="text-slate-500 dark:text-slate-400" />}
+      </div>
       <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{title}</p>
-      {text ? <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">{text}</p> : null}
+      {text ? <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">{text}</p> : null}
       {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
     </div>
   );

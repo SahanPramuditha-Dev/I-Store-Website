@@ -381,7 +381,13 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
                     value={aiConfig.model || "gemini-2.5-flash"}
                     onChange={(e) => updatePath("ai_configuration.model", e.target.value)}
                   >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended)</option>
+                    <option value="gemini-3.7-flash">Gemini 3.7 Flash (Recommended / Latest)</option>
+                    <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (High Volume)</option>
+                    <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+                    <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                    <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                    <option value="gemini-3-flash">Gemini 3 Flash</option>
+                    <option value="gemini-3.1-pro">Gemini 3.1 Pro (Deep Reasoning)</option>
                     <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
                     <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
                     <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
@@ -845,34 +851,137 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
     },
     {
       id: "license",
-      label: "License & Subscription",
+      label: "License & Cloud Activation",
       icon: ShieldCheck,
-      render: ({ data, updatePath }) => (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="License type" value={data.license_subscription.license_type} onChange={(v) => updatePath("license_subscription.license_type", v)} />
-          <Field label="Licensed to" value={data.license_subscription.licensed_to} onChange={(v) => updatePath("license_subscription.licensed_to", v)} />
-          <Field label="Valid until" value={data.license_subscription.valid_until} onChange={(v) => updatePath("license_subscription.valid_until", v)} />
-          <Field label="Devices allowed" type="number" value={data.license_subscription.devices_allowed} onChange={(v) => updatePath("license_subscription.devices_allowed", v)} />
-          <Field label="Devices used" type="number" value={data.license_subscription.devices_used} onChange={(v) => updatePath("license_subscription.devices_used", v)} />
-          <Field label="Support expires" value={data.license_subscription.support_expires} onChange={(v) => updatePath("license_subscription.support_expires", v)} />
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</span>
-            <Select value={data.license_subscription.status || "Active"} onChange={(e) => updatePath("license_subscription.status", e.target.value)}>
-              <option>Active</option>
-              <option>Expiring</option>
-              <option>Expired</option>
-            </Select>
-          </label>
-          <div className="md:col-span-2 flex items-end gap-2">
-            <Button size="sm" variant="secondary" onClick={() => toast("License renewal flow opened (simulation).", "info")}>
-              Renew License
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => toast("Plan details opened (simulation).", "info")}>
-              View Plan Details
-            </Button>
+      render: ({ data, updatePath }) => {
+        const [licenseKeyInput, setLicenseKeyInput] = useState("");
+        const [activating, setActivating] = useState(false);
+        const [activationResult, setActivationResult] = useState(null);
+        const [fingerprint, setFingerprint] = useState("");
+
+        useEffect(() => {
+          if (window.istore?.license?.getFingerprint) {
+            window.istore.license.getFingerprint().then(res => {
+              if (res?.fingerprint) setFingerprint(res.fingerprint);
+            }).catch(() => {});
+          }
+          if (window.istore?.license?.getStatus) {
+            window.istore.license.getStatus().then(res => {
+              if (res?.license) setActivationResult(res.license);
+            }).catch(() => {});
+          }
+        }, []);
+
+        const handleActivateLive = async () => {
+          if (!licenseKeyInput.trim()) {
+            toast("Please enter a valid license key", "warning");
+            return;
+          }
+          setActivating(true);
+          try {
+            if (window.istore?.license?.activate) {
+              const res = await window.istore.license.activate(licenseKeyInput.trim());
+              if (res?.success) {
+                setActivationResult(res.token?.payload || res);
+                toast("Workstation activated successfully with cryptographic Ed25519 signature!", "success");
+              } else {
+                toast(res?.error || "License activation failed", "error");
+              }
+            } else {
+              // Direct HTTP fallback
+              const res = await api.post("https://e-store-control-center-backend.vercel.app/license/activate", {
+                license_key: licenseKeyInput.trim(),
+                machine_fingerprint: fingerprint || "BROWSER-CLIENT-" + navigator.userAgent.slice(0, 20),
+                machine_name: "Web POS Terminal",
+                app_version: "1.1.100"
+              });
+              if (res.data?.success) {
+                setActivationResult(res.data.token?.payload || res.data);
+                toast("License verified & activated directly from Cloud Control Center!", "success");
+              }
+            }
+          } catch (err) {
+            const msg = err.response?.data?.detail || err.message || "Failed to activate license";
+            toast(`Activation failed: ${msg}`, "error");
+          } finally {
+            setActivating(false);
+          }
+        };
+
+        return (
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-teal-500/30 bg-gradient-to-r from-slate-900 via-teal-950/40 to-slate-900 p-6 shadow-xl relative overflow-hidden">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3 py-1 text-xs font-semibold text-teal-300">
+                    <Sparkles size={13} className="text-teal-400" />
+                    <span>Ed25519 Central Verification Engine</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-white mt-2">Enterprise POS Workstation License</h3>
+                  <p className="text-xs text-slate-400 mt-1 max-w-lg">
+                    Hardware-bound offline token engine. Validates cryptographic signatures against the Central Control Center and caches offline authorizations up to 72 hours.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Workstation Fingerprint</span>
+                  <code className="text-xs font-mono text-teal-300 bg-teal-950/80 px-2 py-1 rounded border border-teal-500/40 inline-block mt-1">
+                    {fingerprint ? fingerprint.slice(0, 18) + "..." : "POS-TERMINAL-KOTUGODA-MAIN"}
+                  </code>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-800">
+                <input
+                  type="text"
+                  placeholder="Paste License Key (e.g. ISTORE-ENTERPRISE-BCDB-56F4-2C26)"
+                  value={licenseKeyInput}
+                  onChange={(e) => setLicenseKeyInput(e.target.value)}
+                  className="flex-1 px-4 py-2.5 bg-slate-950/90 border border-teal-500/30 rounded-xl text-sm font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-400"
+                />
+                <Button
+                  size="md"
+                  onClick={handleActivateLive}
+                  disabled={activating}
+                  className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold px-6 shrink-0 shadow-lg shadow-teal-500/20"
+                >
+                  {activating ? <RefreshCw className="animate-spin" size={16} /> : <ShieldCheck size={16} />}
+                  {activating ? "Activating with Cloud..." : "Activate License Key"}
+                </Button>
+              </div>
+            </div>
+
+            {activationResult && (
+              <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                    <CheckCircle2 size={18} />
+                    <span>License Active & Validated</span>
+                  </div>
+                  <Badge tone="emerald" className="font-mono text-xs">{activationResult.package_code || "ENTERPRISE"}</Badge>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-500 block">License Key</span>
+                    <span className="font-mono text-slate-200 font-semibold">{activationResult.license_id || licenseKeyInput}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Tenant & Branch</span>
+                    <span className="text-slate-200 font-semibold">{activationResult.tenant_code || "ESTO-3673"} / {activationResult.shop_code || "KOTU-KOT-474"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Plan Duration</span>
+                    <span className="text-slate-200 font-semibold">{activationResult.license_type || "ANNUAL"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">Valid Until</span>
+                    <span className="text-slate-200 font-semibold">{activationResult.expires_at ? new Date(activationResult.expires_at).toLocaleDateString() : "Lifetime"}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       id: "advanced",

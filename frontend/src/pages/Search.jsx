@@ -494,7 +494,7 @@ export default function Search() {
         </div>
 
         <div className="search-hub-popular flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-slate-400">Popular searches:</span>
+          <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">Popular searches:</span>
           {popularSearches.map((term) => (
             <button key={term} onClick={() => launchSearch(term)} className="search-hub-chip rounded-xl px-3 py-1.5 text-xs font-semibold">
               {term}
@@ -509,7 +509,7 @@ export default function Search() {
       {!showResults && (
         <div className="space-y-5">
           <section>
-            <h3 className="search-hub-section-title mb-3 text-lg font-black tracking-tight text-slate-100">Quick Search Categories</h3>
+            <h3 className="search-hub-section-title mb-3 text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">Quick Search Categories</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {quickSearchCategories.map((cat) => {
                 const Icon = cat.icon;
@@ -526,9 +526,9 @@ export default function Search() {
                     <div className={`search-hub-category-icon tone-${cat.tone}`}>
                       <Icon size={18} />
                     </div>
-                    <p className="mt-2 text-sm font-extrabold text-slate-100">{cat.title}</p>
-                    <p className="mt-1 text-xs text-slate-400">{cat.subtitle}</p>
-                    <div className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-indigo-300 transition group-hover:translate-x-1">
+                    <p className="mt-2 text-sm font-extrabold text-slate-900 dark:text-slate-100">{cat.title}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{cat.subtitle}</p>
+                    <div className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-300 transition group-hover:translate-x-1">
                       Start Search <ArrowRight size={12} />
                     </div>
                   </button>
@@ -547,12 +547,12 @@ export default function Search() {
                 {!recent.length && <p className="text-sm text-slate-500">No recent searches yet.</p>}
                 {recent.map((term, idx) => (
                   <div key={term} className="search-hub-list-row flex items-center justify-between rounded-xl border px-3 py-2">
-                    <button onClick={() => launchSearch(term)} className="truncate text-left text-sm font-semibold text-slate-200">
+                    <button onClick={() => launchSearch(term)} className="truncate text-left text-sm font-semibold text-slate-800 dark:text-slate-200">
                       {term}
                     </button>
                     <div className="flex items-center gap-1">
                       <span className="text-[11px] text-slate-500">{`${10 - Math.floor(idx / 2)}:${idx % 2 ? "45" : "15"} AM`}</span>
-                      <button onClick={() => togglePin(term)} className="p-1 text-slate-500 transition hover:text-indigo-300" title="Pin query">
+                      <button onClick={() => togglePin(term)} className="p-1 text-slate-500 transition hover:text-indigo-400 dark:hover:text-indigo-300" title="Pin query">
                         <Pin size={12} />
                       </button>
                     </div>
@@ -565,7 +565,7 @@ export default function Search() {
               <div className="space-y-2">
                 {smartSuggestions.map((item) => (
                   <button key={item.label} onClick={() => launchSearch(item.label)} className="search-hub-list-row flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left">
-                    <span className="truncate text-sm font-semibold text-slate-200">{item.label}</span>
+                    <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-200">{item.label}</span>
                     <span className="search-hub-pill-count rounded-lg px-2 py-0.5 text-[11px] font-black">{item.count}</span>
                   </button>
                 ))}
@@ -582,7 +582,7 @@ export default function Search() {
                     setPinned([]);
                     localStorage.removeItem(PINNED_KEY);
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-indigo-300"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-indigo-400 dark:hover:text-indigo-300"
                 >
                   <PinOff size={12} />
                   Manage
@@ -593,7 +593,7 @@ export default function Search() {
                 {!pinned.length && <p className="text-sm text-slate-500">Pin searches to keep them here.</p>}
                 {pinned.map((term) => (
                   <div key={term} className="search-hub-list-row flex items-center justify-between rounded-xl border px-3 py-2">
-                    <button onClick={() => launchSearch(term)} className="truncate text-left text-sm font-semibold text-slate-200">
+                    <button onClick={() => launchSearch(term)} className="truncate text-left text-sm font-semibold text-slate-800 dark:text-slate-200">
                       {term}
                     </button>
                     <button onClick={() => togglePin(term)} className="p-1 text-slate-500 transition hover:text-rose-400" title="Unpin">
@@ -616,7 +616,7 @@ export default function Search() {
               ].map((shortcut) => (
                 <div key={shortcut.key} className="search-hub-shortcut-item rounded-xl border p-3">
                   <span className="search-hub-keycap mb-2 inline-flex rounded-lg px-2 py-1 text-[10px] font-black">{shortcut.key}</span>
-                  <p className="text-sm font-semibold text-slate-200">{shortcut.label}</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{shortcut.label}</p>
                 </div>
               ))}
             </div>

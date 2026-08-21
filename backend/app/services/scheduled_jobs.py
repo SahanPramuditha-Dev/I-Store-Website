@@ -137,3 +137,43 @@ def send_repair_overdue_alerts(db: Session):
                 
     except Exception as e:
         logger.error(f"Error in send_repair_overdue_alerts: {e}")
+
+
+def run_ai_follow_up_job(db: Session):
+    """Processes queued AI follow-ups respecting quiet hours and customer responses."""
+    import asyncio
+    try:
+        from app.services.ai_followup_service import process_due_follow_up_queue
+        # Run async dispatcher in event loop
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_running():
+            asyncio.create_task(process_due_follow_up_queue(db))
+        else:
+            loop.run_until_complete(process_due_follow_up_queue(db))
+    except Exception as e:
+        logger.error(f"Error in run_ai_follow_up_job: {e}")
+
+
+def run_ai_inactivity_resolution_job(db: Session):
+    """Auto-resolves stagnant human-requested sessions (35+ min silence) and sends CSAT prompt."""
+    import asyncio
+    try:
+        from app.services.ai_session_resolver import process_inactivity_session_resolutions
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        if loop.is_running():
+            asyncio.create_task(process_inactivity_session_resolutions(db))
+        else:
+            loop.run_until_complete(process_inactivity_session_resolutions(db))
+    except Exception as e:
+        logger.error(f"Error in run_ai_inactivity_resolution_job: {e}")
+

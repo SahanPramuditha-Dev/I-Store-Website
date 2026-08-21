@@ -5,7 +5,7 @@ import { openPrintCenter } from "../lib/printCenter";
 import { printHtmlDocument } from "../lib/printBridge";
 import { useFetch } from "../hooks/useFetch";
 import { Input, Select, SearchableSelect, CustomerSelect, ProductSelect } from "../components/UI";
-import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, MessageSquare, Share2, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag, PackagePlus, FileText, ShoppingCart } from "lucide-react";
+import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, MessageSquare, Share2, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag, PackagePlus, FileText, ShoppingCart, Boxes } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
@@ -1990,7 +1990,15 @@ export default function POS() {
               </div>
             );
             })}
-            {filteredInventory.length === 0 && <div className="col-span-2 text-center py-10 text-slate-500 text-sm">No products found</div>}
+            {filteredInventory.length === 0 && (
+              <div className="col-span-2 flex flex-col items-center justify-center py-12 px-4 text-center">
+                <div className="mb-2.5 grid h-10 w-10 place-items-center rounded-xl border border-slate-300 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-400">
+                  <Boxes size={20} />
+                </div>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No Products Found</p>
+                <p className="text-[11px] text-slate-500 max-w-[200px] mt-0.5">Try searching with a different keyword or scan another barcode.</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1998,46 +2006,46 @@ export default function POS() {
         <div className="min-h-0 flex flex-col bg-white dark:bg-slate-900/60 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm relative">
           
           {mode === "repair" && (
-            <div className="p-3 bg-indigo-900/20 border-b border-indigo-500/20 flex flex-wrap gap-2 items-center shrink-0">
-               <Wrench size={16} className="text-indigo-400" />
+            <div className="p-3 bg-indigo-50 border-b border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-500/20 flex flex-wrap gap-2 items-center shrink-0">
+               <Wrench size={16} className="text-indigo-600 dark:text-indigo-400" />
                <input 
                  ref={repairTicketRef}
-                 className="min-w-[220px] bg-black/40 border border-indigo-500/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 outline-none focus:border-indigo-400 flex-1"
+                 className="min-w-[220px] bg-white border border-indigo-300 rounded-lg px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-indigo-500 dark:bg-black/40 dark:border-indigo-500/30 dark:text-white dark:placeholder:text-slate-400 flex-1 shadow-sm"
                  placeholder="Link Repair Ticket No. (e.g. R-1001)"
                  value={repairTicketNo}
                  onChange={e => setRepairTicketNo(e.target.value)}
                />
-               <button onClick={addLaborCharge} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-lg">
+               <button onClick={addLaborCharge} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm">
                  + Add Labor
                </button>
-                <button onClick={loadRepairTicketToCart} className="bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-white/10">
+                <button onClick={loadRepairTicketToCart} className="bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-slate-300 shadow-sm dark:bg-white/10 dark:hover:bg-white/20 dark:text-slate-200 dark:border-white/10">
                   Pull Ticket
                 </button>
              </div>
           )}
           {mode === "reservation" && (
-            <div className="p-3 bg-cyan-900/20 border-b border-cyan-500/20 flex flex-wrap gap-2 items-center shrink-0">
-               <Clock size={16} className="text-cyan-300" />
+            <div className="p-3 bg-cyan-50 border-b border-cyan-200 dark:bg-cyan-900/20 dark:border-cyan-500/20 flex flex-wrap gap-2 items-center shrink-0">
+               <Clock size={16} className="text-cyan-600 dark:text-cyan-300" />
                <input
                  ref={reservationRef}
-                 className="min-w-[240px] bg-black/40 border border-cyan-500/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 outline-none focus:border-cyan-300 flex-1"
+                 className="min-w-[240px] bg-white border border-cyan-300 rounded-lg px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-cyan-500 dark:bg-black/40 dark:border-cyan-500/30 dark:text-white dark:placeholder:text-slate-400 flex-1 shadow-sm"
                  placeholder="Reservation No. (e.g. RSV-2026-000001)"
                  value={reservationNo}
                  onChange={e => setReservationNo(e.target.value)}
                />
-               <button onClick={loadReservationToCart} className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-lg">
+               <button onClick={loadReservationToCart} className="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm">
                  Load Reservation
                </button>
-               <a href="/reservations" className="bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-white/10">
+               <a href="/reservations" className="bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-slate-300 shadow-sm dark:bg-white/10 dark:hover:bg-white/20 dark:text-slate-200 dark:border-white/10 inline-flex items-center">
                  Open Reservations
                </a>
             </div>
           )}
           {mode === "return" && (
-            <div className="p-3 bg-rose-900/20 border-b border-rose-500/20 flex flex-wrap gap-2 items-center shrink-0">
-               <CornerUpLeft size={16} className="text-rose-400" />
+            <div className="p-3 bg-rose-50 border-b border-rose-200 dark:bg-rose-900/20 dark:border-rose-500/20 flex flex-wrap gap-2 items-center shrink-0">
+               <CornerUpLeft size={16} className="text-rose-600 dark:text-rose-400" />
                <input
-                 className="min-w-[240px] bg-black/40 border border-rose-500/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 outline-none focus:border-rose-400 flex-1"
+                 className="min-w-[240px] bg-white border border-rose-300 rounded-lg px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-rose-500 dark:bg-black/40 dark:border-rose-500/30 dark:text-white dark:placeholder:text-slate-400 flex-1 shadow-sm"
                  placeholder="Invoice number, customer, or phone"
                  value={returnInvoiceLookup}
                  onChange={e => setReturnInvoiceLookup(e.target.value)}
@@ -2048,10 +2056,10 @@ export default function POS() {
                    }
                  }}
                />
-               <button onClick={() => lookupReturnInvoice()} className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-lg">
+               <button onClick={() => lookupReturnInvoice()} className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-sm">
                  Lookup Invoice
                </button>
-               <button onClick={() => navigate("/returns") } className="bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-white/10">
+               <button onClick={() => navigate("/returns")} className="bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg transition-colors border border-slate-300 shadow-sm dark:bg-white/10 dark:hover:bg-white/20 dark:text-slate-200 dark:border-white/10">
                  Open Returns Module
                </button>
             </div>
@@ -2830,10 +2838,10 @@ export default function POS() {
                     type="button"
                     onClick={checkout}
                     disabled={checkoutDisabled}
-                    className={`w-full py-3.5 px-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
+                    className={`w-full py-3.5 px-4 rounded-xl font-black text-sm uppercase tracking-wider transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
                       checkoutDisabled
-                        ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
-                        : "bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-600/30 border border-indigo-400/40"
+                        ? "bg-slate-100 text-slate-500 border border-slate-300 shadow-sm cursor-not-allowed dark:bg-slate-900/80 dark:border-white/10 dark:text-slate-500"
+                        : "bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-xl shadow-indigo-600/30 border border-indigo-400/40"
                     }`}
                     title={
                       mode === "return"
@@ -2862,7 +2870,7 @@ export default function POS() {
                     <button
                       type="button"
                       onClick={clearCart}
-                      className="p-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors"
+                      className="p-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-300 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/20 transition-colors shadow-sm"
                       title="Clear Cart (ESC)"
                     >
                       <Trash2 size={16} />
@@ -2871,7 +2879,11 @@ export default function POS() {
                       type="button"
                       onClick={printReceipt}
                       disabled={!lastSale}
-                      className={`p-2.5 rounded-xl border transition-colors ${lastSale ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20' : 'bg-white/5 border-white/5 text-slate-600 cursor-not-allowed'}`}
+                      className={`p-2.5 rounded-xl border transition-colors shadow-sm ${
+                        lastSale
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:border-indigo-500/30 dark:text-indigo-300 dark:hover:bg-indigo-500/20'
+                          : 'bg-slate-100 border-slate-300 text-slate-400 dark:bg-white/5 dark:border-white/5 dark:text-slate-600 cursor-not-allowed'
+                      }`}
                       title="Print Last Receipt (Ctrl+P)"
                     >
                       <Printer size={16} />
@@ -2879,7 +2891,7 @@ export default function POS() {
                     <button
                       type="button"
                       onClick={suspendCurrentCart}
-                      className="relative p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors"
+                      className="relative p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 dark:border-white/10 transition-colors shadow-sm"
                       title="Suspend Cart"
                     >
                       <Save size={16} />
@@ -2888,7 +2900,7 @@ export default function POS() {
                     <button
                       type="button"
                       onClick={() => setShowSuspendPicker(true)}
-                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition-colors"
+                      className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 dark:border-white/10 transition-colors shadow-sm"
                       title="Resume Cart"
                     >
                       <FolderOpen size={16} />

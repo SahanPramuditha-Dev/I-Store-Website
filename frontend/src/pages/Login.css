@@ -1142,18 +1142,18 @@
 
 html:not(.dark) .exact-login-shell {
   background:
-    radial-gradient(1200px 620px at 6% 12%, rgba(99, 102, 241, 0.09), transparent 60%),
-    radial-gradient(760px 520px at 94% 92%, rgba(79, 70, 229, 0.07), transparent 54%),
-    #f8fafc;
+    radial-gradient(1200px 620px at 10% 10%, rgba(99, 102, 241, 0.07), transparent 60%),
+    radial-gradient(800px 500px at 90% 90%, rgba(79, 70, 229, 0.05), transparent 55%),
+    #f1f5f9;
 }
 
 html:not(.dark) .exact-login-window {
   background: #ffffff;
-  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 24px;
+  border: 1.5px solid #94a3b8;
   box-shadow:
-    0 24px 70px -12px rgba(15, 23, 42, 0.12),
-    0 10px 28px -8px rgba(15, 23, 42, 0.06),
-    0 0 0 1px rgba(15, 23, 42, 0.04);
+    0 24px 48px -12px rgba(15, 23, 42, 0.08),
+    0 4px 12px rgba(15, 23, 42, 0.04);
 }
 
 html:not(.dark) .exact-login-visual {
@@ -1162,21 +1162,23 @@ html:not(.dark) .exact-login-visual {
 
 html:not(.dark) .exact-login-auth {
   background: #ffffff;
-  border-left: 1px solid #e2e8f0;
+  border-left: 1.5px solid #cbd5e1;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 html:not(.dark) .exact-login-theme-btn {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1.5px solid #cbd5e1;
   color: #475569;
 }
 
 html:not(.dark) .exact-login-theme-btn:hover {
-  background: #e0e7ff;
-  border-color: #818cf8;
+  background: #eef2ff;
+  border-color: #6366f1;
   color: #4338ca;
+  transform: scale(1.04);
 }
 
 html:not(.dark) .exact-login-storeline {
@@ -1185,6 +1187,7 @@ html:not(.dark) .exact-login-storeline {
 
 html:not(.dark) .exact-login-head h1 {
   color: #0f172a;
+  letter-spacing: -0.02em;
 }
 
 html:not(.dark) .exact-login-head p {
@@ -1197,8 +1200,15 @@ html:not(.dark) .exact-login-head a {
 
 html:not(.dark) .exact-login-system-pill {
   background: #f8fafc;
-  border-color: #e2e8f0;
-  color: #334155;
+  border-radius: 12px;
+  border: 1.5px solid #cbd5e1;
+  color: #1e293b;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+html:not(.dark) .exact-login-system-pill:hover {
+  border-color: #94a3b8;
 }
 
 html:not(.dark) .exact-login-system-pill strong {
@@ -1207,52 +1217,70 @@ html:not(.dark) .exact-login-system-pill strong {
 
 html:not(.dark) .exact-login-system-pill.is-online {
   background: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #16a34a;
+  border: 1.5px solid #86efac;
+  color: #15803d;
 }
 
 html:not(.dark) .exact-login-system-pill.is-offline {
   background: #fef2f2;
-  border-color: #fecaca;
-  color: #dc2626;
+  border: 1.5px solid #fca5a5;
+  color: #b91c1c;
 }
 
 html:not(.dark) .exact-login-offline {
   background: #fef2f2;
-  border-color: #fecaca;
+  border-radius: 12px;
+  border: 1.5px solid #fca5a5;
   color: #991b1b;
 }
 
 html:not(.dark) .exact-login-offline button {
-  border-color: #fca5a5;
+  border: 1.5px solid #fca5a5;
+  border-radius: 8px;
   background: #fee2e2;
   color: #991b1b;
 }
 
 html:not(.dark) .exact-login-checking {
   background: #eef2ff;
-  border-color: #c7d2fe;
+  border-radius: 12px;
+  border: 1.5px solid #a5b4fc;
   color: #3730a3;
 }
 
 html:not(.dark) .exact-login-field input {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1.5px solid #cbd5e1;
   color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html:not(.dark) .exact-login-field input:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06);
 }
 
 html:not(.dark) .exact-login-field input::placeholder {
-  color: #94a3b8;
+  color: #64748b !important;
+  font-weight: 500;
+  opacity: 1;
+}
+
+html:not(.dark) .exact-login-field input:focus::placeholder {
+  color: #94a3b8 !important;
 }
 
 html:not(.dark) .exact-login-field input:focus {
   background: #ffffff;
   border-color: #6366f1;
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12), 0 0 0 3px rgba(99, 102, 241, 0.18);
+  box-shadow: 0 0 0 3.5px rgba(99, 102, 241, 0.18), 0 2px 8px rgba(99, 102, 241, 0.08);
 }
 
 html:not(.dark) .exact-login-eye {
   color: #64748b;
+  transition: color 0.2s ease;
 }
 
 html:not(.dark) .exact-login-eye:hover {
@@ -1342,29 +1370,31 @@ html:not(.dark) .pin-dot.filled {
 }
 
 html:not(.dark) .pin-pad button {
-  background: #f8fafc;
-  border-color: #e2e8f0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
   color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 html:not(.dark) .pin-pad button:hover:not(:disabled) {
   background: #eef2ff;
-  border-color: #6366f1;
+  border-color: #4f46e5;
   color: #4338ca;
 }
 
 html:not(.dark) .switcher-title {
-  color: #64748b;
+  color: #475569;
 }
 
 html:not(.dark) .switcher-card {
-  background: #f8fafc;
-  border-color: #e2e8f0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 html:not(.dark) .switcher-card:hover {
-  background: #eef2ff;
-  border-color: #818cf8;
+  background: #f8fafc;
+  border-color: #64748b;
 }
 
 html:not(.dark) .switcher-card.selected {

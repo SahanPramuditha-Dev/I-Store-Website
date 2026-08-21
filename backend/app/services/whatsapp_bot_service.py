@@ -6,8 +6,12 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
 
-from app.models import Customer, Sale, RepairTicket, WarrantyRecord, WhatsAppTemplate, WhatsAppBotRule, WhatsAppAutomationRule, SecuritySetting
+from app.models import (
+    Customer, Sale, RepairTicket, WarrantyRecord, WhatsAppTemplate,
+    WhatsAppBotRule, WhatsAppAutomationRule, SecuritySetting, WhatsAppConversationSession
+)
 from app.services.supabase_pos_sync import generate_invoice_token
+from app.utils.time import utcnow
 from app.utils.whatsapp_helper import (
     resolve_store_variables,
     normalize_sri_lankan_phone,
@@ -131,10 +135,105 @@ def _check_custom_bot_rules(db: Session, text: str, store_info: Dict[str, Any], 
     return None
 
 
-def process_incoming_bot_message(db: Session, sender_phone: str, message_text: str) -> Optional[str]:
+# Global in-memory map of AI-paused phone numbers: phone -> unpause_datetime
+_AI_PAUSED_NUMBERS: Dict[str, datetime] = {}
+
+
+def is_ai_paused_for_phone(phone: str) -> bool:
+    """Checks if AI auto-responses are temporarily paused for this phone number."""
+    if not phone:
+        return False
+    norm_phone = normalize_sri_lankan_phone(phone) or phone
+    unpause_at = _AI_PAUSED_NUMBERS.get(norm_phone)
+    if unpause_at:
+        if datetime.now() < unpause_at:
+            return True
+        else:
+            _AI_PAUSED_NUMBERS.pop(norm_phone, None)
+    return False
+
+
+def set_ai_pause_for_phone(phone: str, hours: int = 2) -> None:
+    """Pauses AI auto-responses for this phone number for a given duration (default 2 hours)."""
+    if phone:
+        from datetime import timedelta
+        norm_phone = normalize_sri_lankan_phone(phone) or phone
+        _AI_PAUSED_NUMBERS[norm_phone] = datetime.now() + timedelta(hours=hours)
+
+
+def clear_ai_pause_for_phone(phone: str) -> None:
+    """Clears AI pause for this phone number so auto-replies resume immediately."""
+    if phone:
+        norm_phone = normalize_sri_lankan_phone(phone) or phone
+        _AI_PAUSED_NUMBERS.pop(norm_phone, None)
+
+
+def _check_human_handover_intent(text: str) -> bool:
     """
-    Parses incoming message text from a customer and returns an automated reply string.
-    Returns None if no auto-reply should be sent (e.g. system noise).
+    Detects if customer message is requesting to speak with a human agent,
+    supporting conversational English, Singlish, Sinhala, and Tamil variations.
+    """
+    if not text:
+        return False
+    norm = text.lower().strip()
+
+    # 1. Regex patterns for flexible conversational phrasing
+    regex_patterns = [
+        r'\b(talk|speak|chat)\s+(to|with)\s+(a\s+|an\s+|any\s+|some\s+)?(person|human|agent|someone|staff|representative|rep|operator|support|executive|manager|technician|guy|girl|man|people|one)\b',
+        r'\b(connect|transfer|pass)\s+(me\s+)?(to|with)?\s*(a\s+|an\s+|any\s+)?(human|person|agent|representative|rep|operator|staff|support|someone|manager)\b',
+        r'\b(want|need|like)\s+(to\s+)?(talk|speak|chat)\b',
+        r'\b(real|live|actual)\s+(person|human|agent|support|operator|staff|rep)\b',
+        r'\b(call|ring)\s+(me|back)\b',
+        r'\b(customer\s+care|customer\s+service|customer\s+support|helpdesk|live\s+chat|live\s+agent)\b',
+        r'\b(katha\s+karanna|kenek\s+ekka|manussayek|kenek\s+denna|call\s+ekak|staff\s+kenek|kenek\s+innawada|person\s+kenek)\b',
+        r'\b(pesa\s+vendum|agent\s+thevai|human\s+thevai)\b'
+    ]
+    if any(re.search(p, norm) for p in regex_patterns):
+        return True
+
+    # 2. Direct keyword tokens
+    direct_keywords = [
+        "human", "agent", "representative", "operator", "handover", "live agent",
+        "real person", "talk to person", "speak to person", "talk to human",
+        "customer service", "customer care"
+    ]
+    words = set(re.findall(r'\w+', norm))
+    if any(k in norm for k in direct_keywords) or any(k in words for k in ["agent", "human", "representative", "operator"]):
+        return True
+
+    return False
+
+
+def get_or_create_conversation_session(db: Session, phone_number: str) -> WhatsAppConversationSession:
+    """Retrieves or creates a persistent conversation session state for this phone number."""
+    norm_phone = normalize_sri_lankan_phone(phone_number) or phone_number
+    session = db.query(WhatsAppConversationSession).filter(
+        WhatsAppConversationSession.phone_number == norm_phone
+    ).first()
+    if not session:
+        session = WhatsAppConversationSession(
+            phone_number=norm_phone,
+            state="AI_ACTIVE",
+            last_interaction_at=utcnow()
+        )
+        db.add(session)
+        db.commit()
+    else:
+        session.last_interaction_at = utcnow()
+        db.commit()
+    return session
+
+
+def process_incoming_bot_message(
+    db: Session,
+    sender_phone: str,
+    message_text: str,
+    media_base64: Optional[str] = None,
+    media_mime_type: Optional[str] = None
+) -> Optional[str]:
+    """
+    Parses incoming message text/media from a customer and returns an automated reply string.
+    Returns None if no auto-reply should be sent (e.g. system noise or human agent conversation).
     """
     clean_phone = normalize_sri_lankan_phone(sender_phone) or sender_phone
     if not clean_phone:
@@ -164,8 +263,126 @@ def process_incoming_bot_message(db: Session, sender_phone: str, message_text: s
     ).first()
     cust_name = customer.name if customer else "Valued Customer"
 
+    # 0. Anti-Abuse Rate Limiting Check
+    try:
+        from app.services.ai_security import check_rate_limit, sanitize_and_check_injection
+        allowed, limit_msg = check_rate_limit(clean_phone)
+        if not allowed:
+            return limit_msg
+    except Exception as sec_err:
+        logger.debug(f"Security rate limiter skipped: {sec_err}")
+
+    # Synchronize persistent conversation session
+    conv_session = get_or_create_conversation_session(db, clean_phone)
+
+    # 0.1 Check CSAT Response Feedback
+    if conv_session.csat_requested:
+        norm_txt = (message_text or "").strip().lower()
+        if norm_txt in ["1", "👍", "good", "great", "excellent", "super", "yes", "solved", "satisfied", "positive", "1️⃣"]:
+            try:
+                from app.models import AICSATResponse
+                csat = AICSATResponse(
+                    phone_number=clean_phone,
+                    customer_id=customer.id if customer else None,
+                    rating="POSITIVE",
+                    score=5,
+                    feedback_text=message_text,
+                    resolved_by="STAFF" if conv_session.state == "HUMAN_ACTIVE" else "AI"
+                )
+                db.add(csat)
+                conv_session.csat_requested = False
+                db.commit()
+                return (
+                    f"⭐ *THANK YOU FOR YOUR FEEDBACK!*\n\n"
+                    f"We're thrilled to hear that you had a great experience with *{store_name}*! 😊\n"
+                    f"Feel free to message us anytime you need help with devices, repairs, or accessories. Have a wonderful day!"
+                )
+            except Exception as e:
+                logger.debug(f"Error saving CSAT: {e}")
+        elif norm_txt in ["2", "👎", "bad", "poor", "unhappy", "not solved", "needs improvement", "negative", "2️⃣"]:
+            try:
+                from app.models import AICSATResponse
+                csat = AICSATResponse(
+                    phone_number=clean_phone,
+                    customer_id=customer.id if customer else None,
+                    rating="NEGATIVE",
+                    score=1,
+                    feedback_text=message_text,
+                    resolved_by="STAFF" if conv_session.state == "HUMAN_ACTIVE" else "AI"
+                )
+                db.add(csat)
+                conv_session.csat_requested = False
+                db.commit()
+                return (
+                    f"🙏 *THANK YOU FOR YOUR FEEDBACK*\n\n"
+                    f"We apologize that your experience did not meet expectations. We are constantly improving our service at *{store_name}*.\n"
+                    f"If you still need assistance, please call our manager directly at *{store_phone}*."
+                )
+            except Exception as e:
+                logger.debug(f"Error saving CSAT: {e}")
+
+    # 0.2 Handle Audio Voice Notes (Transcribe via Gemini Audio)
+    is_voice_note = (
+        media_base64 and media_mime_type and (
+            "audio" in media_mime_type.lower() or media_mime_type.lower() in ["audio/ogg", "audio/opus", "audio/mpeg", "audio/mp4", "audio/wav"]
+        )
+    )
+    if is_voice_note:
+        try:
+            from app.services.ai_voice_service import transcribe_voice_message_with_gemini
+            transcribed_text = transcribe_voice_message_with_gemini(
+                audio_base64=media_base64,
+                mime_type=media_mime_type or "audio/ogg",
+                db=db
+            )
+            if transcribed_text:
+                logger.info(f"Transcribed WhatsApp voice note for {clean_phone}: '{transcribed_text}'")
+                message_text = transcribed_text
+            else:
+                return (
+                    f"🎙️ *Voice Note Received*\n\n"
+                    f"Hello {cust_name}, we couldn't clearly transcribe your voice message. Please type your message or call our hotline at *{store_phone}*! 👍"
+                )
+        except Exception as e:
+            logger.warning(f"Voice transcription processing failed: {e}")
+
     raw_text = (message_text or "").strip()
-    
+
+    # 0.3 Sanitize & Check Prompt Injection
+    try:
+        raw_text, is_injection = sanitize_and_check_injection(raw_text)
+    except Exception:
+        pass
+
+    text = raw_text.upper()
+    tokens = text.split()
+    first_token = tokens[0] if tokens else ""
+
+    # Cancel any active follow-ups since the customer just replied
+    try:
+        from app.services.ai_followup_service import cancel_active_follow_ups, record_customer_opt_out
+        cancel_active_follow_ups(db, clean_phone, cancel_reason="Customer sent a new inbound message")
+    except Exception as e:
+        logger.debug(f"Follow-up cancellation skipped: {e}")
+
+    # Check Opt-out Keywords (STOP, UNSUBSCRIBE, OPT OUT)
+    if text in ["STOP", "UNSUBSCRIBE", "OPT OUT", "OPTOUT", "CANCEL NOTIFICATIONS"]:
+        try:
+            record_customer_opt_out(db, clean_phone, reason="Customer replied STOP")
+        except Exception:
+            pass
+        return (
+            f"🛑 *NOTIFICATIONS MUTED*\n\n"
+            f"Hello {cust_name}, you have been unsubscribed from automated promotional & follow-up messages.\n"
+            f"You can still message us anytime to check bills, repairs, or warranty! 👍"
+        )
+
+    # If customer explicitly sends a menu or reset command, resume AI and unpause
+    if text in ["MENU", "START", "BOT", "HELP", "RESET", "1", "2", "3", "4"] or first_token in ["1", "2", "3", "4"]:
+        clear_ai_pause_for_phone(clean_phone)
+        conv_session.state = "AI_ACTIVE"
+        db.commit()
+
     # 1. First priority: Check Away / After-Hours message if store is closed
     away_reply = _check_away_message(db, store_info, cust_name)
     if away_reply:
@@ -176,10 +393,41 @@ def process_incoming_bot_message(db: Session, sender_phone: str, message_text: s
     if custom_bot_reply:
         return custom_bot_reply
 
+    # 3. Third priority: Check Human Handover Request
+    if _check_human_handover_intent(raw_text):
+        set_ai_pause_for_phone(clean_phone, hours=2)
+        conv_session.state = "HUMAN_REQUESTED"
+        conv_session.handover_requested_at = utcnow()
+        db.commit()
+        return (
+            f"👨‍💼 *LIVE SUPPORT REQUESTED*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👋 Hello *{cust_name}*,\n\n"
+            f"I have notified our store team at *{store_name}*! 🔔\n"
+            f"A staff member will reply to you directly in this chat shortly.\n\n"
+            f"📞 For urgent assistance, you can also call our hotline directly at *{store_phone}*.\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"_Reply *MENU* or *1* anytime to resume automated self-service._"
+        )
+
+    # 4. If session is in HUMAN_ACTIVE or HUMAN_REQUESTED state, suppress AI auto-reply
+    if conv_session.state in ["HUMAN_ACTIVE", "HUMAN_REQUESTED"] or is_ai_paused_for_phone(clean_phone):
+        return None
+
+    # 5. Handle AI Vision for attached images (JPEG, PNG, WEBP)
+    if media_base64 and not is_voice_note:
+        try:
+            from app.services.ai_service import analyze_device_image_with_vision
+            return analyze_device_image_with_vision(
+                image_base64=media_base64,
+                mime_type=media_mime_type or "image/jpeg",
+                customer_prompt=raw_text,
+                db=db
+            )
+        except Exception as e:
+            logger.warning(f"AI Vision processing failed: {e}")
+
     portal_base = "https://i-store-customer-portal-one.vercel.app"
-    text = raw_text.upper()
-    tokens = text.split()
-    first_token = tokens[0] if tokens else ""
 
     # Match intent flags
     is_opt1 = (
@@ -402,6 +650,27 @@ def process_incoming_bot_message(db: Session, sender_phone: str, message_text: s
             f"_Reply 1 for Bills, 2 for Repairs, 3 for Warranty._"
         ))
 
+    # ─── 5. Gemini AI Conversational Assistant Fallback ───────────────────────
+    # If customer is asking a natural question (not a simple greeting/command keyword),
+    # let Gemini AI answer grounded with multi-turn memory, inventory, and customer records.
+    simple_greetings = {"HI", "HELLO", "HEY", "HOLA", "AYUBOWAN", "VANAKKAM", "START", "MENU", "HELP", "INFO", "OPTIONS"}
+    if text not in simple_greetings and len(raw_text.strip()) > 3:
+        try:
+            from app.services.ai_service import answer_customer_whatsapp_inquiry
+            ai_reply = answer_customer_whatsapp_inquiry(
+                db=db,
+                customer_name=cust_name,
+                customer_phone=clean_phone,
+                message_text=raw_text,
+                store_info=store_info,
+                customer_id=customer.id if customer else None,
+                is_verified=conv_session.is_verified
+            )
+            if ai_reply:
+                return ai_reply
+        except Exception:
+            pass
+
     # ─── Default Greeting / Menu ──────────────────────────────────────────────
     ctx = {
         "customer_name": cust_name,
@@ -416,5 +685,6 @@ def process_incoming_bot_message(db: Session, sender_phone: str, message_text: s
         f"*3* ➔ Check registered *Device Warranties*\n"
         f"*4* ➔ Store Location, Hours & *Support Hotline*\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"_You can reply with 1, 2, 3, or 4 at any time._"
+        f"_You can reply with 1, 2, 3, or 4 at any time, or simply ask any question!_"
     ))
+

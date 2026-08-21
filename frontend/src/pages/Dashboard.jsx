@@ -32,11 +32,16 @@ import { useSyncStatus } from "../hooks/useSyncStatus";
 import { X, RefreshCw } from "lucide-react";
 import api from "../lib/api";
 
-function ChartEmptyState({ message }) {
+function ChartEmptyState({ message, title = "No Transaction Data Yet" }) {
   return (
-    <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700/70 bg-slate-950/20 px-4 text-center">
-      <BarChart3 size={22} className="text-slate-500" aria-hidden="true" />
-      <p className="text-xs text-slate-400">{message}</p>
+    <div className="flex h-full min-h-[190px] flex-col items-center justify-center gap-2.5 rounded-2xl border border-dashed border-slate-300 dark:border-white/10 bg-slate-50/70 dark:bg-slate-950/20 px-6 py-8 text-center transition-all">
+      <div className="grid h-12 w-12 place-items-center rounded-2xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900/80 text-indigo-600 dark:text-indigo-400 shadow-sm">
+        <BarChart3 size={24} aria-hidden="true" />
+      </div>
+      <div>
+        <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{title}</p>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-[280px]">{message}</p>
+      </div>
     </div>
   );
 }
@@ -106,7 +111,7 @@ function AnalyticsSection() {
   }, []);
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/60 mb-4">
+    <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/60 mb-4">
       <div className="flex items-center justify-between mb-3.5">
         <button 
           onClick={() => setIsOpen(!isOpen)} 
@@ -131,7 +136,7 @@ function AnalyticsSection() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {/* Today's Sales */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+              <div className="rounded-xl border border-slate-300 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Today's Sales</p>
                 <div className="my-1.5">
                   <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">LKR {(data?.sales?.total_sales || 0).toLocaleString()}</span>
@@ -140,7 +145,7 @@ function AnalyticsSection() {
               </div>
 
               {/* Low Stock Alert */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+              <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Low Stock Alert</p>
                   {(data?.lowStock?.count || 0) > 0 && (
@@ -161,7 +166,7 @@ function AnalyticsSection() {
               </div>
 
               {/* Unpaid Balances */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+              <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Unpaid Balances</p>
                 <div className="my-1.5">
                   <span className="text-lg font-extrabold text-rose-600 dark:text-rose-400 tabular-nums">LKR {(data?.unpaid?.total_amount || 0).toLocaleString()}</span>
@@ -170,7 +175,7 @@ function AnalyticsSection() {
               </div>
 
               {/* Delayed Repairs */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+              <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Delayed Repairs</p>
                   {(data?.delayedRepairs?.count || 0) > 0 && (
@@ -191,7 +196,7 @@ function AnalyticsSection() {
               </div>
 
               {/* Peak Hours */}
-              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+              <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Peak Traffic Hours</p>
                 <div className="my-1 flex flex-col gap-1 text-[11px]">
                   {(data?.peakHours?.top_hours || []).slice(0, 2).map((ph, i) => (
@@ -498,7 +503,7 @@ export default function Dashboard() {
         <AnalyticsSection />
 
         {/* ACTION CENTER */}
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
+        <div className="rounded-2xl border border-slate-300 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
               <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
@@ -511,7 +516,7 @@ export default function Dashboard() {
             {/* Overdue Repairs */}
             <div
               onClick={() => navigate("/repairs")}
-              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
             >
               <div className="flex items-center gap-2.5">
                 <div className="grid h-8 w-8 place-items-center rounded-lg bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 group-hover:bg-rose-500/20 transition-colors">
@@ -528,7 +533,7 @@ export default function Dashboard() {
             {/* Low & Out of Stock */}
             <div
               onClick={() => setShowLowStockModal(true)}
-              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
             >
               <div className="flex items-center gap-2.5">
                 <div className="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 group-hover:bg-amber-500/20 transition-colors">
@@ -545,7 +550,7 @@ export default function Dashboard() {
             {/* Supplier Payables */}
             <div
               onClick={() => navigate("/suppliers")}
-              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
             >
               <div className="flex items-center gap-2.5">
                 <div className="grid h-8 w-8 place-items-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 group-hover:bg-indigo-500/20 transition-colors">
@@ -562,7 +567,7 @@ export default function Dashboard() {
             {/* Expiring Warranties */}
             <div
               onClick={() => navigate("/warranty")}
-              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:border-slate-300 transition-all group"
+              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
             >
               <div className="flex items-center gap-2.5">
                 <div className="grid h-8 w-8 place-items-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 group-hover:bg-sky-500/20 transition-colors">
@@ -790,7 +795,10 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              <ChartEmptyState message="Category sales will appear after your first sale." />
+              <ChartEmptyState
+                title="No Category Breakdown"
+                message="Category performance and distribution will render once sales invoices are logged."
+              />
             )}
           </SectionCard>
 
@@ -1044,7 +1052,11 @@ export default function Dashboard() {
 
           <SectionCard title="Recent Payments" subtitle="Settlement stream" className="dashboard-table-card xl:col-span-4">
             {tx.length === 0 ? (
-              <div className="dashboard-empty-copy">Payments will appear here as sales are settled.</div>
+              <div className="dashboard-empty-copy">
+                <Receipt size={20} className="text-slate-400 mb-1" />
+                <span className="font-bold text-slate-700 dark:text-slate-200">No Recent Payments</span>
+                <span className="text-[11px] text-slate-500 max-w-[200px]">Payments will appear here as sales are settled.</span>
+              </div>
             ) : <div className="space-y-2">
               {tx.slice(0, 6).map((t, idx) => (
                 <div key={`p-${t.id || idx}`} className="dashboard-list-row flex items-center justify-between rounded-xl border px-3 py-2">
@@ -1069,7 +1081,11 @@ export default function Dashboard() {
             }
           >
             {feed.length === 0 ? (
-              <div className="dashboard-empty-copy">Activity will appear here as your team works.</div>
+              <div className="dashboard-empty-copy">
+                <Clock size={20} className="text-slate-400 mb-1" />
+                <span className="font-bold text-slate-700 dark:text-slate-200">No Activity Recorded</span>
+                <span className="text-[11px] text-slate-500 max-w-[240px]">Live operational logs and updates will stream here as your team works.</span>
+              </div>
             ) : <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {feed.slice(0, 8).map((l, i) => (
                 <div key={l.id || i} className="dashboard-activity-row flex gap-3 rounded-xl border p-3">
@@ -1112,7 +1128,11 @@ export default function Dashboard() {
             }
           >
             {(!data?.top_products || data.top_products.length === 0) ? (
-              <div className="dashboard-empty-copy">No sales data recorded for this period.</div>
+              <div className="dashboard-empty-copy">
+                <Boxes size={20} className="text-slate-400 mb-1" />
+                <span className="font-bold text-slate-700 dark:text-slate-200">No Sales Data Recorded</span>
+                <span className="text-[11px] text-slate-500 max-w-[220px]">Top performing items will rank here for the selected period.</span>
+              </div>
             ) : (
               <div className="space-y-2.5">
                 {data.top_products.map((item, idx) => (
@@ -1139,7 +1159,11 @@ export default function Dashboard() {
             className="dashboard-table-card xl:col-span-6"
           >
             {(!data?.payment_methods || data.payment_methods.length === 0) ? (
-              <div className="dashboard-empty-copy">No payment records found.</div>
+              <div className="dashboard-empty-copy">
+                <BadgeDollarSign size={20} className="text-slate-400 mb-1" />
+                <span className="font-bold text-slate-700 dark:text-slate-200">No Payment Records</span>
+                <span className="text-[11px] text-slate-500 max-w-[220px]">Payment gateway and cash breakdown will show here.</span>
+              </div>
             ) : (() => {
               const totalPmAmount = data.payment_methods.reduce((sum, item) => sum + Number(item.amount || 0), 0);
               const pmPalette = { Cash: "#10b981", Card: "#3b82f6", Transfer: "#8b5cf6", Credit: "#f59e0b" };
@@ -1197,16 +1221,16 @@ export default function Dashboard() {
             }
           >
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <div className="rounded-xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-950/20 p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">Total Stock Value (Cost)</span>
-                <p className="text-base font-black text-amber-900 dark:text-amber-200 mt-1">LKR {(data?.inventory_stats?.worth_cost || 0).toLocaleString()}</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Retail Worth: LKR {(data?.inventory_stats?.worth_retail || 0).toLocaleString()}</p>
+              <div className="rounded-xl border border-amber-300 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-950/20 p-3 shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">Total Stock Value (Cost)</span>
+                <p className="text-base font-black text-amber-950 dark:text-amber-200 mt-1">LKR {(data?.inventory_stats?.worth_cost || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-slate-600 dark:text-slate-400">Retail Worth: LKR {(data?.inventory_stats?.worth_retail || 0).toLocaleString()}</p>
               </div>
 
-              <div className="rounded-xl border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-950/20 p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">Dead Stock Tied Value</span>
-                <p className="text-base font-black text-rose-900 dark:text-rose-200 mt-1">LKR {(data?.inventory_stats?.dead_stock_value || 0).toLocaleString()}</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">{data?.inventory_stats?.dead_stock_count || 0} Products Unsold &gt; 90 Days</p>
+              <div className="rounded-xl border border-rose-300 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-950/20 p-3 shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-400">Dead Stock Tied Value</span>
+                <p className="text-base font-black text-rose-950 dark:text-rose-200 mt-1">LKR {(data?.inventory_stats?.dead_stock_value || 0).toLocaleString()}</p>
+                <p className="text-[10px] text-slate-600 dark:text-slate-400">{data?.inventory_stats?.dead_stock_count || 0} Products Unsold &gt; 90 Days</p>
               </div>
             </div>
           </SectionCard>
@@ -1218,7 +1242,7 @@ export default function Dashboard() {
                   key={action.label}
                   type="button"
                   onClick={() => navigate(action.to)}
-                  className="dashboard-action-tile flex items-center gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/60 dark:hover:bg-slate-800/60 px-3 py-2 text-left transition"
+                  className="dashboard-action-tile flex items-center gap-2 rounded-xl border border-slate-300 dark:border-white/10 bg-white hover:bg-slate-50 dark:bg-slate-900/60 dark:hover:bg-slate-800/60 px-3 py-2 text-left transition shadow-sm"
                 >
                   <span className="dashboard-action-icon grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 dark:bg-indigo-500/20 dark:border-indigo-500/30 dark:text-indigo-300">{action.icon}</span>
                   <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{action.label}</span>

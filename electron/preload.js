@@ -24,6 +24,7 @@ const ALLOWED_INVOKE = new Set([
   "db:cursor:get", "db:cursor:set",
   "db:auth:setToken",
   "db:sync:push", "db:sync:pull",
+  "license:status", "license:activate", "license:getFingerprint",
   "updater:check", "updater:download", "updater:install", "updater:setOperationsActive", "updater:getVersion", "updater:getState",
   "updater:snooze", "updater:getUpdateLog",
   "app:getAutoLaunch", "app:setAutoLaunch",
@@ -101,6 +102,13 @@ contextBridge.exposeInMainWorld("istore", {
   cursor: {
     get: (entity)              => safeInvoke("db:cursor:get", entity),
     set: (entity, timestamp)   => safeInvoke("db:cursor:set", entity, timestamp),
+  },
+
+  // ── Licensing & Remote Lock ───────────────────────────────────────────
+  license: {
+    getStatus:       ()           => safeInvoke("license:status"),
+    getFingerprint:  ()           => safeInvoke("license:getFingerprint"),
+    activate:        (licenseKey) => safeInvoke("license:activate", licenseKey),
   },
 
   // ── App metadata ─────────────────────────────────────────────────────

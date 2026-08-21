@@ -1,6 +1,7 @@
 import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import Layout from "./components/Layout";
 import UpdateNotification from "./components/UpdateNotification";
+import LicenseLockModal from "./components/LicenseLockModal";
 import { bootstrapPermissions, canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions } from "./lib/rbac";
 import InvoiceView from "./pages/InvoiceView";
 
@@ -100,6 +101,7 @@ export default function App() {
   const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
   return <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+    <LicenseLockModal />
     <UpdateNotification />
     <Suspense fallback={<RouteFallback />}>
       <Routes>

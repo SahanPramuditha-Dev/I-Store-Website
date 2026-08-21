@@ -82,5 +82,10 @@ def sync_schema(db_path):
     print(f"\n[sync-schema] ✅ Complete! {total_added} missing column(s) added to {db_path.name}.\n")
 
 if __name__ == "__main__":
+    from app.config import DB_FILE
     target_db = Path(__file__).resolve().parents[1] / "database" / "istore.db"
-    sync_schema(target_db)
+    if target_db.exists():
+        sync_schema(target_db)
+    if DB_FILE.exists() and DB_FILE.resolve() != target_db.resolve():
+        sync_schema(DB_FILE)
+

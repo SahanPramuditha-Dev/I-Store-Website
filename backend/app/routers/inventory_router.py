@@ -3,11 +3,12 @@ import re
 import os
 from pathlib import Path
 from uuid import uuid4
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import OperationalError
 from app.database import get_db
 from app.auth import get_current_user, require_permission
+from app.core.tenant_guard import scope_query, stamp_tenant
 from sqlalchemy import func, or_
 from app.services.storage import get_storage_service, validate_file, STORAGE_PREFIX_PRODUCTS
 from app.models import (
@@ -148,6 +149,7 @@ async def upload_inventory_image(file: UploadFile = File(...), _=Depends(get_cur
 
 @router.get('', dependencies=[Depends(require_permission("inventory.view"))])
 def list_inventory(
+    request: Request,
     response: Response,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=500, ge=1, le=5000),
@@ -160,6 +162,7 @@ def list_inventory(
     _=Depends(get_current_user),
 ):
     query = db.query(InventoryItem).filter(InventoryItem.is_deleted == False)  # noqa: E712
+    query = scope_query(query, InventoryItem, request)
     if search:
         like = f"%{str(search).strip()}%"
         query = query.filter(
@@ -191,7 +194,7 @@ def list_inventory(
     return rows
 
 @router.post('', dependencies=[Depends(require_permission("inventory.create_product"))])
-def create_inventory(payload: InventoryIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_inventory(request: Request, payload: InventoryIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
     data = payload.model_dump()
     data["barcode"] = _validated_barcode(payload.barcode, payload.sku)
 
@@ -200,7 +203,8 @@ def create_inventory(payload: InventoryIn, db: Session = Depends(get_db), _=Depe
     for f in ui_only_fields:
         data.pop(f, None)
 
-    duplicate = db.query(InventoryItem).filter(InventoryItem.barcode == data["barcode"]).first()
+    dup_query = db.query(InventoryItem).filter(InventoryItem.barcode == data["barcode"])
+    duplicate = scope_query(dup_query, InventoryItem, request).first()
     if duplicate:
         raise HTTPException(status_code=400, detail=f"Duplicate barcode detected: {data['barcode']}")
     
@@ -235,14 +239,16 @@ def create_inventory(payload: InventoryIn, db: Session = Depends(get_db), _=Depe
     filtered_data = {k: v for k, v in data.items() if k in valid_columns}
 
     item = InventoryItem(**filtered_data)
+    stamp_tenant(item, request)
     db.add(item)
     db.commit()
     db.refresh(item)
     return item
 
 @router.put('/{item_id}', dependencies=[Depends(require_permission("inventory.edit_product"))])
-def update_inventory(item_id: int, payload: InventoryIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    item = db.query(InventoryItem).filter(InventoryItem.id == item_id, InventoryItem.is_deleted == False).first()  # noqa: E712
+def update_inventory(request: Request, item_id: int, payload: InventoryIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    query = db.query(InventoryItem).filter(InventoryItem.id == item_id, InventoryItem.is_deleted == False)  # noqa: E712
+    item = scope_query(query, InventoryItem, request).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     update_data = payload.model_dump()

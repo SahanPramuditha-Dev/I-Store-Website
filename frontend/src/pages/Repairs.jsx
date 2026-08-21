@@ -107,7 +107,11 @@ export default function Repairs() {
     "repairs",
     fetchRepairsList
   );
-  const data = repairsData?.items || [];
+  const data = useMemo(() => {
+    if (Array.isArray(repairsData)) return repairsData;
+    if (Array.isArray(repairsData?.items)) return repairsData.items;
+    return [];
+  }, [repairsData]);
   const refreshRepairs = refetch;
 
   const setData = (updater) => {

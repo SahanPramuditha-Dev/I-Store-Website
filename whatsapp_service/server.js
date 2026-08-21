@@ -28,6 +28,23 @@ if (!INTERNAL_SECRET) {
     console.warn('[WhatsApp][WARN] WHATSAPP_SERVICE_SECRET is not set in environment. Endpoint authentication is disabled.');
 }
 
+// ─── Process Error Handling (prevents crash on Windows EBUSY file locks) ─────
+process.on('uncaughtException', (err) => {
+    if (err && err.code === 'EBUSY') {
+        console.warn('[WhatsApp][WARN] Handled Windows EBUSY file lock during session cleanup (harmless):', err.message);
+        return;
+    }
+    console.error('[WhatsApp][FATAL] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    if (reason && (reason.code === 'EBUSY' || (reason.message && reason.message.includes('EBUSY')))) {
+        console.warn('[WhatsApp][WARN] Handled Windows EBUSY lock in promise rejection:', reason.message || reason);
+        return;
+    }
+    console.error('[WhatsApp][WARN] Unhandled Rejection:', reason);
+});
+
 // ─── Structured Logger ──────────────────────────────────────────────────────
 
 const log = {
@@ -217,13 +234,46 @@ client.on('ready', () => {
     log.info('Platform:', connectedUser?.platform);
 });
 
+let isReinitializing = false;
+
+async function restartWhatsAppClient() {
+    if (isReinitializing) return;
+    isReinitializing = true;
+    log.info('Gracefully closing previous browser instance before starting new session...');
+    
+    try {
+        await client.destroy();
+    } catch (destroyErr) {
+        log.warn('Client destroy notice (safe):', destroyErr.message);
+    }
+
+    // Allow Windows OS 2 seconds to release all locked file handles
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    try {
+        log.info('Starting fresh WhatsApp Web client session...');
+        await client.initialize();
+    } catch (initErr) {
+        log.warn('WhatsApp Web Client initialize notice:', initErr.message);
+        clientStatus = 'DISCONNECTED';
+    } finally {
+        isReinitializing = false;
+    }
+}
+
 client.on('disconnected', (reason) => {
-    clientStatus   = 'DISCONNECTED';
+    clientStatus   = 'UNPAIRED';
     isAuthenticated = false;
     qrCodeText     = null;
     qrCodeDataUrl  = null;
     connectedUser  = null;
     log.warn('Client disconnected. Reason:', reason);
+
+    // Auto-recover and generate fresh QR code for next pairing
+    if (reason === 'LOGOUT' || reason === 'NAVIGATION') {
+        log.info('Device unlinked/logged out. Re-launching browser for new QR pairing session...');
+        restartWhatsAppClient();
+    }
 });
 
 client.on('change_state', (state) => {
@@ -372,6 +422,21 @@ client.on('message', async (msg) => {
 
         log.info(`Resolved incoming message: phone=${finalPhone} (chatId=${rawFrom}, name=${senderName})`);
 
+        let mediaBase64 = null;
+        let mediaMimeType = null;
+        if (msg.hasMedia) {
+            try {
+                const downloadedMedia = await msg.downloadMedia();
+                if (downloadedMedia && downloadedMedia.data) {
+                    mediaBase64 = downloadedMedia.data;
+                    mediaMimeType = downloadedMedia.mimetype;
+                    log.info(`Downloaded media attachment (${mediaMimeType}) for message ${msg.id.id}`);
+                }
+            } catch (mediaErr) {
+                log.warn(`Could not download message media: ${mediaErr.message}`);
+            }
+        }
+
         const webhookUrl = process.env.PYTHON_BACKEND_URL || 'http://127.0.0.1:8000';
         
         await fetch(`${webhookUrl}/api/whatsapp/incoming-webhook`, {
@@ -385,7 +450,9 @@ client.on('message', async (msg) => {
                 rawChatId: rawFrom,
                 message: msg.body || '',
                 fromMe: msg.fromMe,
-                messageId: msg.id.id
+                messageId: msg.id.id,
+                media_base64: mediaBase64,
+                media_mime_type: mediaMimeType
             })
         });
     } catch (err) {
@@ -681,6 +748,57 @@ app.get('/api/qr', (req, res) => {
         return res.json({ success: false, status: clientStatus, message: 'QR code not yet available. Retry in a few seconds.' });
     }
     res.json({ success: true, status: 'UNPAIRED', qrCodeUrl: qrCodeDataUrl });
+});
+
+/**
+ * POST /api/reconnect
+ * Triggers re-initialization of WhatsApp client to re-establish session or generate new QR.
+ */
+app.post('/api/reconnect', async (req, res) => {
+    log.info('Manual reconnect / re-pair requested via API.');
+    try {
+        clientStatus = 'INITIALIZING';
+        qrCodeText = null;
+        qrCodeDataUrl = null;
+        connectedUser = null;
+        
+        restartWhatsAppClient();
+
+        res.json({ success: true, message: 'WhatsApp client is re-initializing. A new QR code will be emitted if unpaired.', status: 'INITIALIZING' });
+    } catch (e) {
+        log.error(`Reconnect failed: ${e.message}`);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * POST /api/logout
+ * Logs out of active session, clears credentials, and emits fresh QR code.
+ */
+app.post('/api/logout', async (req, res) => {
+    log.info('Unlink / Logout requested via API.');
+    try {
+        if (clientStatus === 'CONNECTED') {
+            try {
+                await client.logout();
+            } catch (logoutErr) {
+                log.warn(`Client logout notice: ${logoutErr.message}`);
+            }
+        }
+        
+        clientStatus = 'UNPAIRED';
+        isAuthenticated = false;
+        qrCodeText = null;
+        qrCodeDataUrl = null;
+        connectedUser = null;
+
+        restartWhatsAppClient();
+
+        res.json({ success: true, message: 'Device unlinked. Session reset, generating new QR code.', status: 'UNPAIRED' });
+    } catch (e) {
+        log.error(`Logout failed: ${e.message}`);
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 /**

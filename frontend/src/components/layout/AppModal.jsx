@@ -103,7 +103,7 @@ export default function AppModal({
         aria-labelledby={title ? titleId : undefined}
         aria-label={title ? undefined : "Dialog"}
         className={cx(
-          "flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900 shadow-2xl text-slate-900 dark:text-slate-100",
+          "flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white dark:border-white/10 dark:bg-slate-900 shadow-2xl text-slate-900 dark:text-slate-100",
           panelClassName,
         )}
         onClick={(event) => event.stopPropagation()}
@@ -114,7 +114,7 @@ export default function AppModal({
         }}
       >
         {(title || headerActions || onClose) && (
-          <div className="flex items-start justify-between gap-3 border-b border-slate-200 dark:border-white/10 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex items-start justify-between gap-3 border-b border-slate-300 dark:border-white/10 px-4 py-3 sm:px-5 sm:py-4">
             <div className="min-w-0 flex-1">
               {title ? (
                 titleIsNode ? (
@@ -132,7 +132,7 @@ export default function AppModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 transition hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
+                  className="grid h-8 w-8 place-items-center rounded-lg border border-slate-300 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 transition hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/60"
                   aria-label="Close dialog"
                 >
                   <X size={15} />
@@ -142,7 +142,7 @@ export default function AppModal({
           </div>
         )}
         <div data-modal-content className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">{children}</div>
-        {footer ? <div className="app-sticky-actions shrink-0 p-4 border-t border-slate-200 dark:border-white/10">{footer}</div> : null}
+        {footer ? <div className="app-sticky-actions shrink-0 p-4 border-t border-slate-300 dark:border-white/10">{footer}</div> : null}
       </div>
     </div>
   );

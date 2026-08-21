@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, hash_password, require_permission
 from app.database import get_db
-from app.models import AppSetting, Permission, Role, SecurityAuditLog, User
+from app.models import AppSetting, Permission, Role, SecurityAuditLog, User, Organization, Branch
 from app.schemas import EmployeeIn, EmployeeUpdateIn, PrintProfileIn, UiPreferencesIn
 from app.services.security_service import (
     build_session_payload,
@@ -2008,3 +2008,93 @@ def test_accounting_sync(payload: dict, _=Depends(get_current_user)):
         "provider": provider,
         "message": f"{provider} connection established. Ready to sync daily ledger and sales journals."
     }
+
+
+# =========================================================================
+# MULTI-TENANT & BRANCH SWITCHER CONTEXT
+# =========================================================================
+
+@router.get("/tenant/context")
+def get_tenant_context_endpoint(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """
+    Returns the current user's organization, their active branch,
+    and all branches available in their organization for switching.
+    """
+    org_id = user.organization_id or getattr(request.state, "current_org_id", 1) or 1
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    
+    # Fetch all active branches for this organization
+    branches = db.query(Branch).filter(
+        Branch.organization_id == org_id,
+        Branch.is_active == True
+    ).order_by(Branch.code.asc()).all()
+
+    active_branch_id = getattr(request.state, "current_branch_id", None) or user.branch_id
+    if not active_branch_id and branches:
+        active_branch_id = branches[0].id
+
+    active_branch = next((b for b in branches if b.id == active_branch_id), branches[0] if branches else None)
+
+    return {
+        "organization": {
+            "id": org.id if org else 1,
+            "name": org.name if org else "E-Store",
+            "slug": org.slug if org else "default-store",
+            "plan": org.plan.name if org and org.plan else "Enterprise Full Suite"
+        },
+        "active_branch": {
+            "id": active_branch.id if active_branch else 1,
+            "code": active_branch.code if active_branch else "MAIN-01",
+            "name": active_branch.name if active_branch else "Main Branch",
+        } if active_branch else None,
+        "available_branches": [
+            {
+                "id": b.id,
+                "code": b.code,
+                "name": b.name,
+                "address": b.address,
+                "is_warehouse": b.is_warehouse
+            }
+            for b in branches
+        ],
+        "is_multi_branch_enabled": len(branches) > 1,
+        "can_switch_branches": user.role in ["admin", "owner", "manager"]
+    }
+
+
+@router.post("/tenant/switch-branch/{branch_id}")
+def switch_active_branch(
+    branch_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Allows Owner/Manager to switch active branch context without logging out."""
+    if user.role not in ["admin", "owner", "manager"]:
+        raise HTTPException(status_code=403, detail="Only Managers and Admins can switch branch context")
+
+    branch = db.query(Branch).filter(
+        Branch.id == branch_id,
+        Branch.organization_id == user.organization_id,
+        Branch.is_active == True
+    ).first()
+
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found in your organization")
+
+    user.branch_id = branch.id
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Switched active branch to {branch.name}",
+        "active_branch": {
+            "id": branch.id,
+            "code": branch.code,
+            "name": branch.name
+        }
+    }
+

@@ -1,3 +1,4 @@
+import re
 import logging
 import json
 import os
@@ -5,7 +6,7 @@ import base64
 from datetime import datetime, date, timedelta
 from typing import Dict, Any, List, Generator, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 import warnings
 try:
@@ -18,7 +19,11 @@ except ImportError:
     GENAI_AVAILABLE = False
 
 from app.config import settings
-from app.models import Sale, SaleItem, InventoryItem, Customer, RepairTicket, Expense, AppSetting
+from app.models import (
+    Sale, SaleItem, InventoryItem, Customer, RepairTicket,
+    Expense, AppSetting, WhatsAppMessageLog,
+    WhatsAppConversationSession, WhatsAppAIInteractionLog
+)
 from app.utils.time import utcnow
 
 # Gemini AI Service - Live store integration with auto model fallback
@@ -55,7 +60,7 @@ def get_gemini_config(db: Optional[Session] = None) -> tuple[str, str]:
     if not model:
         model = (settings.gemini_model or os.getenv("GEMINI_MODEL", "")).strip()
 
-    return key, model or "gemini-2.5-flash"
+    return key, model or MODEL_FALLBACK_CHAIN[0]
 
 def init_gemini(db: Optional[Session] = None) -> bool:
     if not GENAI_AVAILABLE:
@@ -83,141 +88,177 @@ def get_store_context(db: Session, user_role: str = "admin", user_name: str = "M
     yesterday_start = today_start - timedelta(days=1)
     week_start = today_start - timedelta(days=7)
     
-    # 1. Sales today (matching dashboard filters)
-    sales_query = db.query(
-        func.coalesce(func.sum(Sale.total), 0.0).label("total_sales"),
-        func.count(Sale.id).label("total_orders")
-    ).filter(
-        Sale.created_at >= today_start,
-        Sale.is_voided == False,
-        Sale.is_return == False
-    ).first()
-    
-    # 2. Today's Gross Profit and Margin % Estimation
-    profit_data = db.query(
-        func.coalesce(func.sum(SaleItem.quantity * SaleItem.price), 0.0).label("revenue"),
-        func.coalesce(func.sum(SaleItem.quantity * func.coalesce(SaleItem.cost_price, 0.0)), 0.0).label("cogs")
-    ).join(Sale, Sale.id == SaleItem.sale_id).filter(
-        Sale.created_at >= today_start,
-        Sale.is_voided == False,
-        Sale.is_return == False
-    ).first()
-    
-    today_revenue = float(profit_data.revenue or sales_query.total_sales or 0.0)
-    today_cogs = float(profit_data.cogs or 0.0)
-    today_gross_profit = max(0.0, today_revenue - today_cogs)
-    today_margin_pct = (today_gross_profit / today_revenue * 100.0) if today_revenue > 0 else 0.0
+    try:
+        # 1. Sales today (matching dashboard filters)
+        sales_query = db.query(
+            func.coalesce(func.sum(Sale.total), 0.0).label("total_sales"),
+            func.count(Sale.id).label("total_orders")
+        ).filter(
+            Sale.created_at >= today_start,
+            Sale.is_voided == False,
+            Sale.is_return == False
+        ).first()
+        
+        # 2. Today's Gross Profit and Margin % Estimation
+        profit_data = db.query(
+            func.coalesce(func.sum(SaleItem.quantity * SaleItem.price), 0.0).label("revenue"),
+            func.coalesce(func.sum(SaleItem.quantity * func.coalesce(SaleItem.cost_price, 0.0)), 0.0).label("cogs")
+        ).join(Sale, Sale.id == SaleItem.sale_id).filter(
+            Sale.created_at >= today_start,
+            Sale.is_voided == False,
+            Sale.is_return == False
+        ).first()
+        
+        today_revenue = float(profit_data.revenue or sales_query.total_sales or 0.0) if profit_data else 0.0
+        today_cogs = float(profit_data.cogs or 0.0) if profit_data else 0.0
+        today_gross_profit = max(0.0, today_revenue - today_cogs)
+        today_margin_pct = (today_gross_profit / today_revenue * 100.0) if today_revenue > 0 else 0.0
 
-    # 3. Yesterday's Comparison
-    yesterday_sales = db.query(
-        func.coalesce(func.sum(Sale.total), 0.0)
-    ).filter(
-        Sale.created_at >= yesterday_start,
-        Sale.created_at < today_start,
-        Sale.is_voided == False,
-        Sale.is_return == False
-    ).scalar() or 0.0
+        # 3. Yesterday's Comparison
+        yesterday_sales = db.query(
+            func.coalesce(func.sum(Sale.total), 0.0)
+        ).filter(
+            Sale.created_at >= yesterday_start,
+            Sale.created_at < today_start,
+            Sale.is_voided == False,
+            Sale.is_return == False
+        ).scalar() or 0.0
 
-    # 4. Low stock count and top critical items
-    low_stock_query = db.query(InventoryItem).filter(
-        InventoryItem.is_deleted == False,
-        InventoryItem.quantity <= InventoryItem.low_stock_threshold
-    ).order_by(InventoryItem.quantity.asc())
-    
-    low_stock_count = low_stock_query.count()
-    critical_items = low_stock_query.limit(5).all()
-    critical_items_summary = [
-        f"{item.name} (SKU: {item.sku}, Stock: {item.quantity}, Min: {item.low_stock_threshold})"
-        for item in critical_items
-    ]
+        # 4. Low stock count and top critical items
+        low_stock_query = db.query(InventoryItem).filter(
+            InventoryItem.is_deleted == False,
+            InventoryItem.quantity <= InventoryItem.low_stock_threshold
+        ).order_by(InventoryItem.quantity.asc())
+        
+        low_stock_count = low_stock_query.count()
+        critical_items = low_stock_query.limit(5).all()
+        critical_items_summary = [
+            f"{item.name} (SKU: {item.sku}, Stock: {item.quantity}, Min: {item.low_stock_threshold})"
+            for item in critical_items
+        ]
 
-    # 5. Dead stock calculation (items with no movement in 60+ days)
-    dead_stock_threshold = today_start - timedelta(days=60)
-    dead_stock_items = db.query(InventoryItem).filter(
-        InventoryItem.is_deleted == False,
-        InventoryItem.quantity > 0,
-        InventoryItem.created_at < dead_stock_threshold
-    ).all()
-    dead_stock_count = len(dead_stock_items)
-    dead_stock_value = sum(float(i.quantity * (i.cost_price or 0.0)) for i in dead_stock_items)
+        # 5. Dead stock calculation (items with no movement in 60+ days)
+        dead_stock_threshold = today_start - timedelta(days=60)
+        dead_stock_items = db.query(InventoryItem).filter(
+            InventoryItem.is_deleted == False,
+            InventoryItem.quantity > 0,
+            InventoryItem.created_at < dead_stock_threshold
+        ).all()
+        dead_stock_count = len(dead_stock_items)
+        dead_stock_value = sum(float(i.quantity * (i.cost_price or 0.0)) for i in dead_stock_items)
 
-    # 6. Active / Pending repairs breakdown
-    active_repairs = db.query(RepairTicket).filter(
-        RepairTicket.is_deleted == False,
-        RepairTicket.status.notin_(["completed", "delivered", "cancelled"])
-    ).all()
-    
-    active_repairs_count = len(active_repairs)
-    pending_repairs = sum(1 for r in active_repairs if r.status in ["received", "pending", "diagnosing"])
-    in_progress_repairs = sum(1 for r in active_repairs if r.status in ["in_progress", "awaiting_parts"])
-    ready_repairs = sum(1 for r in active_repairs if r.status in ["ready_for_pickup", "ready", "tested"])
+        # 6. Active / Pending repairs breakdown
+        active_repairs = db.query(RepairTicket).filter(
+            RepairTicket.is_deleted == False,
+            RepairTicket.status.notin_(["completed", "delivered", "cancelled"])
+        ).all()
+        
+        active_repairs_count = len(active_repairs)
+        pending_repairs = sum(1 for r in active_repairs if r.status in ["received", "pending", "diagnosing"])
+        in_progress_repairs = sum(1 for r in active_repairs if r.status in ["in_progress", "awaiting_parts"])
+        ready_repairs = sum(1 for r in active_repairs if r.status in ["ready_for_pickup", "ready", "tested"])
 
-    # 7. Total Unpaid Customer Balances (Receivables)
-    unpaid_sales = db.query(Sale).filter(
-        Sale.is_voided == False,
-        Sale.is_return == False,
-        Sale.balance_due > 0,
-        Sale.customer_id.isnot(None)
-    ).all()
-    total_unpaid = sum(float(s.balance_due) for s in unpaid_sales)
+        # 7. Total Unpaid Customer Balances (Receivables)
+        unpaid_sales = db.query(Sale).filter(
+            Sale.is_voided == False,
+            Sale.is_return == False,
+            Sale.balance_due > 0,
+            Sale.customer_id.isnot(None)
+        ).all()
+        total_unpaid = sum(float(s.balance_due) for s in unpaid_sales)
 
-    # 8. Expenses today
-    today_expenses = db.query(
-        func.coalesce(func.sum(Expense.amount), 0.0)
-    ).filter(
-        Expense.is_deleted == False,
-        Expense.expense_date >= today_start
-    ).scalar() or 0.0
+        # 8. Expenses today
+        today_expenses = db.query(
+            func.coalesce(func.sum(Expense.amount), 0.0)
+        ).filter(
+            Expense.is_deleted == False,
+            Expense.expense_date >= today_start
+        ).scalar() or 0.0
 
-    # 9. Operational Anomalies / Risk Flags today
-    voided_sales_today = db.query(func.count(Sale.id)).filter(
-        Sale.created_at >= today_start,
-        Sale.is_voided == True
-    ).scalar() or 0
+        # 9. Operational Anomalies / Risk Flags today
+        voided_sales_today = db.query(func.count(Sale.id)).filter(
+            Sale.created_at >= today_start,
+            Sale.is_voided == True
+        ).scalar() or 0
 
-    return {
-        "date": now.strftime("%B %d, %Y"),
-        "currency": "LKR",
-        "user_role": user_role,
-        "user_name": user_name,
-        "today_sales_amount": float(sales_query.total_sales or 0.0),
-        "today_order_count": int(sales_query.total_orders or 0),
-        "today_gross_profit": float(today_gross_profit),
-        "today_margin_pct": float(today_margin_pct),
-        "yesterday_sales_amount": float(yesterday_sales),
-        "today_expenses_amount": float(today_expenses),
-        "low_stock_items_count": low_stock_count,
-        "critical_low_stock_items": critical_items_summary,
-        "dead_stock_count": dead_stock_count,
-        "dead_stock_value": float(dead_stock_value),
-        "active_repairs_count": active_repairs_count,
-        "pending_repairs_count": pending_repairs,
-        "in_progress_repairs_count": in_progress_repairs,
-        "ready_repairs_count": ready_repairs,
-        "total_unpaid_customer_balance": total_unpaid,
-        "voided_sales_today": int(voided_sales_today)
-    }
+        return {
+            "date": now.strftime("%B %d, %Y"),
+            "currency": "LKR",
+            "user_role": user_role,
+            "user_name": user_name,
+            "today_sales_amount": float(sales_query.total_sales or 0.0) if sales_query else 0.0,
+            "today_order_count": int(sales_query.total_orders or 0) if sales_query else 0,
+            "today_gross_profit": float(today_gross_profit),
+            "today_margin_pct": float(today_margin_pct),
+            "yesterday_sales_amount": float(yesterday_sales),
+            "today_expenses_amount": float(today_expenses),
+            "low_stock_items_count": low_stock_count,
+            "critical_low_stock_items": critical_items_summary,
+            "dead_stock_count": dead_stock_count,
+            "dead_stock_value": float(dead_stock_value),
+            "active_repairs_count": active_repairs_count,
+            "pending_repairs_count": pending_repairs,
+            "in_progress_repairs_count": in_progress_repairs,
+            "ready_repairs_count": ready_repairs,
+            "total_unpaid_customer_balance": total_unpaid,
+            "voided_sales_today": int(voided_sales_today)
+        }
+    except Exception as e:
+        logger.warning(f"Failed to fetch complete store context: {e}")
+        return {
+            "date": now.strftime("%B %d, %Y"),
+            "currency": "LKR",
+            "user_role": user_role,
+            "user_name": user_name,
+            "today_sales_amount": 0.0,
+            "today_order_count": 0,
+            "today_gross_profit": 0.0,
+            "today_margin_pct": 0.0,
+            "yesterday_sales_amount": 0.0,
+            "today_expenses_amount": 0.0,
+            "low_stock_items_count": 0,
+            "critical_low_stock_items": [],
+            "dead_stock_count": 0,
+            "dead_stock_value": 0.0,
+            "active_repairs_count": 0,
+            "pending_repairs_count": 0,
+            "in_progress_repairs_count": 0,
+            "ready_repairs_count": 0,
+            "total_unpaid_customer_balance": 0.0,
+            "voided_sales_today": 0
+        }
 
-# Ordered fallback chain — prioritized by highest daily quota (500 RPD & 15 RPM)
+# Ordered fallback chain — includes Gemini 3.x series with auto-fallback to high-availability tiers
 MODEL_FALLBACK_CHAIN = [
-    "gemini-3.5-flash-lite",     # 15 RPM / 500 RPD (Highest capacity)
-    "gemini-3.1-flash-lite",     # 15 RPM / 500 RPD (High capacity secondary)
-    "gemini-flash-lite-latest",  # High-speed alias
-    "gemini-flash-latest",       # Standard flash alias
-    "gemini-3.5-flash",          # 5 RPM / 20 RPD
-    "gemini-3.7-flash",          # 5 RPM / 20 RPD
-    "gemini-3.6-flash",          # 5 RPM / 20 RPD
+    "gemini-3.7-flash",          # Latest & most capable Flash model
+    "gemini-3.5-flash-lite",     # High-volume, cost-sensitive low-latency model
+    "gemini-3.1-flash-lite",     # High-volume Gemini 3 series lite
+    "gemini-3.6-flash",          # Previous-gen balanced flash
+    "gemini-3.5-flash",          # Legacy flash baseline
+    "gemini-3-flash",            # Frontier-class flash
+    "gemini-3.1-pro",            # Most intelligent reasoning model
+    "gemini-2.0-flash",          # High-availability standard modern model
+    "gemini-2.0-flash-lite",     # Lightweight high-RPM model
+    "gemini-1.5-flash",          # High-reliability baseline
+    "gemini-1.5-flash-8b",       # High rate-limit fallback
+    "gemini-1.5-pro",            # Pro tier fallback
 ]
 
 def _is_quota_error(e: Exception) -> bool:
-    """Returns True if the exception is a 429 quota/rate-limit error."""
+    """Returns True if the exception is a 429 quota/rate-limit or credit exhaustion error."""
     msg = str(e).lower()
-    return "429" in msg or "quota" in msg or "rate limit" in msg or "rate_limit" in msg or "resource_exhausted" in msg
+    return (
+        "429" in msg or "quota" in msg or "rate limit" in msg or "rate_limit" in msg
+        or "resource_exhausted" in msg or "exhausted" in msg or "credit" in msg or "billing" in msg
+    )
 
 def _is_model_error(e: Exception) -> bool:
-    """Returns True if the model is unavailable/not found — should try next model."""
+    """Returns True if the model is unavailable, not found, or denied access — should try next model."""
     msg = str(e).lower()
-    return ("404" in msg and "not found" in msg) or "not supported" in msg
+    return (
+        "404" in msg or "not found" in msg or "not supported" in msg or "no longer available" in msg
+        or "403" in msg or "400" in msg or "denied access" in msg or "permission" in msg or "invalid" in msg
+    )
 
 def _try_model(model_name: str, gemini_contents: list) -> Generator[str, None, None]:
     """Attempt to stream a response from a specific model."""
@@ -742,3 +783,414 @@ REQUIRED JSON OUTPUT FORMAT:
                 "Expedite delayed replacement parts from suppliers."
             ]
         }
+
+
+def answer_customer_whatsapp_inquiry(
+    db: Session,
+    customer_name: str,
+    customer_phone: str,
+    message_text: str,
+    store_info: Dict[str, Any],
+    customer_id: Optional[int] = None,
+    is_verified: bool = False
+) -> Optional[str]:
+    """
+    Uses Gemini AI to intelligently answer inbound customer WhatsApp inquiries
+    with multi-turn conversation memory, Singlish/multilingual support, and
+    live entity lookups (inventory, repair tickets, digital bills).
+    """
+    import urllib.parse
+    from app.services.supabase_pos_sync import generate_invoice_token
+
+    store_name = store_info.get("store_name", "I-Store")
+    store_phone = store_info.get("store_phone", "+94 77 123 4567")
+    store_addr = store_info.get("store_address", "Colombo, Sri Lanka")
+    portal_base = "https://i-store-customer-portal-one.vercel.app"
+
+    clean_phone = customer_phone.replace("+", "").strip()
+    phone_variants = [clean_phone]
+    if clean_phone.startswith("94") and len(clean_phone) == 11:
+        phone_variants.extend(["0" + clean_phone[2:], clean_phone[2:]])
+    elif clean_phone.startswith("0") and len(clean_phone) == 10:
+        phone_variants.extend(["94" + clean_phone[1:], clean_phone[1:]])
+
+    # 1. Fetch Multi-Turn Chat History (last 6 messages for context)
+    chat_history_lines = []
+    try:
+        past_logs = (
+            db.query(WhatsAppMessageLog)
+            .filter(WhatsAppMessageLog.phone_number.in_(phone_variants))
+            .order_by(WhatsAppMessageLog.created_at.desc())
+            .limit(6)
+            .all()
+        )
+        # Reverse to chronological order
+        for log_entry in reversed(past_logs):
+            body = (log_entry.message_body or "").strip()
+            if not body:
+                continue
+            is_cust = (log_entry.trigger_type == "customer_inbound" or log_entry.status == "RECEIVED")
+            speaker = f"Customer ({customer_name})" if is_cust else f"Assistant ({store_name})"
+            # Truncate very long past bills/status messages to 120 chars to keep prompt concise
+            if len(body) > 150:
+                body = body[:150] + "..."
+            chat_history_lines.append(f"{speaker}: {body}")
+    except Exception as e:
+        logger.debug(f"Could not load chat history: {e}")
+
+    chat_history_str = "\n".join(chat_history_lines) if chat_history_lines else "No previous conversation history."
+
+    # 2. Search relevant inventory if user mentions products or queries
+    tokens = [t.strip().lower() for t in re.split(r'[\s,\.\?\!\-\/]+', message_text) if len(t.strip()) >= 3]
+    inventory_matches = []
+    if tokens:
+        filters = []
+        for t in tokens[:6]:
+            filters.append(InventoryItem.name.ilike(f"%{t}%"))
+            filters.append(InventoryItem.category.ilike(f"%{t}%"))
+            filters.append(InventoryItem.brand.ilike(f"%{t}%"))
+        
+        if filters:
+            items = db.query(InventoryItem).filter(
+                InventoryItem.is_deleted == False,
+                or_(*filters)
+            ).limit(8).all()
+            for it in items:
+                price_val = float(getattr(it, 'sale_price', 0) or getattr(it, 'selling_price', 0) or getattr(it, 'price', 0) or 0)
+                inventory_matches.append(
+                    f"- {it.name} (Brand: {it.brand or 'General'}, Category: {it.category or 'General'}) | In Stock: {it.quantity} | Price: LKR {price_val:,.2f}"
+                )
+
+    inv_context_str = "\n".join(inventory_matches) if inventory_matches else "No specific inventory keywords matched."
+
+    # 3. Look up Customer's Active Repair Tickets
+    repair_context_str = "No active repair tickets found."
+    try:
+        active_repair = None
+        if customer_id:
+            active_repair = db.query(RepairTicket).filter(
+                RepairTicket.customer_id == customer_id,
+                RepairTicket.is_deleted == False
+            ).order_by(RepairTicket.created_at.desc()).first()
+        
+        if active_repair:
+            t_no = active_repair.ticket_no or f"JOB-2026-{active_repair.id:06d}"
+            dev_model = active_repair.device_model or "Device"
+            issue_desc = active_repair.issue or "Hardware Servicing"
+            status_label = (active_repair.status or "In Progress").title()
+            est_cost = float(active_repair.estimated_cost or 0)
+            adv_paid = float(active_repair.advance_payment or 0)
+            bal_due = float(active_repair.outstanding_balance or (est_cost - adv_paid))
+            repair_url = (
+                f"{portal_base}/repair/{t_no}"
+                f"?model={urllib.parse.quote(dev_model)}"
+                f"&issue={urllib.parse.quote(issue_desc)}"
+                f"&status={urllib.parse.quote(status_label)}"
+                f"&est={est_cost:.2f}"
+                f"&adv={adv_paid:.2f}"
+                f"&bal={bal_due:.2f}"
+                f"&name={urllib.parse.quote(customer_name)}"
+                f"&phone={clean_phone}"
+            )
+            repair_context_str = (
+                f"Ticket #{t_no} | Device: {dev_model} | Status: {status_label} | Issue: {issue_desc} | "
+                f"Est. Cost: LKR {est_cost:,.2f} | Balance Due: LKR {bal_due:,.2f} | Live Tracking URL: {repair_url}"
+            )
+    except Exception as e:
+        logger.debug(f"Could not load active repair: {e}")
+
+    # 4. Look up Customer's Latest Digital Bill
+    invoice_context_str = "No recent invoices found."
+    try:
+        latest_sale = None
+        if customer_id:
+            latest_sale = db.query(Sale).filter(
+                Sale.customer_id == customer_id,
+                Sale.is_voided == False
+            ).order_by(Sale.created_at.desc()).first()
+        if latest_sale:
+            inv_no = getattr(latest_sale, "invoice_no", None) or f"INV-2026-{latest_sale.id:06d}"
+            token = generate_invoice_token(inv_no)
+            total_amt = float(getattr(latest_sale, "total", 0) or 0)
+            bill_url = (
+                f"{portal_base}/invoice/{inv_no}?token={token}"
+                f"&name={urllib.parse.quote(customer_name)}"
+                f"&total={total_amt:.2f}&phone={clean_phone}"
+            )
+            invoice_context_str = f"Invoice #{inv_no} | Total: LKR {total_amt:,.2f} | Bill URL: {bill_url}"
+    except Exception as e:
+        logger.debug(f"Could not load latest sale: {e}")
+
+    import time
+    from app.services.whatsapp_ai_tools import AI_TOOLS_SCHEMA, execute_ai_tool
+
+    start_time = time.time()
+    tools_called = []
+    intent_detected = "general"
+    model_used_name = "gemini"
+
+    # Step 1: Check if user intent requires a tool execution
+    tool_prompt = f"""
+Analyze this customer WhatsApp message and decide if a backend tool should be called.
+Available Tools:
+{json.dumps(AI_TOOLS_SCHEMA, indent=2)}
+
+CUSTOMER MESSAGE: "{message_text}"
+
+Return ONLY a JSON object with:
+{{
+  "intent": "product_search | repair_query | bill_query | warranty_query | reservation | repair_booking | store_info | human_handover | general",
+  "tool_name": "tool_name_or_null",
+  "tool_arguments": {{}}
+}}
+"""
+    tool_results_str = ""
+    try:
+        raw_decision = _generate_single_prompt(tool_prompt, db=db)
+        clean_dec = raw_decision.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        decision = json.loads(clean_dec)
+        intent_detected = decision.get("intent", "general")
+        t_name = decision.get("tool_name")
+        t_args = decision.get("tool_arguments") or {}
+
+        if t_name and t_name in [t["name"] for t in AI_TOOLS_SCHEMA]:
+            tools_called.append(t_name)
+            cust_context = {
+                "phone": clean_phone,
+                "name": customer_name,
+                "customer_id": customer_id,
+                "is_verified": is_verified
+            }
+            exec_res = execute_ai_tool(db, t_name, t_args, cust_context)
+            tool_results_str = f"\nTOOL EXECUTION RESULT ({t_name}):\n" + json.dumps(exec_res, indent=2) + "\n"
+    except Exception as e:
+        logger.debug(f"Tool intent decision skipped: {e}")
+
+    # 5. Retrieve Grounding Store Policies from Knowledge Base
+    kb_context_str = "No specific store policies matched."
+    try:
+        from app.services.ai_knowledge_base import retrieve_relevant_knowledge
+        kb_matches = retrieve_relevant_knowledge(db, message_text, max_results=2)
+        if kb_matches:
+            kb_lines = []
+            for doc in kb_matches:
+                kb_lines.append(f"--- [{doc['category']}] {doc['title']} ---\n{doc['content']}")
+            kb_context_str = "\n\n".join(kb_lines)
+    except Exception as e:
+        logger.debug(f"Knowledge base retrieval skipped: {e}")
+
+    prompt = f"""
+You are the friendly, polite, and highly reliable WhatsApp AI Customer Service Assistant for '{store_name}', an electronics, smartphone, accessories, and device repair center in Sri Lanka.
+
+CUSTOMER PROFILE:
+- Name: {customer_name}
+- Phone: +{clean_phone}
+- Verified Status: {'Verified' if is_verified else 'Unverified'}
+
+RECENT CONVERSATION HISTORY:
+{chat_history_str}
+
+LATEST INCOMING MESSAGE:
+"{message_text}"
+
+LIVE STORE INFORMATION:
+- Store Name: {store_name}
+- Address: {store_addr}
+- Hotline / WhatsApp: {store_phone}
+- Business Hours: Monday – Sunday: 9:00 AM – 8:00 PM
+- Customer Web Portal: {portal_base}
+
+VERIFIED STORE POLICIES & KNOWLEDGE BASE:
+{kb_context_str}
+
+CUSTOMER'S ACTIVE REPAIR RECORD:
+{repair_context_str}
+
+CUSTOMER'S LATEST INVOICE RECORD:
+{invoice_context_str}
+
+INVENTORY STOCK & PRICING MATCHES:
+{inv_context_str}
+{tool_results_str}
+
+STRICT SAFETY & ANTI-HALLUCINATION GUARDRAILS:
+1. GROUNDED IN DATABASE DATA ONLY:
+   - Only quote prices, stock numbers, or warranty terms that are confirmed above.
+   - If stock or exact price is not found, state clearly: "I don't have confirmation of that item in stock right now. Please check with our hotline ({store_phone})."
+   - NEVER invent discounts, repair completion dates, or warranty periods.
+2. SENSITIVE DATA & PRIVACY:
+   - Never disclose another customer's data. If customer asks for unverified sensitive invoices/debts without matching their phone, ask them to provide their invoice number or verify via portal link.
+3. LANGUAGE & SCRIPT ADAPTATION:
+   - If the customer writes in Singlish (e.g. "machan display replace karanna puluwanda?"), reply in natural, polite, and friendly Singlish!
+   - If in Sinhala script, reply in Sinhala. If in Tamil script, reply in Tamil. If in English, reply in standard English.
+4. MULTI-TURN AWARENESS:
+   - Maintain continuity from previous chat history (e.g. pronouns like "it", "that one", "reserve it").
+5. FORMATTING & STYLE:
+   - Keep answers clear, concise, and structured for mobile (1 to 3 short paragraphs max).
+   - Use WhatsApp formatting (*bolding*, bullet points, emojis).
+6. CLOSING TIP:
+   - End with a friendly closing and the tip:
+     "\n\n_💡 Tip: Reply *1* for Bills, *2* for Repair Tracking, *3* for Warranty, or *4* for Store Info._"
+
+Write ONLY the final WhatsApp reply message text:
+"""
+    try:
+        reply = _generate_single_prompt(prompt, db=db)
+        latency = int((time.time() - start_time) * 1000)
+        
+        if reply and reply.strip():
+            cleaned = reply.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("\n", 1)[-1].removesuffix("```").strip()
+
+            # Record Observability Log
+            try:
+                log_entry = WhatsAppAIInteractionLog(
+                    phone_number=clean_phone,
+                    intent=intent_detected,
+                    language="Singlish" if any(w in message_text.lower() for w in ["machan", "eka", "puluwanda", "keeyada", "thiyeda"]) else "English",
+                    tools_used=json.dumps(tools_called),
+                    resolution_status="RESOLVED" if "error" not in tool_results_str.lower() else "INCOMPLETE",
+                    latency_ms=latency,
+                    model_used=model_used_name,
+                    tokens_used=len(prompt.split()) + len(cleaned.split()),
+                    sentiment="Neutral"
+                )
+                db.add(log_entry)
+                db.commit()
+            except Exception as log_err:
+                logger.debug(f"AI interaction logging skipped: {log_err}")
+
+            return cleaned
+    except Exception as e:
+        logger.warning(f"Gemini WhatsApp bot fallback error: {e}")
+        return None
+
+    return None
+
+
+def analyze_device_image_with_vision(
+    image_base64: str,
+    mime_type: str = "image/jpeg",
+    customer_prompt: Optional[str] = None,
+    db: Optional[Session] = None
+) -> str:
+    """
+    Uses Gemini Vision to analyze device condition/damage or receipts sent via WhatsApp.
+    Enforces strict non-definitive diagnostic guardrails.
+    """
+    if not init_gemini(db):
+        return (
+            "📷 *Image Received*\n\n"
+            "Thank you for sharing the photo! Our technical team has received it.\n"
+            "Please bring your device into our store for a complete physical diagnostic and confirmed estimate."
+        )
+
+    prompt = f"""
+You are an expert electronics repair assistant for 'I-Store'.
+Analyze this customer photo of a smartphone, tablet, device part, or receipt.
+
+CUSTOMER NOTE: "{customer_prompt or 'Customer sent this device image for inspection.'}"
+
+MANDATORY SAFETY RULES:
+1. DO NOT make a definitive technical diagnosis (e.g. do not declare the motherboard dead or give a guaranteed repair cost without physical diagnostic).
+2. Use careful advisory language: "The image appears to show...", "Visible damage includes...".
+3. Provide initial observations (e.g. cracked outer glass, display OLED bleed, port lint/oxidation, model number).
+4. State that a technician will perform physical diagnostics in-store to confirm parts and labor.
+5. Format in concise WhatsApp style with emojis and bold text.
+"""
+    try:
+        import google.generativeai as genai
+        key, model_name = get_gemini_config(db)
+        model = genai.GenerativeModel(model_name or "gemini-2.0-flash")
+        
+        image_part = {
+            "mime_type": mime_type,
+            "data": image_base64
+        }
+        res = model.generate_content([prompt, image_part], stream=False)
+        if res and res.text:
+            return res.text.strip()
+    except Exception as e:
+        logger.warning(f"Gemini Vision analysis error: {e}")
+
+    return (
+        "📷 *Image Received*\n\n"
+        "Thank you for sharing the photo! Visible hardware or screen condition noted.\n"
+        "💡 *Next Step:* Please bring the device to our store for a physical diagnostic test by our technicians."
+    )
+
+
+def generate_conversation_staff_summary(db: Session, phone_number: str) -> Dict[str, Any]:
+    """
+    Generates a concise 4-line executive briefing for human staff taking over a chat.
+    """
+    clean_phone = phone_number.replace("+", "").strip()
+    phone_variants = [clean_phone]
+    if clean_phone.startswith("94") and len(clean_phone) == 11:
+        phone_variants.extend(["0" + clean_phone[2:], clean_phone[2:]])
+    elif clean_phone.startswith("0") and len(clean_phone) == 10:
+        phone_variants.extend(["94" + clean_phone[1:], clean_phone[1:]])
+
+    customer = db.query(Customer).filter(
+        or_(Customer.phone.in_(phone_variants), Customer.whatsapp_number.in_(phone_variants))
+    ).first()
+    cust_name = customer.name if customer else "Customer"
+
+    past_logs = (
+        db.query(WhatsAppMessageLog)
+        .filter(WhatsAppMessageLog.phone_number.in_(phone_variants))
+        .order_by(WhatsAppMessageLog.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    if not past_logs:
+        return {
+            "customer_name": cust_name,
+            "phone": clean_phone,
+            "summary": "No recent conversation messages recorded.",
+            "status": "Ready for staff response"
+        }
+
+    chat_transcript = []
+    for log in reversed(past_logs):
+        sender = "Customer" if (log.trigger_type == "customer_inbound" or log.status == "RECEIVED") else "Assistant"
+        chat_transcript.append(f"{sender}: {log.message_body}")
+
+    transcript_str = "\n".join(chat_transcript)
+
+    prompt = f"""
+Summarize this customer WhatsApp conversation for a store staff member taking over.
+Output ONLY valid JSON without markdown:
+
+CONVERSATION TRANSCRIPT:
+{transcript_str}
+
+REQUIRED JSON FORMAT:
+{{
+  "customer_name": "{cust_name}",
+  "device_or_product": "e.g. iPhone 13 / Anker 20W Charger",
+  "reported_issue_or_inquiry": "Brief description of customer's question or problem",
+  "last_quoted_price": "e.g. LKR 6,500 or N/A",
+  "customer_intent": "Checking stock | Repair inquiry | Payment follow-up | Escalation",
+  "recommended_staff_action": "Actionable next step for staff",
+  "summary_text": "2-sentence overall summary"
+}}
+"""
+    try:
+        res = _generate_single_prompt(prompt, db=db)
+        clean_json = res.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        return json.loads(clean_json)
+    except Exception:
+        return {
+            "customer_name": cust_name,
+            "phone": clean_phone,
+            "device_or_product": "General Inquiry",
+            "reported_issue_or_inquiry": "Customer requested human representative.",
+            "last_quoted_price": "N/A",
+            "customer_intent": "Human Handover",
+            "recommended_staff_action": "Review latest messages and reply directly.",
+            "summary_text": f"Customer {cust_name} (+{clean_phone}) has connected with live support."
+        }
+
+

@@ -143,7 +143,9 @@ def _run_startup_tasks() -> None:
             from app.services.warranty_service import ensure_warranty_defaults
             from app.services.labels_service import ensure_label_defaults
             from app.services.security_service import ensure_security_defaults
+            from app.services.saas_service import ensure_default_saas_structure
             with SessionLocal() as _db:
+                ensure_default_saas_structure(_db)
                 ensure_warranty_defaults(_db)
                 ensure_label_defaults(_db)
 
@@ -428,6 +430,8 @@ app.include_router(shifts_router)
 app.include_router(analytics_ai_router)
 app.include_router(ai_router)
 app.include_router(sync_router, prefix="/api")
+from app.routers.saas_router import router as saas_router
+app.include_router(saas_router, prefix="/api")
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 

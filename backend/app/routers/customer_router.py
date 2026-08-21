@@ -1,10 +1,11 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.constants import normalize_repair_status
 from app.database import get_db
 from app.auth import get_current_user, require_permission
+from app.core.tenant_guard import scope_query, stamp_tenant
 from app.models import (
     AdvancePayment,
     ActivityLog,
@@ -115,6 +116,7 @@ def _repair_financial_maps(db: Session, repair_ids: list[int]) -> tuple[dict[int
 
 @router.get('', dependencies=[Depends(require_permission("customers.view"))])
 def list_customers(
+    request: Request,
     response: Response,
     search: str | None = Query(default=None),
     offset: int = Query(default=0, ge=0),
@@ -123,6 +125,7 @@ def list_customers(
     _=Depends(get_current_user),
 ):
     query = db.query(Customer).filter(Customer.is_deleted == False)  # noqa: E712
+    query = scope_query(query, Customer, request)
     if search:
         text = f"%{str(search).strip()}%"
         query = query.filter(
@@ -152,9 +155,10 @@ def list_customers(
     return [_serialize_customer(row, warranty_count_map.get(int(row.id), 0)) for row in rows]
 
 @router.post('', dependencies=[Depends(require_permission("customers.create"))])
-def create_customer(payload: CustomerIn, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def create_customer(request: Request, payload: CustomerIn, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     data = _validate_customer_payload(payload)
     c = Customer(**data)
+    stamp_tenant(c, request)
     db.add(c)
     db.flush()
     _log_customer_activity(
@@ -180,8 +184,9 @@ def create_customer(payload: CustomerIn, background_tasks: BackgroundTasks, db: 
     return _serialize_customer(c, 0)
 
 @router.get('/{customer_id}', dependencies=[Depends(require_permission("customers.view"))])
-def get_customer(customer_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    c = db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False).first()  # noqa: E712
+def get_customer(request: Request, customer_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    query = db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False)  # noqa: E712
+    c = scope_query(query, Customer, request).first()
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
     active_warranties = (

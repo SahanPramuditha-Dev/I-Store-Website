@@ -101,6 +101,8 @@ def get_current_user(
         request.state.auth_session = session
 
     request.state.current_user = user
+    request.state.current_org_id = user.organization_id
+    request.state.current_branch_id = user.branch_id
     return user
 
 def require_admin(user: User = Depends(get_current_user)):

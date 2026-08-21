@@ -1,5 +1,5 @@
-export const SOFTWARE_NAME = "E Store";
-export const DEFAULT_SHOP_NAME = "I Point";
+export const SOFTWARE_NAME = "E-Store";
+export const DEFAULT_SHOP_NAME = "E-Store Flagship";
 
 export function normalizeStoreProfile(profile = {}, printProfile = {}) {
   const business = profile?.business_identity || {};
