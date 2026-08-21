@@ -268,7 +268,7 @@ export default function Expenses() {
         title="Create Expense"
         panelClassName="max-w-3xl"
         headerActions={
-          <button onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-white">
+          <button onClick={() => setShowCreate(false)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors">
             <XCircle size={20} />
           </button>
         }

@@ -384,7 +384,7 @@ export default function ProductReservations() {
         title="Create Reservation"
         panelClassName="max-w-3xl"
         headerActions={
-          <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-white">
+          <button onClick={() => setShowCreateModal(false)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors">
             <X size={18} />
           </button>
         }
@@ -473,7 +473,7 @@ export default function ProductReservations() {
         title="Collect Advance"
         panelClassName="max-w-xl"
         headerActions={
-          <button onClick={() => setShowAdvanceModal(false)} className="text-slate-400 hover:text-white">
+          <button onClick={() => setShowAdvanceModal(false)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors">
             <X size={18} />
           </button>
         }

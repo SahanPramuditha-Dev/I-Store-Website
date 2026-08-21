@@ -1045,21 +1045,20 @@ export default function Repairs() {
     <div className="min-h-0 pb-4 pr-1">
     <div className={`repairs-management-page min-h-0 flex flex-col gap-5 animate-in fade-in duration-700 ${isCompactHeight ? "is-compact-height" : ""}`}>
       <PageHeader
-        eyebrow="Service & Repair Operations"
         title="Repair Management"
         subtitle="Track repair jobs, technicians, parts, and customer updates."
         action={
           <>
-            <div className="flex items-center p-1 bg-white/5 rounded-xl border border-white/10">
-              <button onClick={() => setView("table")} className={`p-2 rounded-lg transition-all ${view === 'table' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><List size={18} /></button>
-              <button onClick={() => setView("kanban")} className={`p-2 rounded-lg transition-all ${view === 'kanban' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><LayoutGrid size={18} /></button>
+            <div className="flex items-center p-1 bg-slate-100 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
+              <button onClick={() => setView("table")} className={`p-2 rounded-lg transition-all ${view === 'table' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}><List size={18} /></button>
+              <button onClick={() => setView("kanban")} className={`p-2 rounded-lg transition-all ${view === 'kanban' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}><LayoutGrid size={18} /></button>
             </div>
             <button
               type="button"
               onClick={fetchRepairSlaRisks}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border border-purple-500/40 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 text-xs font-bold transition shadow-lg shadow-purple-500/10"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-gradient-to-r dark:from-purple-600/30 dark:to-indigo-600/30 border border-purple-200 dark:border-purple-500/40 text-purple-700 dark:text-purple-200 text-xs font-bold transition shadow-sm"
             >
-              <Sparkles size={14} className="text-purple-300 animate-pulse" />
+              <Sparkles size={14} className="text-purple-600 dark:text-purple-300 animate-pulse" />
               AI SLA Risk Alerts
             </button>
             <Button size="sm" onClick={() => setShowCreate(true)} className="repairs-primary-action flex items-center gap-2"><Plus size={16} /> Create Repair Job</Button>

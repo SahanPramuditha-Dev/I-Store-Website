@@ -893,7 +893,7 @@ export default function CustomerDetail() {
         title="Edit Customer Profile"
         panelClassName="max-w-lg bg-[#0f172a]"
         headerActions={
-          <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-white transition-colors cursor-pointer"><X size={20}/></button>
+          <button onClick={() => setIsEditing(false)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"><X size={20}/></button>
         }
       >
         <div className="p-6 space-y-4">

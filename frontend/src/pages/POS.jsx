@@ -3230,7 +3230,7 @@ export default function POS() {
         title="Product Details"
         panelClassName="max-w-lg border-indigo-400/40 bg-slate-900"
         headerActions={
-          <button onClick={() => setProductDetail(null)} className="text-slate-400 hover:text-white"><X size={18} /></button>
+          <button onClick={() => setProductDetail(null)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"><X size={18} /></button>
         }
       >
         {productDetail && (
@@ -3299,7 +3299,7 @@ export default function POS() {
         title="Suspended Carts"
         panelClassName="max-w-lg bg-slate-900"
         headerActions={
-          <button onClick={() => setShowSuspendPicker(false)} className="text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
+          <button onClick={() => setShowSuspendPicker(false)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"><X size={20}/></button>
         }
       >
             <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
@@ -3443,7 +3443,7 @@ export default function POS() {
         title="Quick Add Customer"
         panelClassName="max-w-md bg-slate-900"
         headerActions={
-          <button onClick={() => setShowNewCustomerModal(false)} className="text-slate-400 hover:text-white transition-colors"><X size={20}/></button>
+          <button onClick={() => setShowNewCustomerModal(false)} className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"><X size={20}/></button>
         }
       >
             <div className="p-4 space-y-3 flex-1 overflow-y-auto custom-scrollbar">

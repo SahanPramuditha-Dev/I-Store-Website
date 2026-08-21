@@ -460,8 +460,8 @@ export default function Customers() {
                 <button
                   key={f.key}
                   onClick={() => setQuickFilter(f.key)}
-                  className={`px-2 py-1 rounded text-[10px] font-bold ${
-                    quickFilter === f.key ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                  className={`px-2 py-1 rounded text-[10px] font-bold transition ${
+                    quickFilter === f.key ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"
                   }`}
                 >
                   {f.label}

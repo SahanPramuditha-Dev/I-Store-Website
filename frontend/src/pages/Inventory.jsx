@@ -736,9 +736,9 @@ export default function Inventory() {
                   {suppliers.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                 </Select>
                 <div className="h-7 w-[1px] bg-white/10 mx-1 hidden lg:block" />
-                <div className="flex items-center p-1 bg-[#0f172a] rounded-xl border border-white/5">
-                  <button onClick={() => setViewMode("list")} className={`p-1.5 rounded-lg transition-all ${viewMode === "list" ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}><List size={17} /></button>
-                  <button onClick={() => setViewMode("grid")} className={`p-1.5 rounded-lg transition-all ${viewMode === "grid" ? "bg-indigo-500 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}><Grid3X3 size={17} /></button>
+                <div className="flex items-center p-1 bg-slate-100 dark:bg-[#0f172a] rounded-xl border border-slate-200 dark:border-white/5">
+                  <button onClick={() => setViewMode("list")} className={`p-1.5 rounded-lg transition-all ${viewMode === "list" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}><List size={17} /></button>
+                  <button onClick={() => setViewMode("grid")} className={`p-1.5 rounded-lg transition-all ${viewMode === "grid" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}><Grid3X3 size={17} /></button>
                 </div>
               </div>
             </div>
