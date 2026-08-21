@@ -22,14 +22,16 @@ export const inventoryTabs = [
 
 export function InventoryModuleTabs() {
   return (
-    <div className="app-tab-strip rounded-2xl border border-white/10 bg-slate-900/60 p-2">
+    <div className="app-tab-strip rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 p-2 shadow-sm dark:shadow-none">
       {inventoryTabs.map(([to, label]) => (
         <NavLink
           key={to}
           to={to}
           className={({ isActive }) =>
             `rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-              isActive ? "bg-indigo-500/25 border border-indigo-500/40 text-indigo-100" : "bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10"
+              isActive 
+                ? "bg-indigo-50 border border-indigo-300 text-indigo-700 dark:bg-indigo-500/25 dark:border-indigo-500/40 dark:text-indigo-100 shadow-sm" 
+                : "bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-950 dark:hover:text-white"
             }`
           }
         >

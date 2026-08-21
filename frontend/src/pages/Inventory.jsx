@@ -652,27 +652,27 @@ export default function Inventory() {
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-white dark:bg-[#0f172a] border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs">
+                <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs">
                   <option value="All">All Status</option>
                   <option value="In Stock">In Stock</option>
                   <option value="Low Stock">Low Stock</option>
                   <option value="Out of Stock">Out of Stock</option>
                 </Select>
-                <Select value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-[#0f172a] border-white/10 text-xs">
+                <Select value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs">
                   <option value="All">All Suppliers</option>
                   {suppliers.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                 </Select>
-                <Select value={productTypeFilter} onChange={(e) => { setProductTypeFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[120px] max-w-[165px] !w-auto bg-[#0f172a] border-white/10 text-xs">
+                <Select value={productTypeFilter} onChange={(e) => { setProductTypeFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[120px] max-w-[165px] !w-auto bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs">
                   <option value="All">All Type</option>
                   <option value="Retail">Retail</option>
                   <option value="Spare Parts">Spare Parts</option>
                   <option value="Service">Service</option>
                 </Select>
-                <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[190px] !w-auto bg-[#0f172a] border-white/10 text-xs">
+                <Select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }} className="repair-select h-11 min-w-[130px] max-w-[190px] !w-auto bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs">
                   <option value="All">All Categories</option>
                   {categoryOptions.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
                 </Select>
-                <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-[#0f172a] border-white/10 text-xs">
+                <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="repair-select h-11 min-w-[130px] max-w-[180px] !w-auto bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs">
                   <option value="updated">Newest First</option>
                   <option value="name">Name A-Z</option>
                   <option value="qty_asc">Lowest Qty First</option>
@@ -688,7 +688,11 @@ export default function Inventory() {
                   <button
                     key={pill}
                     onClick={() => { setQuickFilter((prev) => (prev === pill ? "" : pill)); setPage(1); }}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition ${quickFilter === pill ? "bg-indigo-500/30 text-indigo-200 border border-indigo-400/40" : "bg-white/5 text-slate-400 border border-white/10 hover:text-white"}`}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition ${
+                      quickFilter === pill 
+                        ? "bg-indigo-50 text-indigo-700 border border-indigo-300 dark:bg-indigo-500/30 dark:text-indigo-200 dark:border-indigo-400/40" 
+                        : "bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-white/10 hover:text-slate-950 dark:hover:text-white"
+                    }`}
                   >
                     {pill} ({quickFilterCounts[pill] || 0})
                   </button>
@@ -706,7 +710,7 @@ export default function Inventory() {
                     { label: "Sale Price", value: "sale_price" },
                     { label: "Supplier ID", value: "supplier_id" },
                   ], filtered)}
-                  className="px-3 h-9 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[11px] font-bold transition"
+                  className="px-3 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 text-[11px] font-bold transition"
                 >
                   Export CSV
                 </button>
@@ -721,21 +725,21 @@ export default function Inventory() {
                     { label: "Sale Price", value: "sale_price" },
                     { label: "Supplier ID", value: "supplier_id" },
                   ], filtered)}
-                  className="px-3 h-9 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-[11px] font-bold transition"
+                  className="px-3 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 text-[11px] font-bold transition"
                 >
                   Export PDF
                 </button>
-                <button onClick={fetchAIRestockPlan} className="px-3 h-9 rounded-lg bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border border-purple-500/40 hover:from-purple-600/40 hover:to-indigo-600/40 text-purple-200 text-[11px] font-bold transition flex items-center gap-1.5 shadow-lg shadow-purple-500/10">
-                  <Sparkles size={14} className="text-purple-300 animate-pulse" />
+                <button onClick={fetchAIRestockPlan} className="px-3 h-9 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-gradient-to-r dark:from-purple-600/30 dark:to-indigo-600/30 border border-purple-200 dark:border-purple-500/40 text-purple-700 dark:text-purple-200 text-[11px] font-bold transition flex items-center gap-1.5 shadow-sm">
+                  <Sparkles size={14} className="text-purple-600 dark:text-purple-300 animate-pulse" />
                   AI Restock Plan
                 </button>
-                <button onClick={bulkRestock} className="px-3 h-9 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-200 text-[11px] font-bold transition">Bulk Restock</button>
-                <button onClick={bulkMarkOutOfStock} className="px-3 h-9 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 text-[11px] font-bold transition">Bulk Out Of Stock</button>
-                <Select className="repair-select h-9 min-w-[150px] max-w-[220px] !w-auto bg-[#0f172a] border-white/10 text-xs" onChange={(e) => assignSupplierBulk(e.target.value)}>
+                <button onClick={bulkRestock} className="px-3 h-9 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-200 border border-indigo-200 dark:border-transparent text-[11px] font-bold transition">Bulk Restock</button>
+                <button onClick={bulkMarkOutOfStock} className="px-3 h-9 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-200 border border-emerald-200 dark:border-transparent text-[11px] font-bold transition">Bulk Out Of Stock</button>
+                <Select className="repair-select h-9 min-w-[150px] max-w-[220px] !w-auto bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-xs" onChange={(e) => assignSupplierBulk(e.target.value)}>
                   <option value="">Assign Supplier (bulk)</option>
                   {suppliers.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                 </Select>
-                <div className="h-7 w-[1px] bg-white/10 mx-1 hidden lg:block" />
+                <div className="h-7 w-[1px] bg-slate-200 dark:bg-white/10 mx-1 hidden lg:block" />
                 <div className="flex items-center p-1 bg-slate-100 dark:bg-[#0f172a] rounded-xl border border-slate-200 dark:border-white/5">
                   <button onClick={() => setViewMode("list")} className={`p-1.5 rounded-lg transition-all ${viewMode === "list" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}><List size={17} /></button>
                   <button onClick={() => setViewMode("grid")} className={`p-1.5 rounded-lg transition-all ${viewMode === "grid" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}><Grid3X3 size={17} /></button>
@@ -1301,12 +1305,12 @@ function InventoryTable({ rows, suppliers, masterProductsList = [], getProductTy
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#12182a]/60">
-      <div className="flex items-center justify-between border-b border-white/5 px-3 py-2">
-        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Product Inventory Grid</div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#12182a]/60 shadow-sm dark:shadow-none">
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/5 bg-slate-50/70 dark:bg-transparent px-3 py-2">
+        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:text-slate-400">Product Inventory Grid</div>
         <button
           onClick={(e) => setColumnsMenuAnchor(e.currentTarget)}
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-white/10"
+          className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 px-3 py-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10"
         >
           Columns
         </button>
