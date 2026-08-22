@@ -1280,7 +1280,7 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
     # Runs in a background daemon thread — zero delay for the cashier.
     try:
         import threading
-        from app.services.supabase_pos_sync import sync_checkout_invoice_to_cloud
+        from app.services.supabase_pos_sync import sync_checkout_invoice_to_cloud, process_offline_outbox_queue
 
         _invoice_label_str = _invoice_label(sale)
         _customer_name = customer.name if customer else "Walk-in"
@@ -1308,31 +1308,40 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
         _shop_whatsapp = _biz.get("whatsapp_number") or _biz.get("whatsapp") or _shop_phone
         _store_id = _biz.get("store_id") or str(_shop_name).strip().lower().replace(" ", "-")
 
+        # Enqueue invoice to Transactional Outbox within current database transaction
+        sync_checkout_invoice_to_cloud(
+            invoice_id=_invoice_label_str,
+            customer_name=_customer_name,
+            customer_phone=_customer_phone,
+            customer_email=_customer_email,
+            subtotal=float(subtotal),
+            discount=float(payload.discount_amount or 0),
+            tax=float(payload.tax_amount or 0),
+            total=float(total),
+            payment_method=str(sale.payment_method or "Cash"),
+            items=_sync_items,
+            status="Paid" if sale.paid else "Pending",
+            shop_name=_shop_name,
+            shop_address=_shop_addr,
+            shop_phone=_shop_phone,
+            shop_whatsapp=_shop_whatsapp,
+            store_id=_store_id,
+            enable_loyalty=_enable_loyalty,
+            loyalty_rate=_loyalty_rate,
+            db=db,
+            organization_id=getattr(sale, "organization_id", None),
+            branch_id=getattr(sale, "branch_id", None)
+        )
+
         def _do_sync():
-            sync_checkout_invoice_to_cloud(
-                invoice_id=_invoice_label_str,
-                customer_name=_customer_name,
-                customer_phone=_customer_phone,
-                customer_email=_customer_email,
-                subtotal=float(subtotal),
-                discount=float(payload.discount_amount or 0),
-                tax=float(payload.tax_amount or 0),
-                total=float(total),
-                payment_method=str(sale.payment_method or "Cash"),
-                items=_sync_items,
-                status="Paid" if sale.paid else "Pending",
-                shop_name=_shop_name,
-                shop_address=_shop_addr,
-                shop_phone=_shop_phone,
-                shop_whatsapp=_shop_whatsapp,
-                store_id=_store_id,
-                enable_loyalty=_enable_loyalty,
-                loyalty_rate=_loyalty_rate
-            )
+            try:
+                process_offline_outbox_queue()
+            except Exception as _fl_err:
+                logger.debug(f"Background outbox flush notice: {_fl_err}")
 
         threading.Thread(target=_do_sync, daemon=True).start()
     except Exception as _sync_err:
-        logger.warning(f"Cloud sync skipped: {_sync_err}")
+        logger.warning(f"Cloud sync outbox enqueue skipped: {_sync_err}")
     # ────────────────────────────────────────────────────────────────────────
 
     # ── Automated WhatsApp Receipt Trigger (Single Dispatch) ────────────────

@@ -15,10 +15,22 @@ from app.auth import get_current_user, require_admin
 from app.models import User, SaaSPlan, Organization, Branch, POSDevice, Subscription
 from app.services import saas_service
 
+from app.core.license_guard import (
+    verify_license_token,
+    get_cached_license,
+    save_cached_license,
+    ALLOW_DEV_LICENSE_BYPASS
+)
+
 router = APIRouter(prefix="/saas", tags=["SaaS Control Center & Licensing"])
 
 
 # --- Schemas ---
+
+class SignedLicenseActivationRequest(BaseModel):
+    token_data: Dict[str, Any] = Field(..., description="Signed Ed25519 license token JSON from Control Center")
+    machine_fingerprint: Optional[str] = None
+
 
 class CreateOrgRequest(BaseModel):
     slug: str
@@ -66,6 +78,7 @@ class DeviceHeartbeatRequest(BaseModel):
     hardware_uuid: str
     app_version: str
     offline_queue_count: int = 0
+
 
 
 # =========================================================================
@@ -336,17 +349,86 @@ def pos_terminal_heartbeat(
 
 
 # =========================================================================
-# TENANT CAPABILITIES & INDUSTRY RESOLUTION
+# CENTRAL ED25519 LICENSING CLIENT ENDPOINTS
 # =========================================================================
 
-@router.get("/tenant/capabilities")
-def get_tenant_capabilities_endpoint(
+@router.get("/license/status")
+def get_license_status():
+    """
+    Returns current local Ed25519 license verification status, expiry,
+    grace period information, and active capabilities.
+    """
+    cached = get_cached_license()
+    if not cached:
+        if ALLOW_DEV_LICENSE_BYPASS:
+            return {
+                "active": True,
+                "mode": "development_bypass",
+                "message": "Running in development mode without license constraint.",
+                "capabilities": ["all"]
+            }
+        return {
+            "active": False,
+            "mode": "unlicensed",
+            "message": "No active license installed.",
+            "activation_required": True
+        }
+
+    is_valid, msg, payload = verify_license_token(cached)
+    return {
+        "active": is_valid,
+        "message": msg,
+        "payload": payload,
+        "license_id": payload.get("license_id") if payload else None,
+        "tenant_code": payload.get("tenant_code") if payload else None,
+        "package_code": payload.get("package_code") if payload else None,
+        "industry_code": payload.get("industry_code") if payload else None,
+        "capabilities": payload.get("capabilities", []) if payload else [],
+        "expires_at": payload.get("expires_at") if payload else None,
+        "grace_period_days": payload.get("grace_period_days") if payload else 3,
+    }
+
+
+@router.post("/license/activate")
+def activate_ed25519_license(payload: SignedLicenseActivationRequest):
+    """
+    Installs and cryptographically verifies an Ed25519 signed license token
+    issued by the central E-Store Control Center.
+    """
+    is_valid, msg, validated_payload = verify_license_token(
+        token_data=payload.token_data,
+        current_machine_fingerprint=payload.machine_fingerprint
+    )
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"License activation rejected: {msg}"
+        )
+
+    # Persist verified license token to local cache
+    save_cached_license(payload.token_data)
+
+    return {
+        "success": True,
+        "message": "License successfully verified and activated.",
+        "tenant_code": validated_payload.get("tenant_code"),
+        "package_code": validated_payload.get("package_code"),
+        "expires_at": validated_payload.get("expires_at"),
+        "capabilities": validated_payload.get("capabilities", [])
+    }
+
+
+@router.get("/capabilities")
+def get_tenant_capabilities(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Returns the resolved industry capabilities for the currently authenticated user's organization.
-    Consumed by React frontend CapabilityContext.
+    Returns effective industry capabilities, modules enabled, and active business
+    model for the authenticated user's organization.
     """
     from app.services.capability_service import get_effective_capabilities
-    return get_effective_capabilities(db, organization_id=current_user.organization_id)
+    return get_effective_capabilities(db, current_user.organization_id)
+
+

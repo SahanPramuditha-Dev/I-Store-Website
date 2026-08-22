@@ -120,14 +120,46 @@ DEFAULT_INDUSTRY_CAPABILITIES = {
 }
 
 
-def get_effective_capabilities(db: Session, organization_id: Optional[int]) -> Dict[str, Any]:
+def get_effective_capabilities(db: Session, organization_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Computes effective capabilities for a given organization.
-    Defaults to MOBILE_RETAIL with full legacy capabilities if unconfigured.
+    Prioritizes cryptographically signed Ed25519 license tokens if installed.
+    Falls back to organization database record & industry defaults.
     """
+    # 1. Check local cryptographic license
+    try:
+        from app.core.license_guard import get_cached_license, verify_license_token
+        cached = get_cached_license()
+        if cached:
+            is_valid, msg, payload = verify_license_token(cached)
+            if is_valid and payload:
+                ind = payload.get("industry_code") or "MOBILE_RETAIL"
+                signed_caps = payload.get("capabilities", [])
+                defaults = DEFAULT_INDUSTRY_CAPABILITIES.get(ind, DEFAULT_INDUSTRY_CAPABILITIES["MOBILE_RETAIL"])
+                
+                eff_caps = {}
+                for key in defaults.keys():
+                    if "all" in signed_caps:
+                        eff_caps[key] = True
+                    else:
+                        eff_caps[key] = (key in signed_caps)
+
+                return {
+                    "source": "CENTRAL_ED25519_LICENSE",
+                    "organization_id": organization_id,
+                    "tenant_code": payload.get("tenant_code"),
+                    "industry_type": ind,
+                    "configuration_version": payload.get("configuration_version", 1),
+                    "capabilities": eff_caps
+                }
+    except Exception as ex:
+        # Fallback to DB resolution if license module uninitialized
+        pass
+
     if not organization_id:
         # Fallback to default mobile shop capabilities
         return {
+            "source": "DEFAULT_FALLBACK",
             "industry_type": "MOBILE_RETAIL",
             "configuration_version": 1,
             "capabilities": DEFAULT_INDUSTRY_CAPABILITIES["MOBILE_RETAIL"]
@@ -136,6 +168,7 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int]) -> D
     org = db.query(Organization).filter(Organization.id == organization_id).first()
     if not org:
         return {
+            "source": "DEFAULT_FALLBACK",
             "industry_type": "MOBILE_RETAIL",
             "configuration_version": 1,
             "capabilities": DEFAULT_INDUSTRY_CAPABILITIES["MOBILE_RETAIL"]
@@ -162,6 +195,7 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int]) -> D
         effective_caps[key] = bool(val)
 
     return {
+        "source": "DATABASE_CONFIG",
         "organization_id": org.id,
         "organization_name": org.name,
         "industry_type": industry,

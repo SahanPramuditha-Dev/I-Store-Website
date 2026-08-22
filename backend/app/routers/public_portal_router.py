@@ -1,17 +1,120 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Customer, RepairTicket, Sale, SaleItem
 from app.constants import REPAIR_STATUS_LABELS
 from app.services.supabase_pos_sync import generate_invoice_token
+from app.services.customer_auth_service import (
+    request_customer_otp,
+    verify_customer_otp,
+    verify_smart_invoice_token,
+    verify_customer_session_token
+)
 
 router = APIRouter(prefix="/public", tags=["public"])
 
 
+class RequestOtpIn(BaseModel):
+    phone: str = Field(..., description="Customer mobile number")
+    channel: str = Field(default="whatsapp", description="whatsapp | sms")
+    store_name: Optional[str] = "I-Store"
+
+
+class VerifyOtpIn(BaseModel):
+    phone: str
+    code: str
+    store_id: Optional[str] = "default"
+
+
+class VerifyTokenIn(BaseModel):
+    invoice_no: str
+    token: str
+    store_id: Optional[str] = "default"
+
+
+# =========================================================================
+# CUSTOMER PORTAL AUTHENTICATION ENDPOINTS
+# =========================================================================
+
+@router.post("/auth/request-otp")
+def api_request_customer_otp(payload: RequestOtpIn, db: Session = Depends(get_db)):
+    """Dispatches a 6-digit verification code to the customer via WhatsApp (or SMS hook)."""
+    res = request_customer_otp(
+        phone=payload.phone,
+        channel=payload.channel,
+        store_name=payload.store_name or "I-Store",
+        db=db
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to dispatch OTP"))
+    return res
+
+
+@router.post("/auth/verify-otp")
+def api_verify_customer_otp(payload: VerifyOtpIn, db: Session = Depends(get_db)):
+    """Verifies the customer's 6-digit OTP and establishes an authenticated session token."""
+    is_valid, msg, session_token = verify_customer_otp(
+        phone=payload.phone,
+        otp_code=payload.code,
+        store_id=payload.store_id or "default",
+        db=db
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=msg)
+    return {
+        "success": True,
+        "message": msg,
+        "session_token": session_token,
+        "phone": payload.phone
+    }
+
+
+@router.post("/auth/verify-token")
+def api_verify_smart_token(payload: VerifyTokenIn, db: Session = Depends(get_db)):
+    """Validates an invoice or QR token and creates an authenticated customer session."""
+    is_valid, msg, session_token, summary = verify_smart_invoice_token(
+        invoice_no=payload.invoice_no,
+        token=payload.token,
+        store_id=payload.store_id or "default",
+        db=db
+    )
+    if not is_valid:
+        raise HTTPException(status_code=403, detail=msg)
+    return {
+        "success": True,
+        "message": msg,
+        "session_token": session_token,
+        "invoice_summary": summary
+    }
+
+
+@router.get("/auth/session")
+def api_get_session_info(authorization: Optional[str] = Header(None)):
+    """Validates the active customer portal session token."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Session authorization header required")
+
+    token = authorization.replace("Bearer ", "").strip()
+    is_valid, msg, payload = verify_customer_session_token(token)
+    if not is_valid:
+        raise HTTPException(status_code=401, detail=msg)
+
+    return {
+        "authenticated": True,
+        "phone": payload.get("phone"),
+        "store_id": payload.get("store_id"),
+        "name": payload.get("name"),
+        "invoice_id": payload.get("invoice_id")
+    }
+
+
 def _invoice_label(sale: Sale) -> str:
     return str(sale.invoice_no or f"INV-{sale.id:05d}")
+
 
 
 @router.get("/invoice/{invoice_no}")

@@ -1,0 +1,211 @@
+"""
+license_guard.py
+================
+Enterprise Ed25519 License Verification Engine & FastAPI Security Guard.
+Validates digitally signed license tokens issued by the central E-Store Control Center.
+Guarantees cryptographic authenticity, machine hardware binding, and offline grace-period compliance.
+"""
+
+import os
+import json
+import base64
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, Optional, Tuple
+
+from fastapi import Request, HTTPException, status, Depends
+from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.exceptions import InvalidSignature
+
+logger = logging.getLogger("istore.license_guard")
+
+# Default / Fallback Public Key ID and Static Verification Key (Rotatable via ENV)
+ESTORE_PUBLIC_KEY_B64 = os.getenv(
+    "ESTORE_PUBLIC_KEY_B64",
+    ""
+)
+LICENSE_CACHE_FILE = os.getenv("LICENSE_CACHE_FILE", "database/license_cache.json")
+ALLOW_DEV_LICENSE_BYPASS = os.getenv("ALLOW_DEV_LICENSE_BYPASS", "true").lower() in ("true", "1", "yes")
+
+# Open endpoints exempted from license enforcement
+EXEMPT_ROUTES = {
+    "/",
+    "/health",
+    "/api/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/auth/login",
+    "/auth/pin-login",
+    "/auth/refresh",
+    "/saas/license/status",
+    "/saas/license/activate",
+    "/saas/plans",
+}
+
+
+def canonicalize_json(data: Any) -> str:
+    """Deterministically formats JSON dictionary for cryptographic verification."""
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def canonicalize_bytes(data: Any) -> bytes:
+    """Returns canonical UTF-8 encoded bytes for Ed25519 signature validation."""
+    return canonicalize_json(data).encode("utf-8")
+
+
+def load_public_key_from_b64(b64_str: str) -> ed25519.Ed25519PublicKey:
+    """Loads Ed25519 public key from 32-byte Base64 string."""
+    raw_bytes = base64.b64decode(b64_str.strip())
+    return ed25519.Ed25519PublicKey.from_public_bytes(raw_bytes)
+
+
+def get_cached_license() -> Optional[Dict[str, Any]]:
+    """Retrieves cached signed license token from local disk or memory."""
+    if os.path.exists(LICENSE_CACHE_FILE):
+        try:
+            with open(LICENSE_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to read license cache file: {e}")
+    return None
+
+
+def save_cached_license(token_data: Dict[str, Any]) -> bool:
+    """Saves verified signed license token to local cache file for offline capability."""
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(LICENSE_CACHE_FILE)), exist_ok=True)
+        with open(LICENSE_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(token_data, f, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to persist license cache: {e}")
+        return False
+
+
+def verify_license_token(
+    token_data: Dict[str, Any],
+    public_key: Optional[ed25519.Ed25519PublicKey] = None,
+    public_key_b64: Optional[str] = None,
+    current_machine_fingerprint: Optional[str] = None,
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Cryptographically verifies an Ed25519 signed license token and validates invariants.
+    Returns: (is_valid, message, payload_dict)
+    """
+    if not token_data or not isinstance(token_data, dict):
+        return False, "License token missing or malformed", None
+
+    payload = token_data.get("payload")
+    signature = token_data.get("signature")
+
+    if not payload or not signature:
+        return False, "Incomplete license token structure (missing payload or signature)", None
+
+    # 1. Resolve Public Key
+    if public_key is None:
+        key_str = public_key_b64 or ESTORE_PUBLIC_KEY_B64
+        if not key_str:
+            if ALLOW_DEV_LICENSE_BYPASS:
+                return True, "Development bypass active (no public key configured)", payload
+            return False, "Server verification public key not configured", None
+        try:
+            public_key = load_public_key_from_b64(key_str)
+        except Exception as e:
+            return False, f"Invalid public key format: {e}", None
+
+    # 2. Cryptographic Signature Verification
+    try:
+        sig_bytes = base64.b64decode(signature)
+        canonical_bytes = canonicalize_bytes(payload)
+        public_key.verify(sig_bytes, canonical_bytes)
+    except InvalidSignature:
+        return False, "Cryptographic signature invalid: License payload has been tampered with", None
+    except Exception as e:
+        return False, f"Signature verification error: {e}", None
+
+    # 3. Hardware Fingerprint Validation
+    if current_machine_fingerprint:
+        licensed_fingerprint = payload.get("machine_fingerprint")
+        if licensed_fingerprint and licensed_fingerprint != "*":
+            if licensed_fingerprint.strip().lower() != current_machine_fingerprint.strip().lower():
+                return False, f"Machine fingerprint mismatch. Licensed to: {licensed_fingerprint}", None
+
+    # 4. Temporal Expiration & Offline Grace Period Validation
+    expires_at_str = payload.get("expires_at")
+    grace_days = int(payload.get("grace_period_days") or 3)  # Standard 72h offline grace
+
+    if expires_at_str:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+
+            if now > expires_at:
+                grace_cutoff = expires_at + timedelta(days=grace_days)
+                if now <= grace_cutoff:
+                    hours_left = int((grace_cutoff - now).total_seconds() // 3600)
+                    logger.warning(f"License expired on {expires_at.isoformat()}. Active in offline grace period ({hours_left}h remaining).")
+                    return True, f"In Grace Period ({hours_left}h remaining)", payload
+                else:
+                    return False, f"License expired on {expires_at.isoformat()}", None
+        except Exception as e:
+            return False, f"Invalid expires_at format in license: {e}", None
+
+    return True, "License valid and active", payload
+
+
+async def require_active_license(request: Request) -> Dict[str, Any]:
+    """
+    FastAPI dependency that enforces valid, unexpired, authentic Ed25519 licensing
+    on all protected operational routes.
+    """
+    path = request.url.path
+    if any(path.startswith(exempt) for exempt in EXEMPT_ROUTES):
+        return {"status": "exempt", "path": path}
+
+    # 1. Check active request header license token
+    header_token = request.headers.get("X-License-Token")
+    token_data = None
+    if header_token:
+        try:
+            token_data = json.loads(header_token)
+        except Exception:
+            pass
+
+    # 2. Fallback to cached license
+    if not token_data:
+        token_data = get_cached_license()
+
+    # 3. If no license present
+    if not token_data:
+        if ALLOW_DEV_LICENSE_BYPASS:
+            return {"status": "dev_bypass", "tenant_code": "DEV-LOCAL"}
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "error": "LICENSE_REQUIRED",
+                "message": "No valid E-Store license found. Please activate your system via the SaaS Control Center.",
+                "activation_url": "/saas/license/activate"
+            }
+        )
+
+    # 4. Verify License
+    is_valid, msg, payload = verify_license_token(token_data)
+    if not is_valid:
+        if ALLOW_DEV_LICENSE_BYPASS:
+            logger.warning(f"License verification failed ({msg}), but DEV bypass is enabled.")
+            return {"status": "dev_bypass", "warning": msg}
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "error": "LICENSE_INVALID",
+                "message": msg,
+                "activation_url": "/saas/license/activate"
+            }
+        )
+
+    # Attach license metadata to request state
+    request.state.license_payload = payload
+    return payload

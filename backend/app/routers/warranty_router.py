@@ -94,6 +94,7 @@ class WarrantyReplacementIn(BaseModel):
     replacement_reason: Optional[str] = None
 
 from app.services.capability_service import require_capability
+from app.core.tenant_guard import scope_query, stamp_tenant
 
 router = APIRouter(
     prefix="/warranty",
@@ -292,6 +293,7 @@ def _build_record_query(
     date_from: str | None = None,
     date_to: str | None = None,
     q: str | None = None,
+    request: Request | None = None,
 ):
     query = (
         db.query(WarrantyRecord)
@@ -301,6 +303,8 @@ def _build_record_query(
         )
         .filter(or_(WarrantyRecord.is_deleted == False, WarrantyRecord.is_deleted.is_(None)))  # noqa: E712
     )
+    if request:
+        query = scope_query(query, WarrantyRecord, request)
     if status and status.lower() != "all":
         status_key = normalize_warranty_status(status)
         query = query.filter(
@@ -492,6 +496,7 @@ def warranty_dashboard_recent_claims(
 
 @router.get("/records", dependencies=[Depends(require_permission("warranty.view"))])
 def list_warranty_records(
+    request: Request,
     status: str | None = Query(default=None),
     warranty_type: str | None = Query(default=None),
     category: str | None = Query(default=None),
@@ -516,6 +521,7 @@ def list_warranty_records(
             date_from=date_from,
             date_to=date_to,
             q=q,
+            request=request,
         )
         .order_by(WarrantyRecord.created_at.desc())
         .limit(limit)
@@ -817,6 +823,7 @@ def warranty_lookup(
 
 @router.get("/claims", dependencies=[Depends(require_permission("warranty.view"))])
 def list_warranty_claims(
+    request: Request,
     claim_status: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
@@ -834,6 +841,7 @@ def list_warranty_claims(
         )
         .filter(or_(WarrantyClaim.is_deleted == False, WarrantyClaim.is_deleted.is_(None)))  # noqa: E712
     )
+    query = scope_query(query, WarrantyClaim, request)
     if claim_status and claim_status.lower() != "all":
         status_key = normalize_claim_status(claim_status)
         query = query.filter(

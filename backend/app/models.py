@@ -1656,15 +1656,21 @@ class SyncOutbox(Base):
     __tablename__ = "sync_outbox"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    entity_type = Column(String(50), nullable=False, index=True)
-    entity_id = Column(String(36), nullable=False, index=True)
-    action = Column(String(20), nullable=False, index=True)  # CREATE | UPDATE | DELETE
+    entity_type = Column(String(50), nullable=False, index=True)  # invoice | repair_ticket | customer | staff_pin
+    entity_id = Column(String(100), nullable=False, index=True)
+    action = Column(String(20), nullable=False, index=True)  # CREATE | UPDATE | DELETE | UPSERT
     payload = Column(Text, nullable=False)
     retry_count = Column(Integer, default=0)
-    status = Column(String(20), default="pending", index=True)  # pending | syncing | completed | failed | conflict
+    max_retries = Column(Integer, default=5)
+    status = Column(String(20), default="pending", index=True)  # pending | in_flight | synced | failed | dead_letter
+    next_retry_at = Column(DateTime, nullable=True, index=True)
+    synced_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
+    organization_id = Column(Integer, nullable=True, index=True)
+    branch_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=utcnow, index=True)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
 
 
 # ---------------------------------------------------------------------------

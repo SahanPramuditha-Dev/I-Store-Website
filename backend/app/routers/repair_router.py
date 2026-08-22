@@ -38,6 +38,7 @@ from app.services.warranty_service import (
     warranty_status_label,
 )
 from app.services.capability_service import require_capability
+from app.core.tenant_guard import scope_query, stamp_tenant
 
 router = APIRouter(
     prefix="/repairs",
@@ -168,6 +169,7 @@ def _serialize_repair(r: RepairTicket) -> dict:
 
 @router.get('', dependencies=[Depends(require_permission("repairs.view"))])
 def list_repairs(
+    request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=300, ge=1, le=5000),
     status: str | None = Query(default=None),
@@ -180,6 +182,7 @@ def list_repairs(
     _=Depends(get_current_user),
 ):
     query = db.query(RepairTicket).filter(RepairTicket.is_deleted == False)  # noqa: E712
+    query = scope_query(query, RepairTicket, request)
     if status and not hasattr(status, 'default') and str(status).lower() != "all":
         query = query.filter(RepairTicket.status == _normalize_status(status))
     if customer_id is not None and not hasattr(customer_id, 'default'):
@@ -210,44 +213,26 @@ def list_repairs(
     return [_serialize_repair(r) for r in repairs]
 
 @router.get('/dashboard-stats', dependencies=[Depends(require_permission("repairs.view"))])
-def get_repair_stats(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    total = db.query(RepairTicket).filter(RepairTicket.is_deleted == False).count()  # noqa: E712
-    pending = (
-        db.query(RepairTicket)
-        .filter(
-            RepairTicket.is_deleted == False,  # noqa: E712
-            RepairTicket.status == REPAIR_STATUS_PENDING,
+def get_repair_stats(request: Request, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    base_q = scope_query(db.query(RepairTicket).filter(RepairTicket.is_deleted == False), RepairTicket, request)
+    total = base_q.count()
+    pending = base_q.filter(RepairTicket.status == REPAIR_STATUS_PENDING).count()
+    in_progress = base_q.filter(
+        RepairTicket.status.in_(
+            [
+                REPAIR_STATUS_DIAGNOSING,
+                REPAIR_STATUS_WAITING_FOR_APPROVAL,
+                REPAIR_STATUS_WAITING_FOR_PARTS,
+                REPAIR_STATUS_REPAIRING,
+                REPAIR_STATUS_QUALITY_CHECKING,
+            ]
         )
-        .count()
-    )
-    in_progress = (
-        db.query(RepairTicket)
-        .filter(
-            RepairTicket.is_deleted == False,  # noqa: E712
-            RepairTicket.status.in_(
-                [
-                    REPAIR_STATUS_DIAGNOSING,
-                    REPAIR_STATUS_WAITING_FOR_APPROVAL,
-                    REPAIR_STATUS_WAITING_FOR_PARTS,
-                    REPAIR_STATUS_REPAIRING,
-                    REPAIR_STATUS_QUALITY_CHECKING,
-                ]
-            ),
-        )
-        .count()
-    )
-    completed = (
-        db.query(RepairTicket)
-        .filter(
-            RepairTicket.is_deleted == False,  # noqa: E712
-            RepairTicket.status == REPAIR_STATUS_COMPLETED,
-        )
-        .count()
-    )
-    revenue_today = db.query(func.sum(RepairTicket.estimated_cost))\
-                      .filter(RepairTicket.status == REPAIR_STATUS_DELIVERED)\
-                      .filter(RepairTicket.delivered_at >= utcnow().replace(hour=0, minute=0, second=0, microsecond=0))\
-                      .scalar() or 0
+    ).count()
+    completed = base_q.filter(RepairTicket.status == REPAIR_STATUS_COMPLETED).count()
+    revenue_today = base_q.filter(RepairTicket.status == REPAIR_STATUS_DELIVERED)\
+                          .filter(RepairTicket.delivered_at >= utcnow().replace(hour=0, minute=0, second=0, microsecond=0))\
+                          .with_entities(func.sum(RepairTicket.estimated_cost))\
+                          .scalar() or 0
     return {
         "total": total,
         "pending": pending,
@@ -276,6 +261,7 @@ def create_repair(payload: RepairIn, background_tasks: BackgroundTasks, request:
         ticket_no=next_number(db, "JOB"),
         **payload_data
     )
+    stamp_tenant(ticket, request)
     db.add(ticket)
     db.flush()
     db.add(RepairHistory(repair_id=ticket.id, status=ticket.status, note="Repair ticket created."))
@@ -338,11 +324,10 @@ def create_repair(payload: RepairIn, background_tasks: BackgroundTasks, request:
             customer_id=customer.id
         )
 
-    # Sync to Cloud Customer Portal (Supabase)
+    # Sync to Cloud Customer Portal (Supabase via Transactional Outbox)
     try:
-        from app.services.supabase_pos_sync import sync_repair_ticket_to_cloud
-        background_tasks.add_task(
-            sync_repair_ticket_to_cloud,
+        from app.services.supabase_pos_sync import sync_repair_ticket_to_cloud, process_offline_outbox_queue
+        sync_repair_ticket_to_cloud(
             ticket_no=ticket.ticket_no or f"JOB-{ticket.id:05d}",
             customer_name=customer.name if customer else "Customer",
             customer_phone=customer.phone if customer else "",
@@ -354,7 +339,11 @@ def create_repair(payload: RepairIn, background_tasks: BackgroundTasks, request:
             advance_paid=float(ticket.advance_payment or 0),
             balance_due=float(ticket.outstanding_balance or 0),
             status_note=ticket.notes or "Ticket registered.",
+            db=db,
+            organization_id=getattr(ticket, "organization_id", None),
+            branch_id=getattr(ticket, "branch_id", None)
         )
+        background_tasks.add_task(process_offline_outbox_queue)
     except Exception as e:
         logger.warning(f"Could not enqueue repair ticket cloud sync: {e}")
 
@@ -537,11 +526,10 @@ def update_repair_status(
             )
 
 
-        # Sync to Cloud Customer Portal (Supabase)
+        # Sync to Cloud Customer Portal (Supabase via Transactional Outbox)
         try:
-            from app.services.supabase_pos_sync import sync_repair_ticket_to_cloud
-            background_tasks.add_task(
-                sync_repair_ticket_to_cloud,
+            from app.services.supabase_pos_sync import sync_repair_ticket_to_cloud, process_offline_outbox_queue
+            sync_repair_ticket_to_cloud(
                 ticket_no=repair.ticket_no or f"JOB-{repair.id:05d}",
                 customer_name=customer.name if customer else "Customer",
                 customer_phone=customer.phone if customer else "",
@@ -553,7 +541,11 @@ def update_repair_status(
                 advance_paid=float(repair.advance_payment or 0),
                 balance_due=float(repair.outstanding_balance or 0),
                 status_note=status_note_text,
+                db=db,
+                organization_id=getattr(repair, "organization_id", None),
+                branch_id=getattr(repair, "branch_id", None)
             )
+            background_tasks.add_task(process_offline_outbox_queue)
         except Exception as e:
             logger.warning(f"Could not enqueue repair ticket cloud status update: {e}")
 

@@ -83,6 +83,20 @@ export default function LicenseLockModal() {
         if (res.ok && data.success) {
           localStorage.setItem('istore_license_token', JSON.stringify(data.token));
           
+          // Sync activated license token to local ERP backend cache
+          try {
+            await fetch('/api/saas/license/activate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                token_data: data.token,
+                machine_fingerprint: licenseState.hardware_uuid || 'BROWSER-DEV-TERMINAL'
+              })
+            });
+          } catch (_syncErr) {
+            // Non-blocking for browser offline mode
+          }
+
           // Auto-sync company & branch name into store identity
           const p = data.token?.payload || {};
           if (p.tenant_code || p.shop_code) {
