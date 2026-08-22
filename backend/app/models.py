@@ -310,9 +310,10 @@ class InventoryItem(Base, BaseHybridModel):
     warranty_days = Column(Integer, default=0)
     sku = Column(String, unique=True)
     barcode = Column(String, nullable=True)
-    quantity = Column(Integer, default=0)
-    damaged_quantity = Column(Integer, default=0)
+    quantity = Column(Float, default=0.0)
+    damaged_quantity = Column(Float, default=0.0)
     cost_price = Column(Float, default=0)
+
     sale_price = Column(Float, default=0)
     wholesale_price = Column(Float, default=0)
     min_allowed_price = Column(Float, default=0)
@@ -322,6 +323,14 @@ class InventoryItem(Base, BaseHybridModel):
     shop_warranty_days = Column(Integer, default=0)
     supplier_warranty_days = Column(Integer, default=0)
     has_serials = Column(Boolean, default=False)
+    
+    # Multi-Industry Additive Fields
+    unit_of_measure = Column(String(20), default="pcs", index=True)  # pcs, kg, g, l, ml, m, pair
+    is_weighted = Column(Boolean, default=False, index=True)
+    allow_decimal_qty = Column(Boolean, default=False, index=True)
+    batch_number = Column(String(100), nullable=True, index=True)
+    expiry_date = Column(Date, nullable=True, index=True)
+    
     is_draft = Column(Boolean, default=False, index=True)
     is_manual_creation = Column(Boolean, default=False, index=True)
     master_product_id = Column(Integer, ForeignKey("master_products.id"), nullable=True, index=True)
@@ -469,8 +478,9 @@ class SaleItem(Base, BaseHybridModel):
     serial_id = Column(Integer, ForeignKey("inventory_serials.id"), nullable=True, index=True)
     line_type = Column(String, default="product", index=True)  # product | spare_part | labor | service | discount | adjustment
     description = Column(Text, nullable=True)
-    quantity = Column(Integer)
+    quantity = Column(Float, default=1.0)
     price = Column(Float)
+
     discount_amount = Column(Float, default=0)
     line_total = Column(Float, default=0)
     cost_price = Column(Float, default=0)
@@ -2119,6 +2129,9 @@ class Organization(Base):
 
     # Subscription / Status Lifecycle
     status = Column(String(30), default="active", index=True)  # trialing, active, past_due, suspended, cancelled
+    industry_type = Column(String(50), default="MOBILE_RETAIL", nullable=False, index=True)
+    configuration_version = Column(Integer, default=1, nullable=False)
+    capabilities_override = Column(JSON, default=dict, nullable=True)
     current_plan_id = Column(Integer, ForeignKey("saas_plans.id"), nullable=True, index=True)
     trial_ends_at = Column(DateTime, nullable=True)
     settings = Column(JSON, default=lambda: {})

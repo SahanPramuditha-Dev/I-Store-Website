@@ -38,6 +38,7 @@ const InventoryStockTake = lazy(() => import("./pages/inventory/InventoryStockTa
 const InventoryStockTakeSessionDetail = lazy(() => import("./pages/inventory/InventoryStockTakeSessionDetail"));
 const InventorySerialDetail = lazy(() => import("./pages/inventory/InventorySerialDetail"));
 const InventoryReports = lazy(() => import("./pages/inventory/InventoryReports"));
+const BatchesExpiryPage = lazy(() => import("./pages/BatchesExpiryPage"));
 const POS = lazy(() => import("./pages/POS"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Warranty = lazy(() => import("./pages/Warranty"));
@@ -97,13 +98,16 @@ function Guard({ children }) {
   return children;
 }
 
+import { CapabilityProvider } from "./context/CapabilityContext";
+
 export default function App() {
   const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter;
 
-  return <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-    <LicenseLockModal />
-    <UpdateNotification />
-    <Suspense fallback={<RouteFallback />}>
+  return <CapabilityProvider>
+    <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <LicenseLockModal />
+      <UpdateNotification />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<Login/>} />
         <Route element={<Guard><Layout/></Guard>}>
@@ -132,6 +136,7 @@ export default function App() {
             <Route path="price-adjustments" element={<InventoryPriceAdjustments/>} />
             <Route path="discounts" element={<InventoryDiscounts/>} />
             <Route path="reports" element={<InventoryReports/>} />
+            <Route path="batches" element={<BatchesExpiryPage/>} />
             <Route path="suppliers" element={<InventorySuppliers/>} />
             <Route path="supplier-ledger" element={<InventorySupplierLedger/>} />
           </Route>
@@ -176,5 +181,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard"/>} />
       </Routes>
     </Suspense>
-  </Router>;
+  </Router>
+  </CapabilityProvider>;
 }

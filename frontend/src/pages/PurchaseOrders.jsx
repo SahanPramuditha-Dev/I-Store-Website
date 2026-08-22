@@ -4,6 +4,7 @@ import api from "../lib/api";
 import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, PageHeader, Select, ProductSelect, SensitiveActionIndicators, WorkstationNotice } from "../components/UI";
 import { Calendar, History, PackageCheck, Plus, Truck, X } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
+import { useCapabilities } from "../context/CapabilityContext";
 import AppModal from "../components/layout/AppModal";
 
 function emptyDraft() {
@@ -491,6 +492,8 @@ export default function PurchaseOrders() {
                             <th className="px-2 py-2 text-right">Received</th>
                             <th className="px-2 py-2 text-right">Damaged</th>
                             <th className="px-2 py-2 text-right">Unit Cost</th>
+                            {hasCapability("batch_tracking") && <th className="px-2 py-2 text-left">Batch #</th>}
+                            {hasCapability("expiry_tracking") && <th className="px-2 py-2 text-left">Expiry</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
@@ -506,6 +509,16 @@ export default function PurchaseOrders() {
                               <td className="px-2 py-2">
                                 <input type="number" min="0" value={reconcile.lines[idx]?.unit_cost ?? line.unit_cost} onChange={(e) => updateReconcileLine(idx, { unit_cost: e.target.value })} className="w-full rounded border border-white/10 bg-black/20 px-2 py-1 text-right text-slate-100 outline-none" />
                               </td>
+                              {hasCapability("batch_tracking") && (
+                                <td className="px-2 py-2">
+                                  <input type="text" placeholder="e.g. B2026" value={reconcile.lines[idx]?.batch_number ?? ""} onChange={(e) => updateReconcileLine(idx, { batch_number: e.target.value })} className="w-full rounded border border-white/10 bg-black/20 px-2 py-1 text-left text-slate-100 outline-none" />
+                                </td>
+                              )}
+                              {hasCapability("expiry_tracking") && (
+                                <td className="px-2 py-2">
+                                  <input type="date" value={reconcile.lines[idx]?.expiry_date ?? ""} onChange={(e) => updateReconcileLine(idx, { expiry_date: e.target.value })} className="w-full rounded border border-white/10 bg-black/20 px-2 py-1 text-left text-slate-100 outline-none" />
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>

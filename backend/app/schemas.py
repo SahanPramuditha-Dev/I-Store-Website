@@ -205,6 +205,8 @@ class GrnLineIn(BaseModel):
     quantity: int
     damaged_qty: int = 0
     unit_cost: float = 0
+    batch_number: str | None = None
+    expiry_date: datetime | str | None = None
 
 class GrnIn(BaseModel):
     supplier_id: int
@@ -349,6 +351,8 @@ class PurchaseReconcileLineIn(BaseModel):
     received_qty: int
     damaged_qty: int = 0
     unit_cost: float | None = None
+    batch_number: str | None = None
+    expiry_date: datetime | str | None = None
 
 
 class PurchaseReconcileIn(BaseModel):

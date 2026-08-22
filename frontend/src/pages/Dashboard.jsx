@@ -28,8 +28,9 @@ import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PageContainer from "../components/layout/PageContainer";
 import { useFeedback } from "../components/FeedbackProvider";
+import { useCapabilities } from "../context/CapabilityContext";
 import { useSyncStatus } from "../hooks/useSyncStatus";
-import { X, RefreshCw } from "lucide-react";
+import { X, RefreshCw, AlertTriangle, Sparkle } from "lucide-react";
 import api from "../lib/api";
 
 function ChartEmptyState({ message, title = "No Transaction Data Yet" }) {
@@ -383,6 +384,8 @@ export default function Dashboard() {
     return [...quickActions, ...extra];
   }, [quickActions]);
 
+  const { hasCapability } = useCapabilities();
+
   const executiveKpis = [
     {
       title: "Today's Revenue",
@@ -406,7 +409,7 @@ export default function Dashboard() {
       hint: `${data?.inventory_stats?.total_items || 0} Total Products (${data?.inventory_stats?.out_of_stock_count || 0} Out of Stock)`,
       tone: "amber",
       icon: <Boxes size={18} />,
-      to: "/inventory",
+      to: "/inventory/products",
     },
     {
       title: "Credit Receivables",
@@ -416,13 +419,20 @@ export default function Dashboard() {
       icon: <Receipt size={18} />,
       to: "/customers",
     },
-    {
+    hasCapability("repairs_management") ? {
       title: "Repair Workload",
       value: `${pendingRepairs} Pending`,
       hint: `${data?.repair_stats?.completed || 0} Completed | ${completionRate.toFixed(0)}% Rate`,
       tone: "violet",
       icon: <Wrench size={18} />,
       to: "/repairs",
+    } : {
+      title: "Batches & Expiries",
+      value: `${data?.action_center?.expiring_batches || 0} Expiring Soon`,
+      hint: `Perishable stock monitoring (Next 30d)`,
+      tone: "violet",
+      icon: <Clock size={18} />,
+      to: "/inventory/products",
     },
     {
       title: "Supplier Payables",
@@ -430,7 +440,7 @@ export default function Dashboard() {
       hint: `Across ${data?.suppliers_summary?.count || 0} Active Suppliers`,
       tone: "indigo",
       icon: <Users size={18} />,
-      to: "/suppliers",
+      to: "/inventory/suppliers",
     },
   ];
 
@@ -564,22 +574,42 @@ export default function Dashboard() {
               <Badge tone="indigo" className="font-mono font-bold">LKR {(actionCenter.pending_supplier_payables || 0).toLocaleString()}</Badge>
             </div>
 
-            {/* Expiring Warranties */}
-            <div
-              onClick={() => navigate("/warranty")}
-              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 group-hover:bg-sky-500/20 transition-colors">
-                  <Clock size={16} />
+            {/* Expiring Warranties (Mobile/Electronics) or Expiring Batches (Grocery/Cosmetics) */}
+            {hasCapability("warranty_management") && (
+              <div
+                onClick={() => navigate("/warranty")}
+                className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="grid h-8 w-8 place-items-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 group-hover:bg-sky-500/20 transition-colors">
+                    <Clock size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Expiring Warranties</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Next 30 days</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Expiring Warranties</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Next 30 days</p>
-                </div>
+                <Badge tone="sky" className="font-mono font-bold">{actionCenter.expiring_warranties || 0}</Badge>
               </div>
-              <Badge tone="sky" className="font-mono font-bold">{actionCenter.expiring_warranties || 0}</Badge>
-            </div>
+            )}
+
+            {hasCapability("expiry_tracking") && (
+              <div
+                onClick={() => navigate("/inventory/products")}
+                className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="grid h-8 w-8 place-items-center rounded-lg bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 group-hover:bg-rose-500/20 transition-colors">
+                    <AlertTriangle size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Expiring Batches</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Next 30 days (FEFO)</p>
+                  </div>
+                </div>
+                <Badge tone="red" className="font-mono font-bold">{actionCenter.expiring_batches || 0}</Badge>
+              </div>
+            )}
           </div>
         </div>
 

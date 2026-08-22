@@ -47,6 +47,7 @@ import { canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermiss
 import { normalizeRepairStatus, isRepairDelivered } from "../lib/repairStatus";
 import api from "../lib/api";
 import { useStoreProfile } from "../hooks/useStoreProfile";
+import { useCapabilities } from "../context/CapabilityContext";
 import { Button, WorkstationNotice } from "./UI";
 import AIAssistant from "./ai/AIAssistant";
 import UpdateNotification from "./UpdateNotification";
@@ -269,15 +270,24 @@ export default function Layout() {
     return () => clearInterval(interval);
   }, []);
 
+  const { hasCapability } = useCapabilities();
+
   const visibleNavGroups = useMemo(
     () =>
       navGroups
         .map((group) => ({
           ...group,
-          items: group.items.filter(([to]) => hasPermission(NAV_PERMISSION_MAP[to], permissions)),
+          items: group.items.filter(([to]) => {
+            // 1. RBAC permission check
+            if (!hasPermission(NAV_PERMISSION_MAP[to], permissions)) return false;
+            // 2. Capability check
+            if (to.startsWith("/repairs") && !hasCapability("repairs_management")) return false;
+            if (to.startsWith("/warranty") && !hasCapability("warranty_management")) return false;
+            return true;
+          }),
         }))
         .filter((group) => group.items.length > 0),
-    [permissions]
+    [permissions, hasCapability]
   );
   const visibleFlatNav = visibleNavGroups.flatMap((g) => g.items);
   const crumb = visibleFlatNav.find(([to]) => location.pathname.startsWith(to))?.[1] ?? "Dashboard";

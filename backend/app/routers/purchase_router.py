@@ -181,6 +181,18 @@ def _reconcile_po(
         inventory_item.quantity = int(inventory_item.quantity or 0) + net_received
         if unit_cost > 0:
             inventory_item.cost_price = unit_cost
+        if line and line.batch_number:
+            inventory_item.batch_number = line.batch_number.strip()
+        if line and line.expiry_date:
+            try:
+                if isinstance(line.expiry_date, str):
+                    inventory_item.expiry_date = datetime.fromisoformat(line.expiry_date.replace("Z", "+00:00")).date()
+                elif hasattr(line.expiry_date, "date"):
+                    inventory_item.expiry_date = line.expiry_date.date()
+                else:
+                    inventory_item.expiry_date = line.expiry_date
+            except Exception:
+                pass
         db.add(
             GoodsReceivedNoteItem(
                 grn_id=grn.id,

@@ -16,6 +16,7 @@ export const inventoryTabs = [
   ["/inventory/price-adjustments", "Price Adjust"],
   ["/inventory/discounts", "Discount Offers"],
   ["/inventory/reports", "Reports"],
+  ["/inventory/batches", "Batches & Expiry"],
   ["/inventory/suppliers", "Suppliers"],
   ["/inventory/supplier-ledger", "Supplier Ledger"],
 ];

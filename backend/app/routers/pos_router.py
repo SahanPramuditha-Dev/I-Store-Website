@@ -924,9 +924,10 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
             if linked_reservation and int(linked_reservation.product_id or 0) == int(item.id):
                 reserved_exclusion_id = int(linked_reservation.id)
             reserved_qty = get_reserved_qty_for_item(db, int(item.id), exclude_reservation_id=reserved_exclusion_id)
-            available_qty = int(item.quantity or 0) - int(reserved_qty or 0)
-            if available_qty < quantity:
+            available_qty = float(item.quantity or 0.0) - float(reserved_qty or 0.0)
+            if available_qty < float(quantity):
                 raise HTTPException(status_code=400, detail=f"Insufficient stock for item {line.item_id}")
+
             serial_row = None
             serial_text = str(line.serial_number or "").strip()
             if bool(item.has_serials):

@@ -93,7 +93,13 @@ class WarrantyReplacementIn(BaseModel):
     new_serial_id: Optional[int] = None
     replacement_reason: Optional[str] = None
 
-router = APIRouter(prefix="/warranty", tags=["warranty"])
+from app.services.capability_service import require_capability
+
+router = APIRouter(
+    prefix="/warranty",
+    tags=["warranty"],
+    dependencies=[Depends(require_capability("warranty_management"))]
+)
 
 
 def _role_key(user) -> str:

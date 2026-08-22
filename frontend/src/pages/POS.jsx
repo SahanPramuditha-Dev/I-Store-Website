@@ -10,6 +10,8 @@ import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
 import { ShiftModal } from "../components/ShiftModal";
+import VariantMatrixModal from "../components/pos/VariantMatrixModal";
+import { useCapabilities } from "../context/CapabilityContext";
 
 export default function POS() {
   const { toast, confirm, prompt } = useFeedback();
@@ -31,12 +33,15 @@ export default function POS() {
   const salesFetch = useFetch('/pos/sales');
   const repairsFetch = useFetch('/repairs'); // To link tickets
   const reservationsFetch = useFetch('/product-reservations');
+  const { hasCapability } = useCapabilities();
 
   const [mode, setMode] = useState("sale"); // sale | repair | reservation
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [scanCode, setScanCode] = useState("");
   const [selectedCartIndex, setSelectedCartIndex] = useState(0);
+  const [matrixItem, setMatrixItem] = useState(null);
+  const [isMatrixOpen, setIsMatrixOpen] = useState(false);
   
   const [cart, setCart] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState("Cash");
@@ -681,36 +686,73 @@ export default function POS() {
     if (e && e.key !== "Enter") return;
     const code = (scanCode || "").trim();
     if (!code) return;
+
+    // Scale Embedded Barcode Support (EAN-13: 20-29 prefix for weight / price)
+    // Format: 20 + 5-digit PLU + 5-digit weight in grams + 1 check digit (e.g. 2000105012503 -> PLU 105, Weight 1.250kg)
+    let searchCode = code;
+    let extractedWeight = null;
+    if (code.length === 13 && (code.startsWith("20") || code.startsWith("21") || code.startsWith("22"))) {
+      const plu = code.substring(2, 7).replace(/^0+/, "");
+      const weightGrams = parseInt(code.substring(7, 12), 10);
+      if (!isNaN(weightGrams) && weightGrams > 0) {
+        extractedWeight = weightGrams / 1000.0;
+        searchCode = plu;
+      }
+    }
+
     try {
-      const { data } = await api.get(`/pos/barcode/${encodeURIComponent(code)}`);
+      const { data } = await api.get(`/pos/barcode/${encodeURIComponent(searchCode)}`);
       if (data) {
         addItem({
           ...data,
           quantity: Number(data?.stock?.available ?? data.quantity ?? 0),
           total_stock: Number(data?.stock?.on_hand ?? data.quantity ?? 0),
           reserved_stock: Number(data?.stock?.reserved ?? 0),
-        });
+        }, extractedWeight);
         setScanCode("");
         barcodeRef.current?.focus();
       }
     } catch {
+      // Fallback try original code
+      try {
+        const { data } = await api.get(`/pos/barcode/${encodeURIComponent(code)}`);
+        if (data) {
+          addItem({
+            ...data,
+            quantity: Number(data?.stock?.available ?? data.quantity ?? 0),
+            total_stock: Number(data?.stock?.on_hand ?? data.quantity ?? 0),
+            reserved_stock: Number(data?.stock?.reserved ?? 0),
+          });
+          setScanCode("");
+          barcodeRef.current?.focus();
+          return;
+        }
+      } catch {}
       toast("Item not found", "error");
       barcodeRef.current?.focus();
     }
   };
 
-  const addItem = (i) => {
+  const addItem = (i, initialQty = null) => {
+    // If product has variants and matrix capability is active, open matrix picker
+    if (i.variants && i.variants.length > 0 && (hasCapability("variants_matrix") || hasCapability("size_color_variants"))) {
+      setMatrixItem(i);
+      setIsMatrixOpen(true);
+      return;
+    }
+
     if (i.quantity <= 0 && !i.is_labor) return toast("Item out of stock", "warning");
     const resolvedLineType = i.is_labor
       ? (i.line_type || "labor")
       : (String(i.product_type || "").toLowerCase().includes("spare") ? "spare_part" : "product");
+    const qtyToAdd = initialQty !== null ? initialQty : 1;
     let added = false;
     setCart((prev) => {
       const existing = prev.find((p) => p.item_id === i.id && p.line_type === resolvedLineType);
       if (existing) {
-        if (!i.is_labor && existing.quantity >= i.quantity) { toast("Cannot exceed stock", "warning"); return prev; }
+        if (!i.is_labor && existing.quantity + qtyToAdd > i.quantity) { toast("Cannot exceed stock", "warning"); return prev; }
         added = true;
-        return prev.map((p) => p.item_id === i.id ? { ...p, quantity: p.quantity + 1 } : p);
+        return prev.map((p) => p.item_id === i.id ? { ...p, quantity: p.quantity + qtyToAdd } : p);
       }
       added = true;
       return [
@@ -718,7 +760,9 @@ export default function POS() {
         {
           item_id: i.id || Date.now(),
           name: i.name,
-          quantity: 1,
+          quantity: qtyToAdd,
+          unit_of_measure: i.unit_of_measure || "pcs",
+          allow_decimal_qty: Boolean(i.allow_decimal_qty || i.is_weighted || initialQty !== null),
           price: i.sale_price || 0,
           warranty_days: Number(i.shop_warranty_days || i.warranty_days || 0),
           is_labor: Boolean(i.is_labor),
@@ -727,7 +771,7 @@ export default function POS() {
         },
       ];
     });
-    if (added) toast(`Added ${i.name}`, "success");
+    if (added) toast(`Added ${i.name}${initialQty ? ` (${initialQty} ${i.unit_of_measure || 'kg'})` : ''}`, "success");
   };
 
   const addLaborCharge = () => {
@@ -3463,6 +3507,17 @@ export default function POS() {
         onClose={() => setShiftModalOpen(false)}
         currentShift={currentShiftData}
         onShiftUpdated={fetchShiftStatus}
+      />
+
+      {/* FASHION SIZE x COLOR MATRIX VARIANT SELECTOR */}
+      <VariantMatrixModal
+        isOpen={isMatrixOpen}
+        onClose={() => setIsMatrixOpen(false)}
+        masterItem={matrixItem}
+        onSelectVariant={(variantItem) => {
+          addItem(variantItem);
+          setIsMatrixOpen(false);
+        }}
       />
 
     </div>

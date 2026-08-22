@@ -286,6 +286,24 @@ def _dashboard_impl(period: str, db):
     except Exception:
         pass
 
+    # Grocery Expiry Tracking Counter (Batches expiring within 30 days)
+    expiring_batches_count = 0
+    try:
+        expiring_batches_count = (
+            db.query(func.count(InventoryItem.id))
+            .filter(
+                InventoryItem.is_deleted == False,
+                InventoryItem.quantity > 0,
+                InventoryItem.expiry_date.isnot(None),
+                InventoryItem.expiry_date >= now.date(),
+                InventoryItem.expiry_date <= thirty_days_ahead.date(),
+            )
+            .scalar()
+            or 0
+        )
+    except Exception:
+        pass
+
     pending_supplier_payables = 0.0
     supplier_count = 0
     try:
@@ -386,6 +404,7 @@ def _dashboard_impl(period: str, db):
             "low_stock_items": low_stock_count,
             "out_of_stock_items": out_of_stock_count,
             "expiring_warranties": expiring_warranties_count,
+            "expiring_batches": expiring_batches_count,
             "pending_supplier_payables": pending_supplier_payables,
         },
         "outstanding_balance": float(outstanding_balance or 0),

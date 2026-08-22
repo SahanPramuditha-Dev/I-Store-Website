@@ -333,3 +333,20 @@ def pos_terminal_heartbeat(
     if not result.get("valid"):
         raise HTTPException(status_code=403, detail=result.get("error"))
     return result
+
+
+# =========================================================================
+# TENANT CAPABILITIES & INDUSTRY RESOLUTION
+# =========================================================================
+
+@router.get("/tenant/capabilities")
+def get_tenant_capabilities_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns the resolved industry capabilities for the currently authenticated user's organization.
+    Consumed by React frontend CapabilityContext.
+    """
+    from app.services.capability_service import get_effective_capabilities
+    return get_effective_capabilities(db, organization_id=current_user.organization_id)

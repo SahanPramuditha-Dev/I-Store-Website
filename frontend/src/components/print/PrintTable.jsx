@@ -29,7 +29,9 @@ export function PrintTable({ items, config }) {
                 )}
               </td>
               {showImei && <td className="py-2 px-3">{row.imei || row.serial_number || "-"}</td>}
-              <td className="py-2 px-3 text-right">{row.quantity || row.qty || 1}</td>
+              <td className="py-2 px-3 text-right">
+                {row.quantity || row.qty || 1} {row.unit_of_measure && row.unit_of_measure !== 'pcs' ? row.unit_of_measure : ''}
+              </td>
               <td className="py-2 px-3 text-right">{formatMoney(row.unit_price)}</td>
               {showDiscount && <td className="py-2 px-3 text-right">{formatMoney(row.discount_amount || row.discount)}</td>}
               <td className="py-2 px-3 text-right">{formatMoney(row.line_total)}</td>

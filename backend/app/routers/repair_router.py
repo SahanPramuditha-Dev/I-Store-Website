@@ -37,8 +37,13 @@ from app.services.warranty_service import (
     ensure_warranty_defaults,
     warranty_status_label,
 )
+from app.services.capability_service import require_capability
 
-router = APIRouter(prefix="/repairs", tags=["repairs"])
+router = APIRouter(
+    prefix="/repairs",
+    tags=["repairs"],
+    dependencies=[Depends(require_capability("repairs_management"))]
+)
 logger = logging.getLogger("istore.api")
 
 REPAIR_STATUS_TRANSITIONS = {

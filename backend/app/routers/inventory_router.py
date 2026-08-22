@@ -2310,6 +2310,201 @@ def close_stock_take(session_id: int, db: Session = Depends(get_db), _=Depends(g
         raise HTTPException(status_code=404, detail="Stock take session not found")
     current_status = str(session.status or "").lower()
     if current_status == "posted":
+        if mode == "percentage":
+            new_cost = old_cost
+            new_sale = old_sale
+            if target in {"both", "cost"}:
+                new_cost = max(0.0, round(old_cost * factor, 4))
+            if target in {"both", "sale"}:
+                new_sale = max(0.0, round(old_sale * factor, 4))
+        else:
+            new_cost = old_cost if target == "sale" else max(0.0, float(payload.new_cost_price or 0))
+            new_sale = old_sale if target == "cost" else max(0.0, float(payload.new_sale_price or 0))
+
+        row = PriceAdjustmentLog(
+            item_id=item.id,
+            old_cost_price=old_cost,
+            old_sale_price=old_sale,
+            new_cost_price=new_cost,
+            new_sale_price=new_sale,
+            reason=reason_text,
+        )
+        item.cost_price = new_cost
+        item.sale_price = new_sale
+        db.add(row)
+        db.flush()
+        created_rows.append(
+            {
+                "id": row.id,
+                "item_id": item.id,
+                "item_name": item.name,
+                "old_cost_price": old_cost,
+                "old_sale_price": old_sale,
+                "new_cost_price": new_cost,
+                "new_sale_price": new_sale,
+                "old_margin_amount": round(old_sale - old_cost, 2),
+                "new_margin_amount": round(new_sale - new_cost, 2),
+                "old_margin_pct": _margin_pct(old_sale, old_cost),
+                "new_margin_pct": _margin_pct(new_sale, new_cost),
+                "reason": reason_text,
+                "created_at": _iso(row.created_at),
+            }
+        )
+
+    db.commit()
+    created_rows.sort(key=lambda row: row["id"], reverse=True)
+    return {
+        "ok": True,
+        "updated_count": len(created_rows),
+        "mode": mode,
+        "target": target,
+        "adjustments": created_rows,
+    }
+
+
+@router.get('/stock-takes', dependencies=[Depends(require_permission("inventory.stock_take"))])
+def list_stock_takes(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    try:
+        rows = db.query(StockTakeSession).order_by(StockTakeSession.created_at.desc()).limit(100).all()
+    except OperationalError:
+        # Older local DB without stock-take tables: return empty until startup table sync runs.
+        return []
+    session_ids = [r.id for r in rows]
+    line_counts = {}
+    net_variance = {}
+    if session_ids:
+        line_counts = dict(
+            db.query(StockTakeLine.session_id, func.count(StockTakeLine.id))
+            .filter(StockTakeLine.session_id.in_(session_ids))
+            .group_by(StockTakeLine.session_id)
+            .all()
+        )
+        net_variance = dict(
+            db.query(StockTakeLine.session_id, func.sum(StockTakeLine.difference))
+            .filter(StockTakeLine.session_id.in_(session_ids))
+            .group_by(StockTakeLine.session_id)
+            .all()
+        )
+    return [{
+        "id": r.id,
+        "name": r.name,
+        "note": r.note,
+        "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "closed_at": r.closed_at.isoformat() if r.closed_at else None,
+        "line_count": int(line_counts.get(r.id, 0)),
+        "net_variance_units": int(net_variance.get(r.id, 0) or 0),
+    } for r in rows]
+
+
+@router.post('/stock-takes', dependencies=[Depends(require_permission("inventory.stock_take"))])
+def create_stock_take(payload: StockTakeIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    row = StockTakeSession(name=payload.name, note=payload.note, status="Draft")
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.post('/stock-takes/{session_id}/lines', dependencies=[Depends(require_permission("inventory.stock_take"))])
+def submit_stock_take_line(session_id: int, payload: StockTakeLineIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    session = db.query(StockTakeSession).filter(StockTakeSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Stock take session not found")
+    session_status = str(session.status or "").lower()
+    if session_status not in {"draft", "review"}:
+        raise HTTPException(status_code=400, detail="Session is already posted/closed")
+    item = db.query(InventoryItem).filter(InventoryItem.id == payload.item_id, InventoryItem.is_deleted == False).first()  # noqa: E712
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    existing = (
+        db.query(StockTakeLine)
+        .filter(StockTakeLine.session_id == session_id, StockTakeLine.item_id == item.id)
+        .first()
+    )
+    diff = int(payload.physical_qty) - int(item.quantity or 0)
+    if existing:
+        existing.system_qty = int(item.quantity or 0)
+        existing.physical_qty = int(payload.physical_qty or 0)
+        existing.difference = diff
+        line = existing
+    else:
+        line = StockTakeLine(
+            session_id=session_id,
+            item_id=item.id,
+            system_qty=item.quantity,
+            physical_qty=payload.physical_qty,
+            difference=diff,
+        )
+        db.add(line)
+
+    session.status = "Draft"
+    db.commit()
+    return {
+        "ok": True,
+        "difference": diff,
+        "line": {
+            "item_id": line.item_id,
+            "system_qty": int(line.system_qty or 0),
+            "physical_qty": int(line.physical_qty or 0),
+            "difference": int(line.difference or 0),
+        },
+    }
+
+
+@router.get('/stock-takes/{session_id}', dependencies=[Depends(require_permission("inventory.stock_take"))])
+def stock_take_detail(session_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    session = db.query(StockTakeSession).filter(StockTakeSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Stock take session not found")
+    lines = (
+        db.query(StockTakeLine)
+        .options(joinedload(StockTakeLine.item))
+        .filter(StockTakeLine.session_id == session_id)
+        .order_by(StockTakeLine.id.asc())
+        .all()
+    )
+    variance_increase = sum(int(l.difference or 0) for l in lines if int(l.difference or 0) > 0)
+    variance_decrease = sum(abs(int(l.difference or 0)) for l in lines if int(l.difference or 0) < 0)
+    zero_variance_count = sum(1 for l in lines if int(l.difference or 0) == 0)
+    return {
+        "session": {
+            "id": session.id,
+            "name": session.name,
+            "note": session.note,
+            "status": session.status,
+            "created_at": _iso(session.created_at),
+            "closed_at": _iso(session.closed_at),
+        },
+        "summary": {
+            "line_count": len(lines),
+            "variance_increase_units": int(variance_increase),
+            "variance_decrease_units": int(variance_decrease),
+            "net_variance_units": int(variance_increase - variance_decrease),
+            "balanced_lines": int(zero_variance_count),
+        },
+        "lines": [
+            {
+                "id": line.id,
+                "item_id": line.item_id,
+                "item_name": line.item.name if line.item else f"Item #{line.item_id}",
+                "sku": line.item.sku if line.item else None,
+                "system_qty": int(line.system_qty or 0),
+                "physical_qty": int(line.physical_qty or 0),
+                "difference": int(line.difference or 0),
+            }
+            for line in lines
+        ],
+    }
+
+
+@router.post('/stock-takes/{session_id}/close', dependencies=[Depends(require_permission("inventory.stock_take"))])
+def close_stock_take(session_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    session = db.query(StockTakeSession).filter(StockTakeSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Stock take session not found")
+    current_status = str(session.status or "").lower()
+    if current_status == "posted":
         return {"ok": True, "already_posted": True, "closed_at": _iso(session.closed_at)}
     if current_status == "review":
         return {"ok": True, "already_closed": True, "closed_at": _iso(session.closed_at)}
@@ -2373,7 +2568,6 @@ def post_stock_take(session_id: int, db: Session = Depends(get_db), current_user
                 note=f"Posted stock take {session.name}",
             )
         )
-
     session.status = "Posted"
     session.closed_at = utcnow()
     db.commit()
@@ -2412,3 +2606,82 @@ def get_imei_movements(
             "performed_by_name": user.full_name if user else "System"
         })
     return result
+
+
+@router.get('/batches/summary', dependencies=[Depends(require_permission("inventory.view"))])
+def get_batches_summary(
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user)
+):
+    now = utcnow().date()
+    seven_days = now + timedelta(days=7)
+    thirty_days = now + timedelta(days=30)
+
+    items_with_expiry = (
+        db.query(InventoryItem)
+        .filter(
+            InventoryItem.is_deleted == False,
+            InventoryItem.quantity > 0,
+            or_(InventoryItem.expiry_date.isnot(None), InventoryItem.batch_number.isnot(None))
+        )
+        .order_by(InventoryItem.expiry_date.asc())
+        .all()
+    )
+
+    expired = []
+    critical_7d = []
+    expiring_30d = []
+    healthy = []
+
+    for item in items_with_expiry:
+        exp_date = item.expiry_date
+        days_to_expiry = None
+        status = "healthy"
+
+        if exp_date:
+            days_to_expiry = (exp_date - now).days
+            if days_to_expiry < 0:
+                status = "expired"
+                expired.append(_serialize_batch_item(item, days_to_expiry, status))
+            elif days_to_expiry <= 7:
+                status = "critical"
+                critical_7d.append(_serialize_batch_item(item, days_to_expiry, status))
+            elif days_to_expiry <= 30:
+                status = "expiring_soon"
+                expiring_30d.append(_serialize_batch_item(item, days_to_expiry, status))
+            else:
+                healthy.append(_serialize_batch_item(item, days_to_expiry, status))
+        else:
+            healthy.append(_serialize_batch_item(item, None, "untracked_expiry"))
+
+    return {
+        "summary": {
+            "total_batch_items": len(items_with_expiry),
+            "expired_count": len(expired),
+            "critical_7d_count": len(critical_7d),
+            "expiring_30d_count": len(expiring_30d),
+            "healthy_count": len(healthy),
+        },
+        "expired": expired,
+        "critical_7d": critical_7d,
+        "expiring_30d": expiring_30d,
+        "healthy": healthy,
+    }
+
+
+def _serialize_batch_item(item: InventoryItem, days_to_expiry: int | None, status: str) -> dict:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "sku": item.sku,
+        "category": item.category,
+        "batch_number": item.batch_number or "UNSPECIFIED",
+        "expiry_date": item.expiry_date.isoformat() if item.expiry_date else None,
+        "days_to_expiry": days_to_expiry,
+        "quantity": float(item.quantity or 0),
+        "unit_of_measure": item.unit_of_measure or "pcs",
+        "cost_price": float(item.cost_price or 0),
+        "sale_price": float(item.sale_price or 0),
+        "stock_value": round(float(item.quantity or 0) * float(item.cost_price or 0), 2),
+        "status": status,
+    }

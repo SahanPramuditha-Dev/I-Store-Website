@@ -31,6 +31,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
+import { useCapabilities } from "../context/CapabilityContext";
 
 const LOW_STOCK_THRESHOLD = 3;
 const RECENT_DAYS = 30;
@@ -1037,9 +1038,29 @@ export default function Inventory() {
               {/* Show Custom Specifications Inputs ONLY if NOT linked to a Master Product */}
               {!form.master_product_id && (
                 <>
-                  <FieldInput label="Model / Sub-Variant" value={form.model} onChange={(value) => setForm({ ...form, model: value })} placeholder="e.g. Pro, Slim, 2M" />
-                  <FieldInput label="Specification / Size" value={form.storage} onChange={(value) => setForm({ ...form, storage: value })} placeholder="e.g. 128GB, 2 Meter, 45mm" />
-                  <FieldInput label="Color / Finish" value={form.color} onChange={(value) => setForm({ ...form, color: value })} placeholder="e.g. Black, Silver" />
+                  <FieldInput 
+                    label={hasCapability("size_color_variants") ? "Size / Dimension" : "Specification / Size"} 
+                    value={form.storage} 
+                    onChange={(value) => setForm({ ...form, storage: value })} 
+                    placeholder={hasCapability("size_color_variants") ? "e.g. S, M, L, XL, 32, 42" : "e.g. 128GB, 2 Meter, 45mm"} 
+                  />
+                  <FieldInput 
+                    label={hasCapability("size_color_variants") ? "Color / Pattern" : "Color / Finish"} 
+                    value={form.color} 
+                    onChange={(value) => setForm({ ...form, color: value })} 
+                    placeholder={hasCapability("size_color_variants") ? "e.g. Navy Blue, Floral, Black" : "e.g. Black, Silver"} 
+                  />
+                  {hasCapability("season_management") && (
+                    <FieldInput 
+                      label="Season / Collection" 
+                      value={form.model || ""} 
+                      onChange={(value) => setForm({ ...form, model: value })} 
+                      placeholder="e.g. Summer 2026, Festive Edition" 
+                    />
+                  )}
+                  {!hasCapability("season_management") && (
+                    <FieldInput label="Model / Sub-Variant" value={form.model} onChange={(value) => setForm({ ...form, model: value })} placeholder="e.g. Pro, Slim, 2M" />
+                  )}
                 </>
               )}
 
@@ -1081,10 +1102,26 @@ export default function Inventory() {
                 </div>
               </div>
 
+              {/* Multi-Industry Additive Fields */}
+              {hasCapability("batch_tracking") && (
+                <FieldInput label="Batch / Lot Number" value={form.batch_number || ""} onChange={(value) => setForm({ ...form, batch_number: value })} placeholder="e.g. BATCH-2026-X" />
+              )}
+              {hasCapability("expiry_tracking") && (
+                <FieldInput label="Expiry Date" type="date" value={form.expiry_date || ""} onChange={(value) => setForm({ ...form, expiry_date: value })} />
+              )}
+              {hasCapability("unit_conversions") && (
+                <FieldSelect label="Unit of Measure" value={form.unit_of_measure || "pcs"} onChange={(value) => setForm({ ...form, unit_of_measure: value })} options={["pcs", "kg", "g", "l", "ml", "m", "pair", "box"]} />
+              )}
+
               {/* Supplier & Warranty Breakdown */}
               <FieldSelect label="Supplier" value={form.supplier_id} onChange={(value) => setForm({ ...form, supplier_id: value })} options={["", ...suppliers.map((s) => String(s.id))]} optionLabels={["No Supplier", ...suppliers.map((s) => s.name)]} />
-              <FieldInput label="Shop Warranty (Days)" type="number" value={form.shop_warranty_days || form.warranty_days} onChange={(value) => setForm({ ...form, shop_warranty_days: Number(value), warranty_days: Number(value) })} />
-              <FieldInput label="Supplier / Brand Warranty (Days)" type="number" value={form.supplier_warranty_days} onChange={(value) => setForm({ ...form, supplier_warranty_days: Number(value) })} />
+              
+              {hasCapability("warranty_management") && (
+                <>
+                  <FieldInput label="Shop Warranty (Days)" type="number" value={form.shop_warranty_days || form.warranty_days} onChange={(value) => setForm({ ...form, shop_warranty_days: Number(value), warranty_days: Number(value) })} />
+                  <FieldInput label="Supplier / Brand Warranty (Days)" type="number" value={form.supplier_warranty_days} onChange={(value) => setForm({ ...form, supplier_warranty_days: Number(value) })} />
+                </>
+              )}
 
               {/* Image Input */}
               <div>
@@ -1097,10 +1134,12 @@ export default function Inventory() {
             </div>
 
             <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-slate-900 text-indigo-600 focus:ring-indigo-500/30" checked={form.has_serials} onChange={(e) => setForm({ ...form, has_serials: e.target.checked })} />
-                <span className="text-xs font-semibold text-slate-300">Track serial numbers / IMEI</span>
-              </label>
+              {hasCapability("imei_tracking") ? (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-slate-900 text-indigo-600 focus:ring-indigo-500/30" checked={form.has_serials} onChange={(e) => setForm({ ...form, has_serials: e.target.checked })} />
+                  <span className="text-xs font-semibold text-slate-300">Track serial numbers / IMEI</span>
+                </label>
+              ) : <div />}
 
               <div className="flex gap-2">
                 <button type="button" onClick={() => { setShowAddModal(false); resetProductForm(); }} className="rounded-xl border border-white/10 bg-slate-900 px-4 py-2 text-xs font-bold text-slate-400 hover:bg-white/5">
