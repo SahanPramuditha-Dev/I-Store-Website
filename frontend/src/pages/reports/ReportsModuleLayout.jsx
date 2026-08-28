@@ -5,6 +5,7 @@ import { useFetch } from "../../hooks/useFetch";
 import { REPORT_SECTIONS } from "./reportsConfig";
 import { PageHeader } from "../../components/UI";
 
+import { useCapabilities } from "../../context/CapabilityContext";
 import { toLocalIsoDate, parseUtcIso, parseLocalDate } from "../../lib/dateParser";
 
 function getPresetRange(preset) {
@@ -28,6 +29,7 @@ function safeArray(value) {
 
 export default function ReportsModuleLayout() {
   const location = useLocation();
+  const { hasCapability } = useCapabilities();
   const defaultRange = getPresetRange("month");
   const [datePreset, setDatePreset] = useState("month");
   const [dateFrom, setDateFrom] = useState(defaultRange.from);
@@ -39,11 +41,13 @@ export default function ReportsModuleLayout() {
   const activeSlug = location.pathname.split("/").filter(Boolean).at(-1) || "overview";
   const shouldFetch = (...slugs) => activeSlug === "export-center" || slugs.includes(activeSlug);
 
+  const hasRepairs = hasCapability("repairs_management");
+
   const { data: salesRaw, loading: salesLoading } = useFetch(shouldFetch("overview", "sales", "profit-loss", "outstanding-payments", "product-performance", "customer-reports", "tax-financial", "refunds-returns") ? `/reports/sales${queryRange}` : null);
-  const { data: repairsRaw, loading: repairsLoading } = useFetch(shouldFetch("overview", "repairs", "customer-reports", "refunds-returns") ? `/reports/repairs${queryRange}` : null);
+  const { data: repairsRaw, loading: repairsLoading } = useFetch(hasRepairs && shouldFetch("overview", "repairs", "customer-reports", "refunds-returns") ? `/reports/repairs${queryRange}` : null);
   const { data: summaryRaw, loading: summaryLoading } = useFetch(shouldFetch("overview", "sales", "profit-loss", "tax-financial") ? `/reports/summary${queryRange}` : null);
   const { data: inventoryRaw, loading: inventoryLoading } = useFetch(shouldFetch("overview", "inventory", "profit-loss", "product-performance", "supplier-reports") ? "/reports/inventory" : null);
-  const { data: repairTicketsRaw, loading: repairTicketsLoading } = useFetch(shouldFetch("repairs", "outstanding-payments", "technician-performance", "customer-reports") ? "/repairs" : null);
+  const { data: repairTicketsRaw, loading: repairTicketsLoading } = useFetch(hasRepairs && shouldFetch("repairs", "outstanding-payments", "technician-performance", "customer-reports") ? "/repairs" : null);
   const { data: customersRaw, loading: customersLoading } = useFetch(shouldFetch("sales", "outstanding-payments", "customer-reports") ? "/customers" : null);
   const { data: suppliersRaw, loading: suppliersLoading } = useFetch(shouldFetch("supplier-reports") ? "/inventory/suppliers" : null);
   const { data: purchaseRaw, loading: purchaseLoading } = useFetch(shouldFetch("profit-loss", "supplier-reports") ? "/purchase" : null);
@@ -52,7 +56,7 @@ export default function ReportsModuleLayout() {
   const { data: dashboardRaw, loading: dashboardLoading } = useFetch(shouldFetch("overview") ? "/dashboard" : null);
   const { data: notificationsRaw, loading: notificationsLoading } = useFetch(shouldFetch("overview") ? "/notifications" : null);
   const { data: auditActivityRaw, loading: auditActivityLoading } = useFetch(shouldFetch("audit") ? `/reports/audit-activity${queryRange}` : null);
-  const { data: auditRepairHistoryRaw, loading: auditRepairHistoryLoading } = useFetch(shouldFetch("audit") ? `/reports/audit-repair-history${queryRange}` : null);
+  const { data: auditRepairHistoryRaw, loading: auditRepairHistoryLoading } = useFetch(hasRepairs && shouldFetch("audit") ? `/reports/audit-repair-history${queryRange}` : null);
   const { data: priceAdjustmentsRaw, loading: priceAdjustmentsLoading } = useFetch(shouldFetch("inventory") ? "/inventory/price-adjustments" : null);
   const { data: discountsRaw, loading: discountsLoading } = useFetch(shouldFetch("inventory") ? "/inventory/discounts" : null);
   const { data: backupsRaw, loading: backupsLoading } = useFetch(shouldFetch("audit") ? "/backup" : null);
@@ -279,7 +283,7 @@ export default function ReportsModuleLayout() {
         </div>
 
       <div className="app-tab-strip rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 p-2 shadow-sm dark:shadow-none">
-        {REPORT_SECTIONS.map((section) => (
+        {REPORT_SECTIONS.filter((section) => !section.requiredCapability || hasCapability(section.requiredCapability)).map((section) => (
           <NavLink
             key={section.slug}
             to={`/reports/${section.slug}`}

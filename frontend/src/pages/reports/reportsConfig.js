@@ -16,6 +16,7 @@ export const REPORT_SECTIONS = [
     title: "Repair Reports",
     shortTitle: "Repairs",
     description: "Ticket lifecycle, turnaround, and repair revenue.",
+    requiredCapability: "repairs_management",
   },
   {
     slug: "profit-loss",
@@ -46,6 +47,7 @@ export const REPORT_SECTIONS = [
     title: "Technician Performance",
     shortTitle: "Technicians",
     description: "Technician workload, completion rate, and productivity.",
+    requiredCapability: "repairs_management",
   },
   {
     slug: "product-performance",

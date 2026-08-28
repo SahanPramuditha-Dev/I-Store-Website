@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { KeyRound, ShieldAlert, WifiOff, CheckCircle2, RefreshCw, Laptop } from 'lucide-react';
+import api from '../lib/api';
 
 export default function LicenseLockModal() {
   const [licenseState, setLicenseState] = useState({
     status: 'CHECKING',
     message: '',
-    hardware_uuid: '',
+    hardware_uuid: 'WEB-POS-TERMINAL-' + (typeof window !== 'undefined' ? (window.navigator?.hardwareConcurrency || 4) : 4) + 'CPU',
     is_offline_fallback: false,
     offline_grace_remaining_hours: null,
   });
@@ -13,106 +14,149 @@ export default function LicenseLockModal() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
-  const checkLicense = async () => {
+  const checkLicense = useCallback(async () => {
+    // 1. Electron Desktop IPC check
     if (window.istore?.license?.getStatus) {
       try {
         const res = await window.istore.license.getStatus();
-        setLicenseState(res || { status: 'UNLICENSED' });
-      } catch (err) {
-        console.error('License check error:', err);
-      }
-    } else {
-      // Browser mode: Check local storage for active signed token
-      try {
-        const storedToken = localStorage.getItem('istore_license_token');
-        if (storedToken) {
-          const parsed = JSON.parse(storedToken);
-          setLicenseState({
-            status: 'ACTIVATED',
-            is_offline_fallback: false,
-            message: 'Active Browser Terminal License',
-            hardware_uuid: parsed.payload?.machine_fingerprint || 'BROWSER-DEV-TERMINAL'
-          });
-        } else {
-          setLicenseState({
-            status: 'UNLICENSED',
-            message: 'POS terminal requires activation with an E-Store license key.',
-            hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator.hardwareConcurrency || 4) + 'CPU'
-          });
+        if (res && res.status) {
+          setLicenseState(res);
+          return;
         }
-      } catch (_e) {
-        setLicenseState({ status: 'UNLICENSED', message: 'License key required.' });
+      } catch (err) {
+        console.error('Electron license check error:', err);
       }
     }
-  };
+
+    // 2. Query Local ERP Backend License Status API
+    try {
+      const res = await api.get('/saas/license/status');
+      const data = res.data;
+      if (data && data.active === true) {
+        setLicenseState({
+          status: 'ACTIVATED',
+          is_offline_fallback: Boolean(data.in_grace_period),
+          offline_grace_remaining_hours: data.grace_remaining_hours || null,
+          message: data.message || 'License active and verified',
+          hardware_uuid: data.payload?.machine_fingerprint || 'WEB-POS-TERMINAL',
+          payload: data.payload
+        });
+        if (data.payload) {
+          localStorage.setItem('istore_license_token', JSON.stringify({ payload: data.payload }));
+        }
+        return;
+      } else if (data && data.active === false) {
+        setLicenseState({
+          status: 'UNLICENSED',
+          message: data.message || 'POS terminal requires activation with an E-Store license key.',
+          hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
+        });
+        return;
+      }
+    } catch (apiErr) {
+      // If 402 payment required or network error
+      if (apiErr.response?.status === 402) {
+        setLicenseState({
+          status: 'UNLICENSED',
+          message: apiErr.response?.data?.message || 'POS terminal requires activation with an E-Store license key.',
+          hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
+        });
+        return;
+      }
+    }
+
+    // 3. Browser fallback: Check local storage for active signed token
+    try {
+      const storedToken = localStorage.getItem('istore_license_token');
+      if (storedToken) {
+        const parsed = JSON.parse(storedToken);
+        setLicenseState({
+          status: 'ACTIVATED',
+          is_offline_fallback: false,
+          message: 'Active Browser Terminal License',
+          hardware_uuid: parsed.payload?.machine_fingerprint || 'WEB-POS-TERMINAL'
+        });
+      } else {
+        setLicenseState({
+          status: 'UNLICENSED',
+          message: 'POS terminal requires activation with an E-Store license key.',
+          hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
+        });
+      }
+    } catch (_e) {
+      setLicenseState({ status: 'UNLICENSED', message: 'License key required.' });
+    }
+  }, []);
 
   useEffect(() => {
     checkLicense();
     const interval = setInterval(checkLicense, 60000);
-    return () => clearInterval(interval);
-  }, []);
+
+    const handleLockEvent = (e) => {
+      setLicenseState({
+        status: 'UNLICENSED',
+        message: e.detail?.message || 'POS terminal requires activation with an E-Store license key.',
+        hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
+      });
+    };
+    window.addEventListener('istore_license_locked', handleLockEvent);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('istore_license_locked', handleLockEvent);
+    };
+  }, [checkLicense]);
 
   const handleActivate = async (e) => {
     e.preventDefault();
-    if (!licenseKeyInput.trim()) return;
+    const key = licenseKeyInput.trim().toUpperCase();
+    if (!key) return;
     setIsSubmitting(true);
     setFeedback(null);
 
     try {
+      // 1. Electron Desktop Activation
       if (window.istore?.license?.activate) {
-        const res = await window.istore.license.activate(licenseKeyInput.trim());
+        const res = await window.istore.license.activate(key);
         if (res.success) {
           setFeedback({ type: 'success', message: 'Terminal activated successfully with Ed25519 cloud signature!' });
-          setTimeout(() => checkLicense(), 1000);
+          setTimeout(() => checkLicense(), 800);
+          return;
         } else {
           setFeedback({ type: 'error', message: res.error || 'Activation failed' });
-        }
-      } else {
-        // Direct Cloud Activation from Browser
-        const res = await fetch('https://e-store-control-center-backend.vercel.app/license/activate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            license_key: licenseKeyInput.trim().toUpperCase(),
-            machine_fingerprint: licenseState.hardware_uuid || 'BROWSER-DEV-TERMINAL',
-            machine_name: 'Browser Web POS',
-            app_version: '1.1.100'
-          })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          localStorage.setItem('istore_license_token', JSON.stringify(data.token));
-          
-          // Sync activated license token to local ERP backend cache
-          try {
-            await fetch('/api/saas/license/activate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                token_data: data.token,
-                machine_fingerprint: licenseState.hardware_uuid || 'BROWSER-DEV-TERMINAL'
-              })
-            });
-          } catch (_syncErr) {
-            // Non-blocking for browser offline mode
-          }
-
-          // Auto-sync company & branch name into store identity
-          const p = data.token?.payload || {};
-          if (p.tenant_code || p.shop_code) {
-            localStorage.setItem('istore_active_tenant', p.tenant_code || '');
-            localStorage.setItem('istore_active_branch', p.shop_code || '');
-            localStorage.setItem('istore_active_package', p.package_code || 'ENTERPRISE');
-          }
-
-          setFeedback({ type: 'success', message: 'Terminal activated successfully with Ed25519 cloud signature!' });
-          setTimeout(() => checkLicense(), 1000);
-        } else {
-          setFeedback({ type: 'error', message: data.detail || data.message || 'Activation failed' });
+          return;
         }
       }
+
+      // 2. Local Backend Activation Endpoint
+      const res = await api.post('/saas/license/activate-key', {
+        license_key: key,
+        machine_fingerprint: licenseState.hardware_uuid || 'WEB-POS-TERMINAL'
+      });
+
+      const data = res.data;
+      if (data && data.success) {
+        if (data.token) {
+          localStorage.setItem('istore_license_token', JSON.stringify(data.token));
+        }
+        localStorage.setItem('istore_active_tenant', data.tenant_name || data.tenant_code || '');
+        localStorage.setItem('istore_active_branch', data.shop_name || data.shop_code || '');
+        localStorage.setItem('istore_active_industry', data.industry_code || 'MOBILE_RETAIL');
+        localStorage.setItem('istore_active_package', data.package_code || 'ENTERPRISE');
+
+        window.dispatchEvent(new CustomEvent('istore_license_updated', { detail: data }));
+
+        setFeedback({ type: 'success', message: data.message || 'Terminal activated successfully!' });
+        setTimeout(() => {
+          checkLicense();
+          window.location.reload();
+        }, 600);
+      } else {
+        setFeedback({ type: 'error', message: data.detail || data.message || 'Activation failed' });
+      }
     } catch (err) {
-      setFeedback({ type: 'error', message: err.message || 'Error communicating with license server' });
+      const errMsg = err.response?.data?.detail || err.response?.data?.message || err.userMessage || err.message || 'Error communicating with license activation server';
+      setFeedback({ type: 'error', message: errMsg });
     } finally {
       setIsSubmitting(false);
     }

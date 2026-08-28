@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user, require_permission
 from app.database import get_db
+from app.core.tenant_guard import scope_query, stamp_tenant
 from app.models import ActivityLog, Expense, Supplier, User
 from app.schemas import ExpenseDecisionIn, ExpenseIn, ExpenseUpdateIn
 from app.services.accounting_ledger_service import record_ledger_entry
@@ -161,6 +162,7 @@ def _apply_decision(row: Expense, payload: ExpenseDecisionIn, actor: User | None
 
 @router.get("", dependencies=[Depends(require_permission("expenses.view"))])
 def list_expenses(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     status: str | None = Query(default=None),
@@ -171,11 +173,12 @@ def list_expenses(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = db.query(Expense).options(
+    base_query = db.query(Expense).options(
         joinedload(Expense.created_by),
         joinedload(Expense.approved_by),
         joinedload(Expense.supplier),
     ).filter(Expense.is_deleted == False)  # noqa: E712
+    query = scope_query(base_query, Expense, request, branch_scoped=True)
     start = _parse_iso(date_from)
     end = _parse_iso(date_to, end_exclusive=True)
     if start:
@@ -205,12 +208,14 @@ def list_expenses(
 
 @router.get("/summary", dependencies=[Depends(require_permission("expenses.report"))])
 def expense_summary(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = db.query(Expense).filter(Expense.is_deleted == False)  # noqa: E712
+    base_query = db.query(Expense).filter(Expense.is_deleted == False)  # noqa: E712
+    query = scope_query(base_query, Expense, request, branch_scoped=True)
     start = _parse_iso(date_from)
     end = _parse_iso(date_to, end_exclusive=True)
     if start:
@@ -259,20 +264,20 @@ def expense_summary(
 
 
 @router.get("/{expense_id}", dependencies=[Depends(require_permission("expenses.view"))])
-def get_expense(expense_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    row = (
+def get_expense(request: Request, expense_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    exp_query = (
         db.query(Expense)
         .options(joinedload(Expense.created_by), joinedload(Expense.approved_by), joinedload(Expense.supplier))
         .filter(Expense.id == expense_id, Expense.is_deleted == False)  # noqa: E712
-        .first()
     )
+    row = scope_query(exp_query, Expense, request).first()
     if not row:
         raise HTTPException(status_code=404, detail="Expense not found")
     return _serialize_expense(row)
 
 
 @router.post("", dependencies=[Depends(require_permission("expenses.create"))])
-def create_expense(payload: ExpenseIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def create_expense(request: Request, payload: ExpenseIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     assert_accounting_period_open(db, when=payload.expense_date or utcnow(), action="create expense")
     amount = to_float(payload.amount)
     tax_amount = to_float(payload.tax_amount)
@@ -307,6 +312,7 @@ def create_expense(payload: ExpenseIn, db: Session = Depends(get_db), current_us
         notes=payload.notes,
         created_by_user_id=current_user.id if current_user else None,
     )
+    stamp_tenant(row, request)
     db.add(row)
     db.flush()
     _log_activity(
@@ -344,12 +350,14 @@ def create_expense(payload: ExpenseIn, db: Session = Depends(get_db), current_us
 
 @router.put("/{expense_id}", dependencies=[Depends(require_permission("expenses.edit"))])
 def update_expense(
+    request: Request,
     expense_id: int,
     payload: ExpenseUpdateIn,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(Expense).filter(Expense.id == expense_id, Expense.is_deleted == False).first()  # noqa: E712
+    exp_query = db.query(Expense).filter(Expense.id == expense_id, Expense.is_deleted == False)  # noqa: E712
+    row = scope_query(exp_query, Expense, request).first()
     if not row:
         raise HTTPException(status_code=404, detail="Expense not found")
     assert_accounting_period_open(db, when=row.expense_date or row.created_at or utcnow(), action="update expense")
@@ -400,13 +408,15 @@ def update_expense(
 
 @router.put("/{expense_id}/approve", dependencies=[Depends(require_permission("expenses.approve"))])
 def approve_expense(
+    request: Request,
     expense_id: int,
     payload: ExpenseDecisionIn,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     _require_expense_decision_permission(db, current_user, payload.action)
-    row = db.query(Expense).filter(Expense.id == expense_id, Expense.is_deleted == False).first()  # noqa: E712
+    exp_query = db.query(Expense).filter(Expense.id == expense_id, Expense.is_deleted == False)  # noqa: E712
+    row = scope_query(exp_query, Expense, request).first()
     if not row:
         raise HTTPException(status_code=404, detail="Expense not found")
     assert_accounting_period_open(db, when=row.expense_date or row.created_at or utcnow(), action="approve expense")
@@ -461,12 +471,14 @@ def approve_expense(
 
 @router.delete("/{expense_id}", dependencies=[Depends(require_permission("expenses.delete"))])
 def delete_expense(
+    request: Request,
     expense_id: int,
     approval_request_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(Expense).filter(Expense.id == expense_id, Expense.is_deleted == False).first()  # noqa: E712
+    exp_query = db.query(Expense).filter(Expense.id == expense_id, Expense.is_deleted == False)  # noqa: E712
+    row = scope_query(exp_query, Expense, request).first()
     if not row:
         raise HTTPException(status_code=404, detail="Expense not found")
     assert_accounting_period_open(db, when=row.expense_date or row.created_at or utcnow(), action="archive expense")

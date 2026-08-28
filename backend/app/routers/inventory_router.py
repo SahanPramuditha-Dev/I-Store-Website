@@ -9,6 +9,7 @@ from sqlalchemy.exc import OperationalError
 from app.database import get_db
 from app.auth import get_current_user, require_permission
 from app.core.tenant_guard import scope_query, stamp_tenant
+from app.services.capability_service import has_capability
 from sqlalchemy import func, or_
 from app.services.storage import get_storage_service, validate_file, STORAGE_PREFIX_PRODUCTS
 from app.models import (
@@ -193,10 +194,42 @@ def list_inventory(
     )
     return rows
 
+def _validate_inventory_capabilities(db: Session, request: Request, data: dict, current_user):
+    org_id = current_user.organization_id if current_user else None
+    
+    # 1. Serials / IMEI tracking
+    if data.get("has_serials") or data.get("imei") or data.get("serial_number"):
+        if not (has_capability(db, org_id, "imei_tracking") or has_capability(db, org_id, "serial_tracking")):
+            raise HTTPException(status_code=403, detail="Serial / IMEI tracking is not licensed for this organization")
+            
+    # 2. Batch tracking
+    if data.get("batch_number"):
+        if not has_capability(db, org_id, "batch_tracking"):
+            raise HTTPException(status_code=403, detail="Batch tracking is not licensed for this organization")
+            
+    # 3. Expiry tracking
+    if data.get("expiry_date"):
+        if not has_capability(db, org_id, "expiry_tracking"):
+            raise HTTPException(status_code=403, detail="Expiry tracking is not licensed for this organization")
+            
+    # 4. Weighted products
+    if data.get("is_weighted"):
+        if not has_capability(db, org_id, "weighted_products"):
+            raise HTTPException(status_code=403, detail="Weighted products are not licensed for this organization")
+            
+    # 5. Decimal quantities
+    qty = data.get("quantity")
+    if data.get("allow_decimal_qty") or (isinstance(qty, (int, float)) and float(qty) % 1 != 0):
+        if not (has_capability(db, org_id, "decimal_quantities") or has_capability(db, org_id, "weighted_products")):
+            raise HTTPException(status_code=403, detail="Decimal quantities are not licensed for this organization")
+
+
 @router.post('', dependencies=[Depends(require_permission("inventory.create_product"))])
-def create_inventory(request: Request, payload: InventoryIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_inventory(request: Request, payload: InventoryIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     data = payload.model_dump()
     data["barcode"] = _validated_barcode(payload.barcode, payload.sku)
+
+    _validate_inventory_capabilities(db, request, data, current_user)
 
     # Strip UI-only fields that don't exist on the DB model
     ui_only_fields = {"selected_variant_id"}
@@ -246,13 +279,16 @@ def create_inventory(request: Request, payload: InventoryIn, db: Session = Depen
     return item
 
 @router.put('/{item_id}', dependencies=[Depends(require_permission("inventory.edit_product"))])
-def update_inventory(request: Request, item_id: int, payload: InventoryIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def update_inventory(request: Request, item_id: int, payload: InventoryIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     query = db.query(InventoryItem).filter(InventoryItem.id == item_id, InventoryItem.is_deleted == False)  # noqa: E712
     item = scope_query(query, InventoryItem, request).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     update_data = payload.model_dump()
     update_data["barcode"] = _validated_barcode(payload.barcode, payload.sku)
+
+    _validate_inventory_capabilities(db, request, update_data, current_user)
+
     # Strip UI-only fields
     for f in {"selected_variant_id"}:
         update_data.pop(f, None)

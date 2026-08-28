@@ -1,12 +1,15 @@
 import json
 import logging
 from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from app.constants import SALE_INVENTORY_LINE_TYPES, SALE_LINE_TYPES
 from app.database import get_db
 from app.auth import get_current_user, require_permission
 from app.core.tenant_guard import scope_query, stamp_tenant
+from app.services.capability_service import has_capability
 from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.models import (
     AppSetting,
@@ -485,23 +488,46 @@ def pos_product_search(
 @router.get('/barcode/{barcode}', dependencies=[Depends(require_permission("pos.view"))])
 def pos_barcode_lookup(
     barcode: str,
+    request: Request,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
     token = str(barcode or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="Barcode is required")
+    
+    # Check for Embedded Weigh-Scale Barcode (EAN-13 Type 2 prefix: 20-25, 28, 29)
+    is_scale_barcode = False
+    scale_weight = None
+    item_code_candidate = None
+    if len(token) == 13 and token[:2] in {"20", "21", "22", "23", "24", "25", "28", "29"} and token.isdigit():
+        item_code_candidate = token[2:7]
+        try:
+            scale_weight = round(int(token[7:12]) / 1000.0, 3)
+            is_scale_barcode = True
+        except Exception:
+            scale_weight = None
+
     row = (
-        db.query(InventoryItem)
+        scope_query(db.query(InventoryItem), InventoryItem, request, branch_scoped=True)
         .filter(
             InventoryItem.is_deleted == False,  # noqa: E712
             ((InventoryItem.barcode == token) | (InventoryItem.sku == token)),
         )
         .first()
     )
+    if not row and is_scale_barcode and item_code_candidate:
+        row = (
+            scope_query(db.query(InventoryItem), InventoryItem, request, branch_scoped=True)
+            .filter(
+                InventoryItem.is_deleted == False,  # noqa: E712
+                ((InventoryItem.sku == item_code_candidate) | (InventoryItem.barcode == item_code_candidate) | (InventoryItem.sku.ilike(f"%{item_code_candidate}%"))),
+            )
+            .first()
+        )
     if not row:
         row = (
-            db.query(InventoryItem)
+            scope_query(db.query(InventoryItem), InventoryItem, request, branch_scoped=True)
             .filter(
                 InventoryItem.is_deleted == False,  # noqa: E712
                 ((InventoryItem.barcode.ilike(token)) | (InventoryItem.sku.ilike(token))),
@@ -510,7 +536,12 @@ def pos_barcode_lookup(
         )
     if not row:
         raise HTTPException(status_code=404, detail="Product not found for barcode/SKU")
-    return _inventory_card_payload(db, row)
+    card = _inventory_card_payload(db, row)
+    if is_scale_barcode and scale_weight is not None:
+        card["detected_weight"] = scale_weight
+        card["detected_qty"] = scale_weight
+        card["is_scale_scan"] = True
+    return card
 
 
 @router.get('/customer/{customer_id}/available-credits', dependencies=[Depends(require_permission("pos.view"))])
@@ -624,9 +655,12 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
     ensure_warranty_defaults(db)
     assert_accounting_period_open(db, when=utcnow(), action="create sale")
     sales_rules = _business_ops_sales_rules(db)
+    org_id = current_user.organization_id if current_user else None
 
     linked_repair = None
     if payload.repair_ticket_id:
+        if not has_capability(db, org_id, "repairs_management"):
+            raise HTTPException(status_code=403, detail="Repairs capability is not licensed for this organization")
         linked_repair = db.query(RepairTicket).filter(RepairTicket.id == int(payload.repair_ticket_id)).first()
         if not linked_repair:
             raise HTTPException(status_code=404, detail="Repair ticket not found")
@@ -647,9 +681,15 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
     normalized_lines = []
     subtotal = 0.0
     for line in payload.lines:
-        qty = int(line.quantity or 0)
+        qty = float(line.quantity or 0)
         if qty <= 0:
             raise HTTPException(status_code=400, detail="Line quantity must be positive")
+        if qty % 1 != 0:
+            if not (has_capability(db, org_id, "decimal_quantities") or has_capability(db, org_id, "weighted_products")):
+                raise HTTPException(status_code=403, detail="Decimal quantities are not licensed for this organization")
+        if line.serial_number:
+            if not (has_capability(db, org_id, "imei_tracking") or has_capability(db, org_id, "serial_tracking")):
+                raise HTTPException(status_code=403, detail="Serial / IMEI tracking is not licensed for this organization")
         line_type = _normalize_line_type(getattr(line, "line_type", None), line.item_id)
         price = float(line.price or 0)
         line_total = float(qty) * price
@@ -913,11 +953,11 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
     for normalized in normalized_lines:
         line = normalized["line"]
         line_type = normalized["line_type"]
-        quantity = int(normalized["quantity"])
+        quantity = float(normalized["quantity"])
         price = float(normalized["price"])
 
         if line_type in SALE_INVENTORY_LINE_TYPES:
-            item = db.query(InventoryItem).filter(InventoryItem.id == line.item_id, InventoryItem.is_deleted == False).first()  # noqa: E712
+            item = scope_query(db.query(InventoryItem), InventoryItem, request, branch_scoped=True).filter(InventoryItem.id == line.item_id, InventoryItem.is_deleted == False).first()  # noqa: E712
             if not item:
                 raise HTTPException(status_code=404, detail=f"Inventory item not found: {line.item_id}")
             reserved_exclusion_id = None
@@ -1822,4 +1862,83 @@ def quick_add_item(payload: QuickAddItemIn, db: Session = Depends(get_db), curre
     db.commit()
     db.refresh(item)
     return _inventory_card_payload(db, item)
+
+
+class OfflineSaleBatchItem(BaseModel):
+    offline_invoice_no: str
+    checkout_payload: SaleIn
+    offline_created_at: Optional[str] = None
+    terminal_id: Optional[str] = None
+
+
+class OfflineBatchSyncRequest(BaseModel):
+    sales: list[OfflineSaleBatchItem]
+
+
+@router.post('/checkout/batch-sync')
+def batch_sync_offline_sales(
+    payload: OfflineBatchSyncRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """
+    Idempotently processes batches of completed offline sales.
+    Deduplicates on tenant + offline_invoice_no, creates records, and deducts inventory.
+    """
+    results = []
+    synced_count = 0
+    skipped_count = 0
+
+    for item in payload.sales:
+        inv_no = item.offline_invoice_no.strip().upper()
+        # Check if already synced for this tenant
+        existing = scope_query(db.query(Sale), Sale, request).filter(Sale.invoice_no == inv_no).first()
+        if existing:
+            skipped_count += 1
+            results.append({
+                "offline_invoice_no": inv_no,
+                "status": "already_synced",
+                "sale_id": existing.id,
+                "invoice_no": existing.invoice_no
+            })
+            continue
+
+        try:
+            res = checkout(
+                payload=item.checkout_payload,
+                request=request,
+                background_tasks=background_tasks,
+                db=db,
+                current_user=current_user
+            )
+            sale_id = res.get("id")
+            if sale_id:
+                created_sale = db.query(Sale).filter(Sale.id == sale_id).first()
+                if created_sale:
+                    created_sale.invoice_no = inv_no
+                    db.commit()
+            
+            synced_count += 1
+            results.append({
+                "offline_invoice_no": inv_no,
+                "status": "synced",
+                "sale_id": sale_id,
+                "invoice_no": inv_no
+            })
+        except Exception as e:
+            results.append({
+                "offline_invoice_no": inv_no,
+                "status": "error",
+                "error": str(e)
+            })
+
+    return {
+        "success": True,
+        "total_received": len(payload.sales),
+        "synced_count": synced_count,
+        "skipped_count": skipped_count,
+        "results": results
+    }
 

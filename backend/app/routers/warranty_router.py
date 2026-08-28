@@ -132,6 +132,70 @@ def _parse_conditions_json(value: str | None) -> list[dict]:
         return []
 
 
+def _dispatch_warranty_claim_whatsapp(
+    db: Session,
+    claim: WarrantyClaim,
+    event_type: str,
+    extra_vars: Optional[dict] = None,
+    background_tasks: Optional[BackgroundTasks] = None
+):
+    try:
+        warranty = claim.warranty
+        if not warranty:
+            return
+        customer = db.query(Customer).filter(Customer.id == warranty.customer_id).first() if warranty.customer_id else None
+        target_phone = getattr(customer, "whatsapp_number", None) or getattr(customer, "phone", None) or warranty.customer_phone
+        if not target_phone:
+            return
+
+        from app.routers.repair_router import _get_store_info
+        store_name, store_phone, store_address, store_website = _get_store_info(db)
+        
+        claim_num = claim.claim_code or claim.claim_number or f"CLM-{claim.id:04d}"
+        tracking_url = f"{store_website}/warranty/{warranty.warranty_code or warranty.warranty_number or warranty.id}?claim={claim_num}"
+        
+        variables = {
+            "customer_name": getattr(customer, "name", None) or warranty.customer_name or "Customer",
+            "store_name": store_name,
+            "store_phone": store_phone,
+            "store_address": store_address,
+            "claim_number": claim_num,
+            "product_name": warranty.product_or_service_name or "Product",
+            "serial_number": warranty.serial_number or warranty.imei_or_serial or "N/A",
+            "resolution_type": claim.resolution_type or claim.claim_decision or "Standard Warranty Service",
+            "decision_note": claim.claim_decision or "Claim approved for warranty processing",
+            "rejection_reason": claim.rejection_reason or "Does not meet warranty terms",
+            "inspection_notes": claim.inspection_notes or claim.technician_inspection_note or "Completed inspection",
+            "closing_note": claim.claim_decision or "Claim completed and closed",
+            "claim_tracking_url": tracking_url,
+            **(extra_vars or {})
+        }
+        
+        if background_tasks:
+            background_tasks.add_task(
+                log_and_send_whatsapp,
+                event_type=event_type,
+                phone=target_phone,
+                variables=variables,
+                customer_id=customer.id if customer else None
+            )
+        else:
+            import threading
+            threading.Thread(
+                target=log_and_send_whatsapp,
+                kwargs={
+                    "event_type": event_type,
+                    "phone": target_phone,
+                    "variables": variables,
+                    "customer_id": customer.id if customer else None
+                },
+                daemon=True
+            ).start()
+    except Exception as e:
+        import logging
+        logging.getLogger("warranty_router").warning(f"Failed to dispatch warranty claim whatsapp: {e}")
+
+
 def _serialize_rule(row: WarrantyRule) -> dict:
     return {
         "id": row.id,
@@ -1082,6 +1146,7 @@ def approve_warranty_claim(
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     db.refresh(row)
+    _dispatch_warranty_claim_whatsapp(db, row, event_type="warranty_claim_approved")
     return _serialize_claim(row)
 
 
@@ -1104,6 +1169,7 @@ def reject_warranty_claim(
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     db.refresh(row)
+    _dispatch_warranty_claim_whatsapp(db, row, event_type="warranty_claim_rejected")
     return _serialize_claim(row)
 
 
@@ -1125,6 +1191,7 @@ def resolve_warranty_claim(
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     db.refresh(row)
+    _dispatch_warranty_claim_whatsapp(db, row, event_type="warranty_claim_resolved")
     return _serialize_claim(row)
 
 
@@ -1166,6 +1233,16 @@ def create_replacement_for_warranty_claim(
         raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     db.refresh(row)
+    _dispatch_warranty_claim_whatsapp(
+        db,
+        row,
+        event_type="warranty_claim_replaced",
+        extra_vars={
+            "replacement_product_name": getattr(warranty, "product_or_service_name", "Replacement Unit"),
+            "replacement_serial_number": getattr(warranty, "serial_number", "N/A"),
+            "new_warranty_code": getattr(warranty, "warranty_code", "N/A"),
+        }
+    )
     return {
         "claim": _serialize_claim(row),
         "replacement_warranty": _serialize_record(warranty) if warranty else None,
@@ -1215,14 +1292,19 @@ def update_warranty_claim(
     if payload.linked_repair_ticket_id is not None:
         row.linked_repair_ticket_id = payload.linked_repair_ticket_id
 
+    dispatched_event = None
+    replacement_warranty_obj = None
+
     if payload.claim_status:
         status_key = normalize_claim_status(payload.claim_status)
         try:
             if status_key == CLAIM_STATUS_APPROVED:
                 row = approve_claim(db, claim_id=row.id, approved_by_id=current_user.id if current_user else None)
+                dispatched_event = "warranty_claim_approved"
             elif status_key == CLAIM_STATUS_REJECTED:
                 reason = payload.claim_decision or "Rejected"
                 row = reject_claim(db, claim_id=row.id, reason=reason, rejected_by_id=current_user.id if current_user else None)
+                dispatched_event = "warranty_claim_rejected"
             elif status_key in {CLAIM_STATUS_RESOLVED, CLAIM_STATUS_CLOSED}:
                 resolution = payload.repair_action or "no_action"
                 row = resolve_claim(db, claim_id=row.id, resolution_type=resolution, resolved_by_id=current_user.id if current_user else None)
@@ -1230,10 +1312,11 @@ def update_warranty_claim(
                     row.decision_status = CLAIM_STATUS_CLOSED
                     row.claim_status = claim_status_label(CLAIM_STATUS_CLOSED)
                     row.closed_at = utcnow()
+                dispatched_event = "warranty_claim_resolved"
             elif status_key == CLAIM_STATUS_REPAIRING:
                 row = create_repair_from_claim(db, claim_id=row.id, performed_by_id=current_user.id if current_user else None)
             elif status_key == CLAIM_STATUS_REPLACED:
-                row, _ = create_replacement_from_claim(
+                row, replacement_warranty_obj = create_replacement_from_claim(
                     db,
                     claim_id=row.id,
                     replacement_product_id=None,
@@ -1241,6 +1324,7 @@ def update_warranty_claim(
                     replacement_reason=payload.claim_decision or "Replacement approved",
                     performed_by_id=current_user.id if current_user else None,
                 )
+                dispatched_event = "warranty_claim_replaced"
             else:
                 row.decision_status = status_key
                 row.claim_status = claim_status_label(status_key)
@@ -1251,6 +1335,17 @@ def update_warranty_claim(
     row.processed_by_id = current_user.id if current_user else row.processed_by_id
     db.commit()
     db.refresh(row)
+
+    if dispatched_event:
+        extra_vars = {}
+        if dispatched_event == "warranty_claim_replaced" and replacement_warranty_obj:
+            extra_vars = {
+                "replacement_product_name": getattr(replacement_warranty_obj, "product_or_service_name", "Replacement Unit"),
+                "replacement_serial_number": getattr(replacement_warranty_obj, "serial_number", "N/A"),
+                "new_warranty_code": getattr(replacement_warranty_obj, "warranty_code", "N/A"),
+            }
+        _dispatch_warranty_claim_whatsapp(db, row, event_type=dispatched_event, extra_vars=extra_vars)
+
     return _serialize_claim(row)
 
 

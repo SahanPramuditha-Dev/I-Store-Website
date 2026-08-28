@@ -587,12 +587,12 @@ export default function ActivityLog() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold text-rose-100">
-                    {row.alert_reason || "Sensitive Event"} - {row.action}
+                    {toText(row.alert_reason || "Sensitive Event")} - {toText(row.action)}
                   </p>
-                  <Badge tone={severityTone(row.severity)}>{row.severity}</Badge>
+                  <Badge tone={severityTone(row.severity)}>{toText(row.severity)}</Badge>
                 </div>
-                <p className="text-[11px] text-slate-200 mt-1">{row.module} | {row.target_record}</p>
-                <p className="text-[10px] text-slate-400 mt-1">{formatDateTime(row.timestamp)} | {row.user}</p>
+                <p className="text-[11px] text-slate-200 mt-1">{toText(row.module)} | {toText(row.target_record)}</p>
+                <p className="text-[10px] text-slate-400 mt-1">{formatDateTime(row.timestamp)} | {toText(row.user)}</p>
               </button>
             ))}
           </div>
@@ -638,23 +638,23 @@ export default function ActivityLog() {
                         onClick={() => setSelectedEvent(row)}
                       >
                         <td>{formatDateTime(row.timestamp)}</td>
-                        <td className="font-semibold text-slate-100">{row.user || "-"}</td>
-                        <td>{row.role || "-"}</td>
+                        <td className="font-semibold text-slate-100">{toText(row.user)}</td>
+                        <td>{toText(row.role)}</td>
                         <td>
                           <div className="flex items-center gap-1">
                             {row.is_sensitive ? <ShieldAlert size={12} className="text-rose-300" /> : null}
-                            <span>{row.action || "-"}</span>
+                            <span>{toText(row.action)}</span>
                           </div>
                         </td>
-                        <td>{row.module || "-"}</td>
-                        <td title={row.target_record}>{shortText(formatTargetRecord(row.target_record), 45)}</td>
+                        <td>{toText(row.module)}</td>
+                        <td title={toText(row.target_record)}>{shortText(formatTargetRecord(row.target_record), 45)}</td>
                         <td title={toText(row.old_value)}>{shortText(formatPayload(row.old_value), 45)}</td>
                         <td title={toText(row.new_value)}>{shortText(formatPayload(row.new_value), 45)}</td>
                         <td title={deviceIpLabel(row)}>{shortText(deviceIpLabel(row), 38)}</td>
                         <td>
                           <div className="flex items-center gap-1.5">
-                            <Badge tone={statusTone(row.status)}>{row.status}</Badge>
-                            <Badge tone={severityTone(row.severity)}>{row.severity}</Badge>
+                            <Badge tone={statusTone(row.status)}>{toText(row.status)}</Badge>
+                            <Badge tone={severityTone(row.severity)}>{toText(row.severity)}</Badge>
                           </div>
                         </td>
                       </tr>
@@ -719,36 +719,36 @@ export default function ActivityLog() {
                 <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Status</p>
                   <div className="mt-1 flex items-center gap-1">
-                    <Badge tone={statusTone(selectedEvent.status)}>{selectedEvent.status}</Badge>
-                    <Badge tone={severityTone(selectedEvent.severity)}>{selectedEvent.severity}</Badge>
+                    <Badge tone={statusTone(selectedEvent.status)}>{toText(selectedEvent.status)}</Badge>
+                    <Badge tone={severityTone(selectedEvent.severity)}>{toText(selectedEvent.severity)}</Badge>
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">User</p>
-                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.user || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{toText(selectedEvent.user)}</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Role</p>
-                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.role || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{toText(selectedEvent.role)}</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Action</p>
-                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.action || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{toText(selectedEvent.action)}</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/20 p-2">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Module</p>
-                  <p className="text-slate-800 dark:text-slate-200 mt-1">{selectedEvent.module || "-"}</p>
+                  <p className="text-slate-800 dark:text-slate-200 mt-1">{toText(selectedEvent.module)}</p>
                 </div>
               </div>
 
               <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
                 <p className="text-slate-500 uppercase tracking-widest text-[10px]">Target Record</p>
-                <p className="text-slate-200 text-sm mt-1">{formatTargetRecord(selectedEvent.target_record) || "-"}</p>
+                <p className="text-slate-200 text-sm mt-1">{toText(formatTargetRecord(selectedEvent.target_record))}</p>
               </div>
 
               <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
                 <p className="text-slate-500 uppercase tracking-widest text-[10px]">Detail</p>
-                <p className="text-slate-200 text-sm mt-1 whitespace-pre-wrap">{selectedEvent.detail || "-"}</p>
+                <p className="text-slate-200 text-sm mt-1 whitespace-pre-wrap">{typeof selectedEvent.detail === "object" ? toPrettyJson(selectedEvent.detail) : toText(selectedEvent.detail)}</p>
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-2">
@@ -771,10 +771,10 @@ export default function ActivityLog() {
                 <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
                   <p className="text-slate-500 uppercase tracking-widest text-[10px]">Related Record References</p>
                   <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-slate-200">
-                    <div>Invoice ID: {selectedEvent.related.invoice_id || "-"}</div>
-                    <div>Repair Ticket ID: {selectedEvent.related.repair_ticket_id || "-"}</div>
-                    <div>Product SKU: {selectedEvent.related.product_sku || "-"}</div>
-                    <div>Customer Name: {selectedEvent.related.customer_name || "-"}</div>
+                    <div>Invoice ID: {toText(selectedEvent.related.invoice_id)}</div>
+                    <div>Repair Ticket ID: {toText(selectedEvent.related.repair_ticket_id)}</div>
+                    <div>Product SKU: {toText(selectedEvent.related.product_sku)}</div>
+                    <div>Customer Name: {toText(selectedEvent.related.customer_name)}</div>
                   </div>
                 </div>
               )}
@@ -783,15 +783,15 @@ export default function ActivityLog() {
                 <div className="mt-3 rounded-lg border border-amber-400/25 bg-amber-500/10 p-2.5 text-xs text-amber-100">
                   <p className="font-bold">Archive Metadata</p>
                   <p className="mt-1">Archived At: {selectedEvent.archived_info.archived_at ? formatDateTime(selectedEvent.archived_info.archived_at) : "-"}</p>
-                  <p>Archived By: {selectedEvent.archived_info?.archived_by?.full_name || selectedEvent.archived_info?.archived_by?.username || "-"}</p>
-                  <p>Reason: {selectedEvent.archived_info.reason || "-"}</p>
+                  <p>Archived By: {toText(selectedEvent.archived_info?.archived_by?.full_name || selectedEvent.archived_info?.archived_by?.username)}</p>
+                  <p>Reason: {toText(selectedEvent.archived_info.reason)}</p>
                 </div>
               )}
 
               {selectedEvent.is_sensitive && (
                 <div className="mt-3 rounded-lg border border-rose-400/35 bg-rose-500/10 p-2.5">
                   <p className="text-[11px] font-bold text-rose-100">
-                    Security Alert: {selectedEvent.alert_reason || "Sensitive event"}
+                    Security Alert: {toText(selectedEvent.alert_reason || "Sensitive event")}
                   </p>
                 </div>
               )}

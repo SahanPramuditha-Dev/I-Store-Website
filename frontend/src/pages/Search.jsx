@@ -30,6 +30,7 @@ import {
   PanelsTopLeft,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useCapabilities } from "../context/CapabilityContext";
 
 const RECENT_KEY = "recent_searches";
 const PINNED_KEY = "pinned_searches";
@@ -79,42 +80,38 @@ function normalize(v) {
 function scoreText(target, query) {
   const t = normalize(target);
   const q = normalize(query);
-  if (!q || !t) return 0;
-  if (t === q) return 120;
-  if (t.startsWith(q)) return 90;
-  if (t.includes(q)) return 60;
+  if (!t || !q) return 0;
+  if (t === q) return 100;
+  if (t.startsWith(q)) return 75;
+  if (t.includes(q)) return 50;
   return 0;
 }
 
 function scoreItem(type, item, query) {
   if (!query) return 0;
   if (type === "customers") {
-    return Math.max(scoreText(item.name, query), scoreText(item.phone, query), scoreText(item.email, query));
+    return Math.max(scoreText(item.name, query), scoreText(item.phone, query), scoreText(item.email, query), scoreText(item.city, query));
   }
   if (type === "repairs") {
-    let s = Math.max(scoreText(item.ticket_no, query), scoreText(item.device_model, query));
-    if (item.status === "Pending" || item.status === "Diagnosing") s += 8;
-    return s;
+    return Math.max(scoreText(item.ticket_no, query), scoreText(item.device_model, query), scoreText(item.imei, query), scoreText(item.issue, query));
   }
   if (type === "inventory") {
-    let s = Math.max(scoreText(item.name, query), scoreText(item.sku, query));
-    if ((item.quantity || 0) <= 3) s += 6;
-    return s;
+    return Math.max(scoreText(item.name, query), scoreText(item.sku, query), scoreText(item.barcode, query), scoreText(item.category, query), scoreText(item.brand, query));
   }
   if (type === "sales") {
-    return Math.max(scoreText(item.invoice_no, query), scoreText(item.id, query));
+    return Math.max(scoreText(item.invoice_no, query), scoreText(item.customer_name, query), scoreText(item.payment_method, query));
   }
   if (type === "payments") {
-    return Math.max(scoreText(item.payment_ref, query), scoreText(item.counterparty, query), scoreText(item.method, query), scoreText(item.status, query));
+    return Math.max(scoreText(item.payment_ref, query), scoreText(item.customer_name, query), scoreText(item.payment_method, query));
   }
   if (type === "purchase_orders") {
-    return Math.max(scoreText(item.po_number, query), scoreText(item.supplier_name, query), scoreText(item.status, query));
+    return Math.max(scoreText(item.po_number, query), scoreText(item.supplier_name, query), scoreText(item.note, query));
   }
   if (type === "warranty") {
-    return Math.max(scoreText(item.warranty_code, query), scoreText(item.customer_name, query), scoreText(item.imei_or_serial, query), scoreText(item.serial_number, query));
+    return Math.max(scoreText(item.warranty_code, query), scoreText(item.serial_number, query), scoreText(item.customer_name, query), scoreText(item.product_name, query));
   }
   if (type === "suppliers") {
-    return Math.max(scoreText(item.name, query), scoreText(item.contact, query), scoreText(item.email, query));
+    return Math.max(scoreText(item.name, query), scoreText(item.phone, query), scoreText(item.email, query), scoreText(item.company_name, query));
   }
   if (type === "expenses") {
     return Math.max(scoreText(item.expense_code, query), scoreText(item.vendor_name, query), scoreText(item.reference_no, query), scoreText(item.description, query));
@@ -158,13 +155,13 @@ function getResultMeta(type, item) {
   if (type === "customers") return [item.phone, item.email].filter(Boolean).join(" | ") || "Customer profile";
   if (type === "repairs") return item.device_model || "Repair ticket";
   if (type === "inventory") return [item.sku, item.barcode].filter(Boolean).join(" | ") || "Product record";
-  if (type === "sales") return item.created_at ? new Date(item.created_at).toLocaleString() : "Sales invoice";
-  if (type === "payments") return [item.counterparty, item.method].filter(Boolean).join(" | ") || "Payment record";
-  if (type === "purchase_orders") return item.supplier_name || "Supplier order";
-  if (type === "warranty") return [item.customer_name, item.imei_or_serial || item.serial_number].filter(Boolean).join(" | ") || "Warranty record";
-  if (type === "suppliers") return [item.contact, item.email].filter(Boolean).join(" | ") || "Supplier profile";
-  if (type === "expenses") return [item.vendor_name, item.category].filter(Boolean).join(" | ") || "Expense record";
-  return "";
+  if (type === "sales") return [item.customer_name, item.payment_method].filter(Boolean).join(" | ") || "Sale record";
+  if (type === "payments") return [item.payment_method, item.customer_name].filter(Boolean).join(" | ") || "Payment receipt";
+  if (type === "purchase_orders") return item.supplier_name || "Supplier PO";
+  if (type === "warranty") return [item.product_name, item.serial_number].filter(Boolean).join(" | ") || "Warranty record";
+  if (type === "suppliers") return [item.company_name, item.phone].filter(Boolean).join(" | ") || "Supplier contact";
+  if (type === "expenses") return [item.vendor_name, item.category].filter(Boolean).join(" | ") || "Expense voucher";
+  return "Record";
 }
 
 function getResultStatus(type, item) {
@@ -187,6 +184,7 @@ function getSecurityBadge(type, item) {
 }
 
 export default function Search() {
+  const { hasCapability } = useCapabilities();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -201,6 +199,23 @@ export default function Search() {
 
   const inputRef = useRef(null);
   const navigate = useNavigate();
+
+  const visibleFilters = useMemo(() => {
+    return filters.filter((f) => {
+      if (f.id === "repairs") return hasCapability("repairs_management");
+      if (f.id === "warranty") return hasCapability("warranty_management");
+      return true;
+    });
+  }, [hasCapability]);
+
+  const visibleQuickCategories = useMemo(() => {
+    return quickSearchCategories.filter((cat) => {
+      if (cat.id === "repairs") return hasCapability("repairs_management");
+      if (cat.id === "warranty") return hasCapability("warranty_management");
+      if (cat.id === "serials") return hasCapability("imei_tracking") || hasCapability("serial_tracking");
+      return true;
+    });
+  }, [hasCapability]);
 
   useEffect(() => {
     api
@@ -511,7 +526,7 @@ export default function Search() {
           <section>
             <h3 className="search-hub-section-title mb-3 text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">Quick Search Categories</h3>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {quickSearchCategories.map((cat) => {
+              {visibleQuickCategories.map((cat) => {
                 const Icon = cat.icon;
                 return (
                   <button
@@ -629,7 +644,7 @@ export default function Search() {
           <div className="search-hub-filter-block space-y-3 rounded-2xl border p-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-400"><Filter size={13} className="text-indigo-300" />Filters</span>
-              {filters.map((f) => (
+              {visibleFilters.map((f) => (
                 <button
                   key={f.id}
                   onClick={() => setActiveFilter(f.id)}

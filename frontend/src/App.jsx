@@ -75,6 +75,19 @@ const PermissionManagement = lazy(() => import("./pages/PermissionManagement"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const WhatsAppManager = lazy(() => import("./pages/WhatsAppManager").then(m => ({ default: m.WhatsAppManager })));
 
+import { CapabilityProvider, useCapabilities } from "./context/CapabilityContext";
+
+const ROUTE_CAPABILITY_MAP = {
+  "/repairs": "repairs_management",
+  "/repair": "repairs_management",
+  "/r": "repairs_management",
+  "/warranty": "warranty_management",
+  "/inventory/serials": "serial_tracking",
+  "/inventory/batches": "batch_tracking",
+  "/reports/repairs": "repairs_management",
+  "/reports/technician-performance": "repairs_management",
+};
+
 function RouteFallback() {
   return <div className="h-dvh grid place-items-center text-slate-400">Loading workspace...</div>;
 }
@@ -82,6 +95,7 @@ function RouteFallback() {
 function Guard({ children }) {
   const location = useLocation();
   const token = getAuthValue("token");
+  const { hasCapability } = useCapabilities();
 
   if (!token) {
     clearAuthState();
@@ -95,10 +109,18 @@ function Guard({ children }) {
     return <Navigate to="/access-denied" replace />;
   }
 
+  const matchedEntry = Object.entries(ROUTE_CAPABILITY_MAP).find(([prefix]) =>
+    location.pathname === prefix || location.pathname.startsWith(prefix + "/")
+  );
+  if (matchedEntry) {
+    const requiredCapability = matchedEntry[1];
+    if (!hasCapability(requiredCapability) && location.pathname !== "/access-denied") {
+      return <Navigate to="/access-denied" replace />;
+    }
+  }
+
   return children;
 }
-
-import { CapabilityProvider } from "./context/CapabilityContext";
 
 export default function App() {
   const Router = window.location.protocol === "file:" ? HashRouter : BrowserRouter;

@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import String, cast, or_, text
 from app.database import get_db
 from app.auth import get_current_user, require_permission
+from app.core.tenant_guard import scope_query
+from app.services.capability_service import has_capability
 from app.models import (
     Customer,
     Expense,
@@ -126,9 +128,10 @@ def _invoice_id_candidates(q: str) -> list[int]:
 
 @router.get('/global', dependencies=[Depends(require_permission("search.global"))])
 def global_search(
+    request: Request,
     q: str = Query(...),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     search_text = str(q or "").strip()
     if not search_text:
@@ -144,6 +147,10 @@ def global_search(
             "expenses": [],
         }
 
+    org_id = current_user.organization_id if current_user else None
+    has_repairs = has_capability(db, org_id, "repairs_management")
+    has_warranty = has_capability(db, org_id, "warranty_management")
+
     from sqlalchemy import inspect as sa_inspect
     try:
         inspector = sa_inspect(db.bind)
@@ -152,31 +159,35 @@ def global_search(
         customer_cols = set()
     has_customer_email = "email" in customer_cols
 
-    # Search Customers
+    # Search Customers (scoped)
     customer_filters = [Customer.name.ilike(f"%{search_text}%"), Customer.phone.ilike(f"%{search_text}%")]
     customer_select = [Customer.id, Customer.name, Customer.phone]
     if has_customer_email:
         customer_filters.append(Customer.email.ilike(f"%{search_text}%"))
         customer_select.append(Customer.email)
-    customers = db.query(*customer_select).filter(Customer.is_deleted == False, or_(*customer_filters)).limit(40).all()  # noqa: E712
+    cust_query = db.query(*customer_select).filter(Customer.is_deleted == False, or_(*customer_filters))  # noqa: E712
+    customers = scope_query(cust_query, Customer, request).limit(40).all()
 
-    # Search Repairs
-    repairs = db.query(
-        RepairTicket.id,
-        RepairTicket.ticket_no,
-        RepairTicket.device_model,
-        RepairTicket.status,
-        RepairTicket.imei,
-    ).filter(
-        RepairTicket.is_deleted == False,  # noqa: E712
-        or_(
-            RepairTicket.ticket_no.ilike(f"%{search_text}%"),
-            RepairTicket.imei.ilike(f"%{search_text}%"),
-            RepairTicket.device_model.ilike(f"%{search_text}%")
+    # Search Repairs (scoped + capability-gated)
+    repairs = []
+    if has_repairs:
+        rep_query = db.query(
+            RepairTicket.id,
+            RepairTicket.ticket_no,
+            RepairTicket.device_model,
+            RepairTicket.status,
+            RepairTicket.imei,
+        ).filter(
+            RepairTicket.is_deleted == False,  # noqa: E712
+            or_(
+                RepairTicket.ticket_no.ilike(f"%{search_text}%"),
+                RepairTicket.imei.ilike(f"%{search_text}%"),
+                RepairTicket.device_model.ilike(f"%{search_text}%")
+            )
         )
-    ).limit(40).all()
+        repairs = scope_query(rep_query, RepairTicket, request).limit(40).all()
 
-    # Search Sales
+    # Search Sales (scoped)
     sale_filters = [
         cast(Sale.id, String).ilike(f"%{search_text}%"),
         Sale.invoice_no.ilike(f"%{search_text}%"),
@@ -184,10 +195,11 @@ def global_search(
     invoice_ids = _invoice_id_candidates(search_text)
     for invoice_id in invoice_ids:
         sale_filters.append(Sale.id == invoice_id)
-    sales = db.query(Sale.id, Sale.invoice_no, Sale.total, Sale.created_at).filter(or_(*sale_filters)).limit(40).all()
+    sale_query = db.query(Sale.id, Sale.invoice_no, Sale.total, Sale.created_at).filter(or_(*sale_filters))
+    sales = scope_query(sale_query, Sale, request).limit(40).all()
 
-    # Search Inventory
-    inventory = db.query(
+    # Search Inventory (scoped)
+    inv_query = db.query(
         InventoryItem.id,
         InventoryItem.name,
         InventoryItem.sku,
@@ -204,10 +216,11 @@ def global_search(
             InventoryItem.brand.ilike(f"%{search_text}%"),
             InventoryItem.model.ilike(f"%{search_text}%"),
         )
-    ).limit(40).all()
+    )
+    inventory = scope_query(inv_query, InventoryItem, request).limit(40).all()
 
-    # Search Suppliers
-    suppliers = db.query(
+    # Search Suppliers (scoped)
+    sup_query = db.query(
         Supplier.id,
         Supplier.name,
         Supplier.contact,
@@ -220,10 +233,11 @@ def global_search(
             Supplier.email.ilike(f"%{search_text}%"),
             Supplier.address.ilike(f"%{search_text}%"),
         )
-    ).limit(40).all()
+    )
+    suppliers = scope_query(sup_query, Supplier, request).limit(40).all()
 
-    # Search Purchase Orders
-    purchase_orders = (
+    # Search Purchase Orders (scoped)
+    po_query = (
         db.query(
             PurchaseOrder.id,
             PurchaseOrder.po_number,
@@ -240,12 +254,11 @@ def global_search(
                 Supplier.name.ilike(f"%{search_text}%"),
             )
         )
-        .limit(40)
-        .all()
     )
+    purchase_orders = scope_query(po_query, PurchaseOrder, request).limit(40).all()
 
-    # Search Expenses
-    expenses = db.query(
+    # Search Expenses (scoped)
+    exp_query = db.query(
         Expense.id,
         Expense.expense_code,
         Expense.category,
@@ -264,29 +277,33 @@ def global_search(
             Expense.reference_no.ilike(f"%{search_text}%"),
             Expense.description.ilike(f"%{search_text}%"),
         )
-    ).limit(40).all()
+    )
+    expenses = scope_query(exp_query, Expense, request).limit(40).all()
 
-    # Search Warranty
-    warranty = db.query(
-        WarrantyRecord.id,
-        WarrantyRecord.warranty_code,
-        WarrantyRecord.customer_name,
-        WarrantyRecord.product_or_service_name,
-        WarrantyRecord.imei_or_serial,
-        WarrantyRecord.serial_number,
-        WarrantyRecord.status,
-        WarrantyRecord.end_date,
-    ).filter(
-        or_(
-            WarrantyRecord.warranty_code.ilike(f"%{search_text}%"),
-            WarrantyRecord.customer_name.ilike(f"%{search_text}%"),
-            WarrantyRecord.product_or_service_name.ilike(f"%{search_text}%"),
-            WarrantyRecord.imei_or_serial.ilike(f"%{search_text}%"),
-            WarrantyRecord.serial_number.ilike(f"%{search_text}%"),
+    # Search Warranty (scoped + capability-gated)
+    warranty = []
+    if has_warranty:
+        warr_query = db.query(
+            WarrantyRecord.id,
+            WarrantyRecord.warranty_code,
+            WarrantyRecord.customer_name,
+            WarrantyRecord.product_or_service_name,
+            WarrantyRecord.imei_or_serial,
+            WarrantyRecord.serial_number,
+            WarrantyRecord.status,
+            WarrantyRecord.end_date,
+        ).filter(
+            or_(
+                WarrantyRecord.warranty_code.ilike(f"%{search_text}%"),
+                WarrantyRecord.customer_name.ilike(f"%{search_text}%"),
+                WarrantyRecord.product_or_service_name.ilike(f"%{search_text}%"),
+                WarrantyRecord.imei_or_serial.ilike(f"%{search_text}%"),
+                WarrantyRecord.serial_number.ilike(f"%{search_text}%"),
+            )
         )
-    ).limit(40).all()
+        warranty = scope_query(warr_query, WarrantyRecord, request).limit(40).all()
 
-    # Search Payments (incoming customer payments + outgoing supplier payments)
+    # Search Payments (incoming customer payments + outgoing supplier payments) (scoped)
     sale_payment_filters = [
         cast(Sale.id, String).ilike(f"%{search_text}%"),
         Sale.invoice_no.ilike(f"%{search_text}%"),
@@ -296,7 +313,7 @@ def global_search(
     ]
     for invoice_id in invoice_ids:
         sale_payment_filters.append(Sale.id == invoice_id)
-    sale_payments = (
+    sp_query = (
         db.query(
             Sale.id,
             Sale.invoice_no,
@@ -308,12 +325,10 @@ def global_search(
         )
         .outerjoin(Customer, Sale.customer_id == Customer.id)
         .filter(or_(*sale_payment_filters))
-        .order_by(Sale.created_at.desc())
-        .limit(40)
-        .all()
     )
+    sale_payments = scope_query(sp_query, Sale, request).order_by(Sale.created_at.desc()).limit(40).all()
 
-    supplier_payment_rows = (
+    supp_query = (
         db.query(
             SupplierLedgerEntry.id,
             SupplierLedgerEntry.amount,
@@ -333,10 +348,8 @@ def global_search(
                 cast(SupplierLedgerEntry.amount, String).ilike(f"%{search_text}%"),
             ),
         )
-        .order_by(SupplierLedgerEntry.created_at.desc())
-        .limit(40)
-        .all()
     )
+    supplier_payment_rows = scope_query(supp_query, SupplierLedgerEntry, request).order_by(SupplierLedgerEntry.created_at.desc()).limit(40).all()
 
     payments = []
     for row in sale_payments:
@@ -444,43 +457,54 @@ def global_search(
             for e in expenses
         ],
     }
+
 @router.get('/suggestions', dependencies=[Depends(require_permission("search.view"))])
-def get_suggestions(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_suggestions(request: Request, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     from sqlalchemy import func
 
-    # 1) Top sold product names
-    top_sold = db.query(
+    # 1) Top sold product names (scoped)
+    top_sold_q = db.query(
         InventoryItem.name,
         func.count(SaleItem.id).label('sold_count')
-    ).join(SaleItem, InventoryItem.id == SaleItem.item_id)\
+    ).join(SaleItem, InventoryItem.id == SaleItem.item_id)
+    top_sold = scope_query(top_sold_q, InventoryItem, request)\
      .group_by(InventoryItem.id)\
      .order_by(func.count(SaleItem.id).desc())\
      .limit(5).all()
 
     trending_names = [i.name for i in top_sold]
 
-    # 2) Recent customers
-    recent_customers = db.query(Customer).order_by(Customer.created_at.desc()).limit(3).all()
+    # 2) Recent customers (scoped)
+    cust_q = db.query(Customer).order_by(Customer.created_at.desc())
+    recent_customers = scope_query(cust_q, Customer, request).limit(3).all()
     customer_names = [c.name for c in recent_customers]
 
-    # 3) Recent POs + expense categories + supplier names
-    recent_po_numbers = [row.po_number for row in db.query(PurchaseOrder.po_number).order_by(PurchaseOrder.created_at.desc()).limit(2).all()]
-    expense_categories = [row.category for row in db.query(Expense.category).filter(Expense.category.isnot(None), Expense.category != "").distinct().limit(3).all()]
-    supplier_names = [row.name for row in db.query(Supplier.name).order_by(Supplier.id.desc()).limit(2).all()]
+    # 3) Recent POs + expense categories + supplier names (scoped)
+    po_q = db.query(PurchaseOrder.po_number).order_by(PurchaseOrder.created_at.desc())
+    recent_po_numbers = [row.po_number for row in scope_query(po_q, PurchaseOrder, request).limit(2).all()]
+
+    exp_q = db.query(Expense.category).filter(Expense.category.isnot(None), Expense.category != "").distinct()
+    expense_categories = [row.category for row in scope_query(exp_q, Expense, request).limit(3).all()]
+
+    sup_q = db.query(Supplier.name).order_by(Supplier.id.desc())
+    supplier_names = [row.name for row in scope_query(sup_q, Supplier, request).limit(2).all()]
 
     # Fallback to random inventory names
     if not trending_names:
         import random
-        items = db.query(InventoryItem).all()
+        inv_q = db.query(InventoryItem)
+        items = scope_query(inv_q, InventoryItem, request).all()
         trending_names = [i.name for i in random.sample(items, min(len(items), 4))] if items else []
 
     suggestions = trending_names + customer_names + recent_po_numbers + expense_categories + supplier_names
     suggestions += [
-        "Pending repairs older than 3 days",
         "Low stock items",
         "Unpaid invoices",
-        "Warranty expiring soon",
     ]
+    if has_capability(db, current_user.organization_id if current_user else None, "repairs_management"):
+        suggestions.append("Pending repairs older than 3 days")
+    if has_capability(db, current_user.organization_id if current_user else None, "warranty_management"):
+        suggestions.append("Warranty expiring soon")
 
     # Unique and limit
     seen = set()

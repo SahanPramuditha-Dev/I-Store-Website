@@ -1,9 +1,10 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import get_current_user, require_permission
 from app.database import get_db
+from app.core.tenant_guard import scope_query, stamp_tenant
 from app.models import (
     ActivityLog,
     GoodsReceivedNote,
@@ -260,13 +261,14 @@ def _reconcile_po(
 
 @router.get('', dependencies=[Depends(require_permission("purchasing.view"))])
 def list_pos(
+    request: Request,
     response: Response,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=5000),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = db.query(PurchaseOrder)
+    query = scope_query(db.query(PurchaseOrder), PurchaseOrder, request, branch_scoped=True)
     response.headers["X-Total-Count"] = str(query.count())
     rows = (
         query
@@ -284,7 +286,7 @@ def list_pos(
 
 
 @router.post('', dependencies=[Depends(require_permission("purchasing.create_po"))])
-def create_po(payload: PurchaseOrderIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_po(request: Request, payload: PurchaseOrderIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
     total = sum(int(i.quantity or 0) * float(i.unit_cost or 0) for i in payload.items)
     po = PurchaseOrder(
         po_number=next_number(db, "PO"),
@@ -293,6 +295,7 @@ def create_po(payload: PurchaseOrderIn, db: Session = Depends(get_db), _=Depends
         total_cost=total,
         status="Draft",
     )
+    stamp_tenant(po, request)
     db.add(po)
     db.flush()
     for item in payload.items:
@@ -320,13 +323,14 @@ def create_po(payload: PurchaseOrderIn, db: Session = Depends(get_db), _=Depends
 
 @router.get('/reconciliation', dependencies=[Depends(require_permission("purchasing.view"))])
 def list_reconciliation(
+    request: Request,
     response: Response,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=500, ge=1, le=5000),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = db.query(PurchaseOrder)
+    query = scope_query(db.query(PurchaseOrder), PurchaseOrder, request, branch_scoped=True)
     response.headers["X-Total-Count"] = str(query.count())
     rows = (
         query
@@ -378,8 +382,8 @@ def list_reconciliation(
 
 
 @router.get('/{po_id}', dependencies=[Depends(require_permission("purchasing.view"))])
-def get_po(po_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    po = (
+def get_po(request: Request, po_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    po_query = (
         db.query(PurchaseOrder)
         .options(
             joinedload(PurchaseOrder.supplier),
@@ -387,16 +391,16 @@ def get_po(po_id: int, db: Session = Depends(get_db), _=Depends(get_current_user
             joinedload(PurchaseOrder.grns).joinedload(GoodsReceivedNote.lines).joinedload(GoodsReceivedNoteItem.item),
         )
         .filter(PurchaseOrder.id == po_id)
-        .first()
     )
+    po = scope_query(po_query, PurchaseOrder, request).first()
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
     return _serialize_po(po, include_items=True, include_grns=True)
 
 
 @router.get('/{po_id}/reconciliation', dependencies=[Depends(require_permission("purchasing.view"))])
-def get_po_reconciliation(po_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    po = (
+def get_po_reconciliation(request: Request, po_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    po_query = (
         db.query(PurchaseOrder)
         .options(
             joinedload(PurchaseOrder.supplier),
@@ -404,8 +408,8 @@ def get_po_reconciliation(po_id: int, db: Session = Depends(get_db), _=Depends(g
             joinedload(PurchaseOrder.grns).joinedload(GoodsReceivedNote.lines).joinedload(GoodsReceivedNoteItem.item),
         )
         .filter(PurchaseOrder.id == po_id)
-        .first()
     )
+    po = scope_query(po_query, PurchaseOrder, request).first()
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
 
@@ -441,13 +445,13 @@ def get_po_reconciliation(po_id: int, db: Session = Depends(get_db), _=Depends(g
 
 
 @router.post('/{po_id}/reconcile', dependencies=[Depends(require_permission("purchasing.receive_grn"))])
-def reconcile_po(po_id: int, payload: PurchaseReconcileIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    po = (
+def reconcile_po(request: Request, po_id: int, payload: PurchaseReconcileIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    po_query = (
         db.query(PurchaseOrder)
         .options(joinedload(PurchaseOrder.items))
         .filter(PurchaseOrder.id == po_id)
-        .first()
     )
+    po = scope_query(po_query, PurchaseOrder, request).first()
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
     grn, grn_total = _reconcile_po(
@@ -456,6 +460,7 @@ def reconcile_po(po_id: int, payload: PurchaseReconcileIn, db: Session = Depends
         payload=payload,
         actor_user_id=current_user.id if current_user else None,
     )
+    stamp_tenant(grn, request)
     db.commit()
     return {
         "ok": True,
@@ -468,13 +473,13 @@ def reconcile_po(po_id: int, payload: PurchaseReconcileIn, db: Session = Depends
 
 
 @router.post('/{po_id}/receive', dependencies=[Depends(require_permission("purchasing.receive_grn"))])
-def receive_po(po_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    po = (
+def receive_po(request: Request, po_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    po_query = (
         db.query(PurchaseOrder)
         .options(joinedload(PurchaseOrder.items))
         .filter(PurchaseOrder.id == po_id)
-        .first()
     )
+    po = scope_query(po_query, PurchaseOrder, request).first()
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
     payload = _build_default_reconcile_payload(po)
@@ -484,6 +489,7 @@ def receive_po(po_id: int, db: Session = Depends(get_db), current_user=Depends(g
         payload=payload,
         actor_user_id=current_user.id if current_user else None,
     )
+    stamp_tenant(grn, request)
     db.commit()
     return {
         "ok": True,
@@ -497,6 +503,7 @@ def receive_po(po_id: int, db: Session = Depends(get_db), current_user=Depends(g
 
 @router.post('/{po_id}/cancel', dependencies=[Depends(require_permission("purchasing.cancel_po"))])
 def cancel_po(
+    request: Request,
     po_id: int,
     payload: PurchaseCancelIn,
     db: Session = Depends(get_db),
@@ -506,12 +513,12 @@ def cancel_po(
     if len(reason) < 5:
         raise HTTPException(status_code=400, detail="A descriptive cancellation reason (min 5 chars) is required")
 
-    po = (
+    po_query = (
         db.query(PurchaseOrder)
         .options(joinedload(PurchaseOrder.grns))
         .filter(PurchaseOrder.id == po_id)
-        .first()
     )
+    po = scope_query(po_query, PurchaseOrder, request).first()
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
 

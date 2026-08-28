@@ -1220,6 +1220,31 @@ def get_settings_section(section_key: str, db: Session = Depends(get_db), _=Depe
     state = _hydrate_state_from_legacy(state, db)
     if section_key == "access_control":
         return _build_access_control_state_from_security(db, state.get("access_control", {}))
+    if section_key == "store_profile":
+        profile = state.get("store_profile", {})
+        try:
+            from app.core.license_guard import get_cached_license, verify_license_token
+            cached = get_cached_license()
+            if cached:
+                is_v, _, pload = verify_license_token(cached)
+                if is_v and pload:
+                    t_code = (pload.get("tenant_code") or "").upper()
+                    TENANT_DIR = {
+                        "FRESHGR": ("FreshLand Supermarket & Grocers", "Supermarket & Grocery", "Fresh Produce & Daily Essentials"),
+                        "IPOINT": ("I Point Electronics", "Mobile Phone & Tech Store", "Your Trusted Mobile & Tech Partner"),
+                        "APEXMOB": ("Apex Mobile Retail & Repairs", "Mobile Phone & Tech Store", "Premium Electronics & Certified Repairs"),
+                        "VOGUEF": ("Vogue Avenue Fashion & Apparel", "Fashion & Apparel Boutique", "Contemporary Style & Apparel"),
+                    }
+                    if t_code in TENANT_DIR:
+                        t_name, b_type, t_tagline = TENANT_DIR[t_code]
+                        if "business_identity" not in profile:
+                            profile["business_identity"] = {}
+                        profile["business_identity"]["shop_name"] = t_name
+                        profile["business_identity"]["business_type"] = b_type
+                        profile["business_identity"]["shop_tagline"] = t_tagline
+        except Exception:
+            pass
+        return profile
     return state.get(section_key, {})
 
 
@@ -2039,27 +2064,63 @@ def get_tenant_context_endpoint(
 
     active_branch = next((b for b in branches if b.id == active_branch_id), branches[0] if branches else None)
 
+    org_name = org.name if org else "E-Store"
+    branch_name = active_branch.name if active_branch else "Main Branch"
+    industry_type = getattr(org, "industry_type", "MOBILE_RETAIL") if org else "MOBILE_RETAIL"
+
+    try:
+        from app.core.license_guard import get_cached_license, verify_license_token
+        cached = get_cached_license()
+        if cached:
+            is_v, _, payload = verify_license_token(cached)
+            if is_v and payload:
+                t_code = (payload.get("tenant_code") or "").upper()
+                s_code = (payload.get("shop_code") or "").upper()
+                industry_type = payload.get("industry_code") or industry_type
+                TENANT_DIR = {
+                    "FRESHGR": ("FreshLand Supermarket & Grocers", "FreshLand Supercenter Kandy"),
+                    "IPOINT": ("I Point Electronics", "Kotugoda Branch"),
+                    "APEXMOB": ("Apex Mobile Retail & Repairs", "Apex Flagship Colombo 03"),
+                    "VOGUEF": ("Vogue Avenue Fashion & Apparel", "Vogue Colombo One"),
+                }
+                if t_code in TENANT_DIR:
+                    org_name, branch_name = TENANT_DIR[t_code]
+                elif t_code:
+                    org_name = t_code
+                    branch_name = s_code or branch_name
+    except Exception:
+        pass
+
     return {
         "organization": {
             "id": org.id if org else 1,
-            "name": org.name if org else "E-Store",
+            "name": org_name,
             "slug": org.slug if org else "default-store",
+            "industry_type": industry_type,
             "plan": org.plan.name if org and org.plan else "Enterprise Full Suite"
         },
         "active_branch": {
             "id": active_branch.id if active_branch else 1,
             "code": active_branch.code if active_branch else "MAIN-01",
-            "name": active_branch.name if active_branch else "Main Branch",
+            "name": branch_name,
         } if active_branch else None,
         "available_branches": [
             {
                 "id": b.id,
                 "code": b.code,
-                "name": b.name,
+                "name": branch_name if (active_branch and b.id == active_branch.id) else b.name,
                 "address": b.address,
                 "is_warehouse": b.is_warehouse
             }
             for b in branches
+        ] if branches else [
+            {
+                "id": 1,
+                "code": "MAIN-01",
+                "name": branch_name,
+                "address": "Main Location",
+                "is_warehouse": False
+            }
         ],
         "is_multi_branch_enabled": len(branches) > 1,
         "can_switch_branches": user.role in ["admin", "owner", "manager"]

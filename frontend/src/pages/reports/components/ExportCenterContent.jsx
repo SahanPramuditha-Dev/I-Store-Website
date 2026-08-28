@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, isValidElement } from "react";
 import {
   CalendarClock,
   Eye,
@@ -77,6 +77,32 @@ function toWorkbookBlob(columns, rows, sheetName = "Report") {
   });
 }
 
+function safeJsonString(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function safeCellRender(raw) {
+  if (raw === null || raw === undefined || raw === "") return "-";
+  if (isValidElement(raw)) return raw;
+  if (typeof raw === "object") {
+    try {
+      return JSON.stringify(raw);
+    } catch {
+      return String(raw);
+    }
+  }
+  return String(raw);
+}
+
 function sanitizeFilename(text) {
   return String(text || "report")
     .toLowerCase()
@@ -108,7 +134,7 @@ function MiniTable({ columns, rows, emptyLabel = "No records found." }) {
             <tr key={row.id || row.key || index}>
               {columns.map((col) => (
                 <td key={`${row.id || index}-${col.label}`}>
-                  {typeof col.value === "function" ? col.value(row, index) : row[col.value]}
+                  {safeCellRender(typeof col.value === "function" ? col.value(row, index) : row[col.value])}
                 </td>
               ))}
             </tr>
@@ -335,13 +361,13 @@ export default function ExportCenterContent({
     const fullAuditRows = (auditActivityRows || []).length
       ? (auditActivityRows || []).map((row) => ({
           timestamp: row.timestamp || row.created_at,
-          user: row.user || "System",
-          actionType: row.action_type || row.action || "Activity",
-          module: row.module || row.entity_type || "System",
-          recordId: row.record_id ?? row.entity_id ?? row.id,
-          oldValue: row.old_value_raw || row.old_value || "-",
-          newValue: row.new_value_raw || row.new_value || "-",
-          severity: row.severity || "Info",
+          user: typeof row.user === "object" ? (row.user?.full_name || row.user?.username || safeJsonString(row.user)) : (row.user || "System"),
+          actionType: typeof row.action_type === "object" ? safeJsonString(row.action_type) : (row.action_type || row.action || "Activity"),
+          module: typeof row.module === "object" ? safeJsonString(row.module) : (row.module || row.entity_type || "System"),
+          recordId: typeof row.record_id === "object" ? safeJsonString(row.record_id) : (row.record_id ?? row.entity_id ?? row.id),
+          oldValue: safeJsonString(row.old_value_raw || row.old_value),
+          newValue: safeJsonString(row.new_value_raw || row.new_value),
+          severity: typeof row.severity === "object" ? "Info" : (row.severity || "Info"),
         }))
       : (movementRows || []).map((movement) => ({
           timestamp: movement.created_at,

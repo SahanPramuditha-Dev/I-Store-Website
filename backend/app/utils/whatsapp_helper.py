@@ -182,6 +182,59 @@ DEFAULT_TEMPLATES = {
         "Dear {{customer_name}}, the warranty for your *{{product_name}}* (S/N: {{serial_number}}) will expire on *{{expiry_date}}*.\n"
         "Contact *{{store_name}}* at {{store_phone}} for renewals or service."
     ),
+    "warranty_claim_approved": (
+        "✅ *WARRANTY CLAIM APPROVED*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "👋 Hello *{{customer_name}}*,\n\n"
+        "Great news! Your warranty claim for *{{product_name}}* has been approved by *{{store_name}}*.\n\n"
+        "📋 *Claim Reference:* #{{claim_number}}\n"
+        "📱 *Device / Item:* {{product_name}}\n"
+        "🔢 *Serial / IMEI:* {{serial_number}}\n"
+        "⚡ *Resolution:* {{resolution_type}}\n"
+        "📝 *Note:* {{decision_note}}\n\n"
+        "🌐 *Claim Verification:* {{claim_tracking_url}}\n"
+        "📞 *Hotline:* {{store_phone}}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "_Our support team is processing your resolution immediately._"
+    ),
+    "warranty_claim_replaced": (
+        "🔄 *WARRANTY REPLACEMENT CONFIRMED*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "👋 Hello *{{customer_name}}*,\n\n"
+        "A replacement unit has been issued under your warranty claim #{{claim_number}} at *{{store_name}}*:\n\n"
+        "📱 *Original Item:* {{product_name}} (S/N: {{serial_number}})\n"
+        "✨ *Replacement Item:* {{replacement_product_name}}\n"
+        "🔢 *New Serial / IMEI:* {{replacement_serial_number}}\n"
+        "🛡️ *New Warranty Slip:* {{new_warranty_code}}\n\n"
+        "📍 *Collection Store:* {{store_address}}\n"
+        "📞 *Hotline:* {{store_phone}}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "_Thank you for choosing {{store_name}}!_"
+    ),
+    "warranty_claim_rejected": (
+        "📋 *WARRANTY CLAIM UPDATE*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "👋 Hello *{{customer_name}}*,\n\n"
+        "Regarding your warranty claim #{{claim_number}} for *{{product_name}}* (S/N: {{serial_number}}):\n\n"
+        "After technician inspection, the claim could not be approved under warranty terms.\n"
+        "⚠️ *Reason:* {{rejection_reason}}\n"
+        "📝 *Inspection Details:* {{inspection_notes}}\n\n"
+        "Our service center can assist you with an out-of-warranty repair quote.\n"
+        "📞 *Hotline:* {{store_phone}}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "_Store: {{store_name}} | We are here to help._"
+    ),
+    "warranty_claim_resolved": (
+        "🎉 *WARRANTY CLAIM SETTLED & CLOSED*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "👋 Hello *{{customer_name}}*,\n\n"
+        "Your warranty claim #{{claim_number}} for *{{product_name}}* has been fully resolved and closed.\n\n"
+        "⚡ *Final Action:* {{resolution_type}}\n"
+        "📝 *Closing Remarks:* {{closing_note}}\n\n"
+        "📞 *Support Hotline:* {{store_phone}}\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "_Thank you for trusting {{store_name}}!_"
+    ),
 
     # Customer & Alerts
     "customer_welcome": (
@@ -331,6 +384,30 @@ TEMPLATE_METADATA = {
         "category": "warranty",
         "variables": ["customer_name", "store_name", "product_name", "serial_number", "expiry_date", "store_phone"],
         "description": "Automated reminder sent 30 days before expiration."
+    },
+    "warranty_claim_approved": {
+        "name": "Warranty Claim Approval",
+        "category": "warranty",
+        "variables": ["customer_name", "store_name", "claim_number", "product_name", "serial_number", "resolution_type", "decision_note", "claim_tracking_url", "store_phone"],
+        "description": "Sent immediately when a manager approves a warranty claim."
+    },
+    "warranty_claim_replaced": {
+        "name": "Warranty Replacement Confirmation",
+        "category": "warranty",
+        "variables": ["customer_name", "store_name", "claim_number", "product_name", "serial_number", "replacement_product_name", "replacement_serial_number", "new_warranty_code", "store_address", "store_phone"],
+        "description": "Sent when a replacement product unit is issued to the customer."
+    },
+    "warranty_claim_rejected": {
+        "name": "Warranty Claim Rejection Notice",
+        "category": "warranty",
+        "variables": ["customer_name", "store_name", "claim_number", "product_name", "serial_number", "rejection_reason", "inspection_notes", "store_phone"],
+        "description": "Sent when a warranty claim is declined based on inspection findings."
+    },
+    "warranty_claim_resolved": {
+        "name": "Warranty Claim Settlement & Closure",
+        "category": "warranty",
+        "variables": ["customer_name", "store_name", "claim_number", "product_name", "resolution_type", "closing_note", "store_phone"],
+        "description": "Sent when a warranty claim lifecycle is completed and resolved."
     },
     "customer_welcome": {
         "name": "Customer Welcome",

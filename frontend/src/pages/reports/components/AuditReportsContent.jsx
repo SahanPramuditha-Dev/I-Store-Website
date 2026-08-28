@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, isValidElement } from "react";
 import {
   Eye,
   FilePenLine,
@@ -101,11 +101,27 @@ function inferSeverityFromAction(action, description) {
 function safeJsonText(value) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   }
+  return String(value);
+}
+
+function safeCellRender(raw) {
+  if (raw === null || raw === undefined || raw === "") return "-";
+  if (isValidElement(raw)) return raw;
+  if (typeof raw === "object") {
+    try {
+      return JSON.stringify(raw);
+    } catch {
+      return String(raw);
+    }
+  }
+  return String(raw);
 }
 
 function parseBackupFilename(name) {
@@ -147,7 +163,7 @@ function MiniTable({ columns, rows, emptyLabel = "No records found." }) {
             <tr key={row.id || row.key || index}>
               {columns.map((col) => (
                 <td key={`${row.id || index}-${col.label}`}>
-                  {typeof col.value === "function" ? col.value(row, index) : row[col.value]}
+                  {safeCellRender(typeof col.value === "function" ? col.value(row, index) : row[col.value])}
                 </td>
               ))}
             </tr>
@@ -300,16 +316,16 @@ export default function AuditReportsContent({
       return (auditActivityRows || []).map((row) => ({
         id: `act-${row.id}`,
         timestamp: row.timestamp || row.created_at,
-        user: row.user || "System",
-        actionType: row.action_type || row.action || "Activity",
-        module: row.module || row.entity_type || "System",
-        recordId: row.record_id ?? row.entity_id ?? row.id,
+        user: typeof row.user === "object" ? (row.user?.full_name || row.user?.username || safeJsonText(row.user)) : (row.user || "System"),
+        actionType: typeof row.action_type === "object" ? safeJsonText(row.action_type) : (row.action_type || row.action || "Activity"),
+        module: typeof row.module === "object" ? safeJsonText(row.module) : (row.module || row.entity_type || "System"),
+        recordId: typeof row.record_id === "object" ? safeJsonText(row.record_id) : (row.record_id ?? row.entity_id ?? row.id),
         oldValue: row.old_value ?? row.old_value_raw ?? null,
         newValue: row.new_value ?? row.new_value_raw ?? null,
-        ipAddress: row.ip_address || "-",
-        device: row.device || row.device_info || "-",
-        severity: row.severity || inferSeverityFromAction(row.action_type || row.action, row.description),
-        description: row.description || "-",
+        ipAddress: typeof row.ip_address === "object" ? safeJsonText(row.ip_address) : (row.ip_address || "-"),
+        device: typeof (row.device || row.device_info) === "object" ? safeJsonText(row.device || row.device_info) : (row.device || row.device_info || "-"),
+        severity: typeof row.severity === "object" ? "Info" : (row.severity || inferSeverityFromAction(row.action_type || row.action, row.description)),
+        description: safeJsonText(row.description),
         recoverable: Boolean(row.recoverable),
       }));
     }
@@ -322,16 +338,16 @@ export default function AuditReportsContent({
     const modules = new Set();
     const severities = new Set(["Info", "Warning", "Critical"]);
     baseSystemActivityRows.forEach((row) => {
-      users.add(row.user || "System");
-      actions.add(row.actionType || "Activity");
-      modules.add(row.module || "System");
-      severities.add(row.severity || "Info");
+      users.add(safeJsonText(row.user) || "System");
+      actions.add(safeJsonText(row.actionType) || "Activity");
+      modules.add(safeJsonText(row.module) || "System");
+      severities.add(safeJsonText(row.severity) || "Info");
     });
     return {
-      users: [...users].sort((a, b) => a.localeCompare(b)),
-      actions: [...actions].sort((a, b) => a.localeCompare(b)),
-      modules: [...modules].sort((a, b) => a.localeCompare(b)),
-      severities: [...severities].sort((a, b) => a.localeCompare(b)),
+      users: [...users].sort((a, b) => String(a).localeCompare(String(b))),
+      actions: [...actions].sort((a, b) => String(a).localeCompare(String(b))),
+      modules: [...modules].sort((a, b) => String(a).localeCompare(String(b))),
+      severities: [...severities].sort((a, b) => String(a).localeCompare(String(b))),
     };
   }, [baseSystemActivityRows]);
 

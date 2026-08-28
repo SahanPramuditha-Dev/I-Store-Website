@@ -65,6 +65,7 @@ const navGroups = [
     label: "Store Operations",
     items: [
       ["/repairs", "Repair Management", Wrench],
+      ["/inventory/batches", "Batches & Expiry", Clock],
       ["/inventory/products", "Inventory", Boxes],
       ["/returns", "Returns & Refunds", RotateCcw],
       ["/warranty", "Warranty", Shield],
@@ -283,6 +284,7 @@ export default function Layout() {
             // 2. Capability check
             if (to.startsWith("/repairs") && !hasCapability("repairs_management")) return false;
             if (to.startsWith("/warranty") && !hasCapability("warranty_management")) return false;
+            if (to.includes("batches") && !hasCapability("batch_tracking") && !hasCapability("expiry_tracking")) return false;
             return true;
           }),
         }))
@@ -305,8 +307,9 @@ export default function Layout() {
   );
   const notificationsAllowed = canOpenPath("/notifications");
   const settingsAllowed = canOpenPath("/settings");
-  const shopName = identity?.shopName || "I Point";
-  const softwareName = identity?.softwareName || "E Store";
+  const activeTenantName = localStorage.getItem("istore_active_tenant");
+  const shopName = tenantContext?.organization?.name || (activeTenantName && activeTenantName !== "undefined" ? activeTenantName : null) || identity?.shopName || "E-Store";
+  const softwareName = identity?.softwareName || "E-Store";
   const brandInitials = initials(shopName);
   const displayName = localStorage.getItem("username") || "Store Admin";
   const roleLabel = localStorage.getItem("login_role_label") || localStorage.getItem("login_role") || "Staff";
@@ -314,8 +317,8 @@ export default function Layout() {
     () =>
       [
         { id: "open-pos", label: "Open POS", hint: "F2", to: "/pos" },
-        { id: "create-repair", label: "Create Repair", hint: "Ctrl+R", to: "/repairs" },
-        { id: "search-imei", label: "Search IMEI", hint: "Ctrl+I", to: "/search?focus=imei" },
+        hasCapability("repairs_management") && { id: "create-repair", label: "Create Repair", hint: "Ctrl+R", to: "/repairs" },
+        hasCapability("imei_tracking") && { id: "search-imei", label: "Search IMEI", hint: "Ctrl+I", to: "/search?focus=imei" },
         { id: "open-customer", label: "Open Customers", hint: "F3", to: "/customers" },
         { id: "open-invoice", label: "Open Invoices", hint: "F4", to: "/pos" },
         { id: "open-advances", label: "Open Advance Payments", hint: "ADV", to: "/advances" },
@@ -323,9 +326,10 @@ export default function Layout() {
         { id: "open-print-center", label: "Open Print Center", hint: "PRINT", to: "/print-center" },
         { id: "search-hub", label: "Open Search Hub", hint: "Ctrl+K", to: "/search" },
       ]
+        .filter(Boolean)
         .filter((command) => canOpenPath(command.to))
         .map((command) => ({ ...command, action: () => navigateIfAllowed(command.to) })),
-    [canOpenPath, navigateIfAllowed]
+    [canOpenPath, navigateIfAllowed, hasCapability]
   );
   const filteredCommands = useMemo(() => {
     const query = String(commandQuery || "").trim().toLowerCase();
@@ -436,13 +440,19 @@ export default function Layout() {
                 </div>
                 <div className="min-w-0">
                   <h1 className="text-base font-extrabold text-[var(--app-text)] leading-tight truncate">{shopName}</h1>
-                  <p className="text-[10px] text-slate-400 font-medium truncate leading-tight">{softwareName} Business Suite</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <img src={`${import.meta.env.BASE_URL}nexusis-icon.svg`} alt="NEXUSIS" className="w-3 h-3 object-contain dark:invert opacity-75 shrink-0" />
+                    <span className="text-[9.5px] font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase truncate">
+                      A NEXUSIS Product
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
             {sidebarCollapsed && (
-              <div className="dashboard-brand-mark h-9 w-9 rounded-xl grid place-items-center text-white font-extrabold text-sm shadow-sm">
+              <div className="dashboard-brand-mark h-9 w-9 rounded-xl grid place-items-center text-white font-extrabold text-sm shadow-sm relative group cursor-pointer" title={`${shopName} — A NEXUSIS Product`}>
                 {brandInitials}
+                <img src={`${import.meta.env.BASE_URL}nexusis-icon.svg`} alt="NEXUSIS" className="absolute -bottom-1 -right-1 w-3.5 h-3.5 object-contain bg-slate-900 rounded-full p-0.5 border border-slate-700 dark:invert" />
               </div>
             )}
           </div>
@@ -520,6 +530,16 @@ export default function Layout() {
               <LogOut size={16} />
               {showFullSidebarText && <span>Logout</span>}
             </button>
+
+            {/* NEXUSIS Master Brand Footer Signature */}
+            {showFullSidebarText && (
+              <div className="mt-2.5 pt-2 border-t border-slate-200/50 dark:border-slate-800/60 flex flex-col items-center gap-1 opacity-70 hover:opacity-100 transition-opacity">
+                <img src={`${import.meta.env.BASE_URL}nexusis-lockup.svg`} alt="NEXUSIS" className="h-3.5 w-auto object-contain dark:invert" />
+                <p className="text-[8.5px] text-slate-400 dark:text-slate-500 text-center font-medium leading-tight">
+                  &copy; {new Date().getFullYear()} NEXUSIS. All rights reserved.
+                </p>
+              </div>
+            )}
           </div>
         </aside>
 

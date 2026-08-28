@@ -10,8 +10,18 @@ import os
 import json
 import base64
 import logging
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, Tuple
+
+try:
+    from dotenv import load_dotenv
+    backend_dir = Path(__file__).resolve().parents[2]
+    root_dir = Path(__file__).resolve().parents[3]
+    load_dotenv(backend_dir / ".env")
+    load_dotenv(root_dir / ".env")
+except ImportError:
+    pass
 
 from fastapi import Request, HTTPException, status, Depends
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -19,13 +29,10 @@ from cryptography.exceptions import InvalidSignature
 
 logger = logging.getLogger("istore.license_guard")
 
-# Default / Fallback Public Key ID and Static Verification Key (Rotatable via ENV)
-ESTORE_PUBLIC_KEY_B64 = os.getenv(
-    "ESTORE_PUBLIC_KEY_B64",
-    ""
-)
+# Rotatable Public Verification Key (Loaded from environment)
+ESTORE_PUBLIC_KEY_B64 = os.getenv("ESTORE_PUBLIC_KEY_B64", "")
 LICENSE_CACHE_FILE = os.getenv("LICENSE_CACHE_FILE", "database/license_cache.json")
-ALLOW_DEV_LICENSE_BYPASS = os.getenv("ALLOW_DEV_LICENSE_BYPASS", "true").lower() in ("true", "1", "yes")
+ALLOW_DEV_LICENSE_BYPASS = os.getenv("ALLOW_DEV_LICENSE_BYPASS", "false").lower() in ("true", "1", "yes")
 
 # Open endpoints exempted from license enforcement
 EXEMPT_ROUTES = {
@@ -35,12 +42,25 @@ EXEMPT_ROUTES = {
     "/docs",
     "/redoc",
     "/openapi.json",
+    "/favicon.ico",
     "/auth/login",
+    "/api/auth/login",
     "/auth/pin-login",
+    "/api/auth/pin-login",
     "/auth/refresh",
+    "/api/auth/refresh",
     "/saas/license/status",
+    "/api/saas/license/status",
     "/saas/license/activate",
+    "/api/saas/license/activate",
+    "/saas/license/activate-key",
+    "/api/saas/license/activate-key",
+    "/saas/license/deactivate",
+    "/api/saas/license/deactivate",
+    "/saas/license/reset",
+    "/api/saas/license/reset",
     "/saas/plans",
+    "/api/saas/plans",
 }
 
 
@@ -60,27 +80,70 @@ def load_public_key_from_b64(b64_str: str) -> ed25519.Ed25519PublicKey:
     return ed25519.Ed25519PublicKey.from_public_bytes(raw_bytes)
 
 
+def _resolve_license_cache_path() -> Path:
+    env_path = os.getenv("LICENSE_CACHE_FILE")
+    candidates = []
+    if env_path:
+        p = Path(env_path)
+        if p.is_absolute():
+            return p
+        candidates.extend([
+            Path(__file__).resolve().parents[3] / p,
+            Path(__file__).resolve().parents[2] / p,
+            Path(p).resolve()
+        ])
+    
+    candidates.extend([
+        Path(__file__).resolve().parents[3] / "database" / "license_cache.json",
+        Path(__file__).resolve().parents[2] / "database" / "license_cache.json",
+        Path("database/license_cache.json").resolve()
+    ])
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]
+
+
 def get_cached_license() -> Optional[Dict[str, Any]]:
     """Retrieves cached signed license token from local disk or memory."""
-    if os.path.exists(LICENSE_CACHE_FILE):
+    target_path = _resolve_license_cache_path()
+    if target_path.exists():
         try:
-            with open(LICENSE_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(target_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            logger.warning(f"Failed to read license cache file: {e}")
+            logger.warning(f"Failed to read license cache file ({target_path}): {e}")
     return None
 
 
 def save_cached_license(token_data: Dict[str, Any]) -> bool:
     """Saves verified signed license token to local cache file for offline capability."""
+    target_path = _resolve_license_cache_path()
     try:
-        os.makedirs(os.path.dirname(os.path.abspath(LICENSE_CACHE_FILE)), exist_ok=True)
-        with open(LICENSE_CACHE_FILE, "w", encoding="utf-8") as f:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as f:
             json.dump(token_data, f, indent=2)
         return True
     except Exception as e:
-        logger.error(f"Failed to persist license cache: {e}")
+        logger.error(f"Failed to persist license cache ({target_path}): {e}")
         return False
+
+
+def clear_cached_license() -> bool:
+    """Clears and deletes all cached license tokens to reset terminal into unlicensed state."""
+    deleted = False
+    for p in [
+        Path(__file__).resolve().parents[3] / "database" / "license_cache.json",
+        Path(__file__).resolve().parents[2] / "database" / "license_cache.json",
+        _resolve_license_cache_path()
+    ]:
+        try:
+            if p.exists():
+                p.unlink()
+                deleted = True
+        except Exception as e:
+            logger.warning(f"Error removing license cache {p}: {e}")
+    return deleted
 
 
 def verify_license_token(
@@ -156,13 +219,24 @@ def verify_license_token(
     return True, "License valid and active", payload
 
 
+def is_route_exempt(path: str) -> bool:
+    if path in {"", "/"}:
+        return True
+    for exempt in EXEMPT_ROUTES:
+        if exempt in {"", "/"}:
+            continue
+        if path == exempt or path.startswith(exempt + "/") or path.startswith(exempt + "?"):
+            return True
+    return False
+
+
 async def require_active_license(request: Request) -> Dict[str, Any]:
     """
     FastAPI dependency that enforces valid, unexpired, authentic Ed25519 licensing
     on all protected operational routes.
     """
     path = request.url.path
-    if any(path.startswith(exempt) for exempt in EXEMPT_ROUTES):
+    if is_route_exempt(path):
         return {"status": "exempt", "path": path}
 
     # 1. Check active request header license token

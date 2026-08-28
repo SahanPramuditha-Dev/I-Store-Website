@@ -58,7 +58,15 @@ function resolveValue(column, row) {
 }
 
 function escapeCsv(value) {
-  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+  let str = value;
+  if (str !== null && typeof str === "object") {
+    try {
+      str = JSON.stringify(str);
+    } catch {
+      str = String(str);
+    }
+  }
+  return `"${String(str ?? "").replace(/"/g, '""')}"`;
 }
 
 export function toTabularRows(columns, rows) {

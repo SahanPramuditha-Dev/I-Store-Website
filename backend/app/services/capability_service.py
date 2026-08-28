@@ -120,6 +120,24 @@ DEFAULT_INDUSTRY_CAPABILITIES = {
 }
 
 
+ALL_CAPABILITY_KEYS = {
+    "imei_tracking",
+    "serial_tracking",
+    "repairs_management",
+    "warranty_management",
+    "warranty_claims",
+    "trade_ins",
+    "batch_tracking",
+    "expiry_tracking",
+    "weighted_products",
+    "decimal_quantities",
+    "variants_matrix",
+    "size_color_variants",
+    "season_management",
+    "unit_conversions",
+}
+
+
 def get_effective_capabilities(db: Session, organization_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Computes effective capabilities for a given organization.
@@ -133,12 +151,11 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int] = Non
         if cached:
             is_valid, msg, payload = verify_license_token(cached)
             if is_valid and payload:
-                ind = payload.get("industry_code") or "MOBILE_RETAIL"
+                ind = payload.get("industry_code") or "GENERAL_RETAIL"
                 signed_caps = payload.get("capabilities", [])
-                defaults = DEFAULT_INDUSTRY_CAPABILITIES.get(ind, DEFAULT_INDUSTRY_CAPABILITIES["MOBILE_RETAIL"])
                 
                 eff_caps = {}
-                for key in defaults.keys():
+                for key in ALL_CAPABILITY_KEYS:
                     if "all" in signed_caps:
                         eff_caps[key] = True
                     else:
@@ -157,25 +174,25 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int] = Non
         pass
 
     if not organization_id:
-        # Fallback to default mobile shop capabilities
+        # Fallback to general retail capabilities
         return {
             "source": "DEFAULT_FALLBACK",
-            "industry_type": "MOBILE_RETAIL",
+            "industry_type": "GENERAL_RETAIL",
             "configuration_version": 1,
-            "capabilities": DEFAULT_INDUSTRY_CAPABILITIES["MOBILE_RETAIL"]
+            "capabilities": DEFAULT_INDUSTRY_CAPABILITIES["GENERAL_RETAIL"]
         }
 
     org = db.query(Organization).filter(Organization.id == organization_id).first()
     if not org:
         return {
             "source": "DEFAULT_FALLBACK",
-            "industry_type": "MOBILE_RETAIL",
+            "industry_type": "GENERAL_RETAIL",
             "configuration_version": 1,
-            "capabilities": DEFAULT_INDUSTRY_CAPABILITIES["MOBILE_RETAIL"]
+            "capabilities": DEFAULT_INDUSTRY_CAPABILITIES["GENERAL_RETAIL"]
         }
 
-    industry = getattr(org, "industry_type", None) or "MOBILE_RETAIL"
-    defaults = DEFAULT_INDUSTRY_CAPABILITIES.get(industry, DEFAULT_INDUSTRY_CAPABILITIES["MOBILE_RETAIL"])
+    industry = getattr(org, "industry_type", None) or "GENERAL_RETAIL"
+    defaults = DEFAULT_INDUSTRY_CAPABILITIES.get(industry, DEFAULT_INDUSTRY_CAPABILITIES["GENERAL_RETAIL"])
     overrides = getattr(org, "capabilities_override", None) or {}
 
     # Plan entitlement

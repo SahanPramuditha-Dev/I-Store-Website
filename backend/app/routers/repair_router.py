@@ -469,6 +469,8 @@ def update_repair_status(
             event_type = "repair_collected"
         elif new_status == REPAIR_STATUS_COMPLETED:
             event_type = "repair_completed"
+        elif new_status == REPAIR_STATUS_WAITING_FOR_APPROVAL and float(repair.estimated_cost or 0) > 0:
+            event_type = "repair_estimate"
         else:
             event_type = "repair_status"
 
@@ -501,7 +503,9 @@ def update_repair_status(
             "reported_issue": repair.issue or "Inspection & Repair",
             "repair_status": status_label,
             "status_note": status_note_text,
+            "technician_notes": status_note_text,
             "estimated_cost": f"{float(repair.estimated_cost or 0):,.2f}",
+            "estimate_amount": f"{float(repair.estimated_cost or 0):,.2f}",
             "advance_paid": f"{float(repair.advance_payment or 0):,.2f}",
             "balance_due": f"{float(repair.outstanding_balance or 0):,.2f}",
             "warranty_period": warranty_period_text,

@@ -5,13 +5,15 @@ import { openPrintCenter } from "../lib/printCenter";
 import { printHtmlDocument } from "../lib/printBridge";
 import { useFetch } from "../hooks/useFetch";
 import { Input, Select, SearchableSelect, CustomerSelect, ProductSelect } from "../components/UI";
-import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, MessageSquare, Share2, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag, PackagePlus, FileText, ShoppingCart, Boxes } from "lucide-react";
+import { Barcode, ShoppingBasket, Search, Printer, Trash2, Plus, Minus, User, Wrench, Clock, CornerUpLeft, X, RefreshCw, Save, FolderOpen, Mail, MessageCircle, MessageSquare, Share2, CreditCard, Banknote, Wallet, Percent, Info, ImageOff, AlertCircle, Check, Eye, Zap, ChevronDown, ChevronUp, RotateCcw, Tag, PackagePlus, FileText, ShoppingCart, Boxes, PackageOpen, Landmark, Layers, ShoppingBag } from "lucide-react";
 import { useFeedback } from "../components/FeedbackProvider";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AppModal from "../components/layout/AppModal";
 import { ShiftModal } from "../components/ShiftModal";
 import VariantMatrixModal from "../components/pos/VariantMatrixModal";
+import TouchPOSTerminal from "../components/pos/TouchPOSTerminal";
 import { useCapabilities } from "../context/CapabilityContext";
+import { syncQueue, offlineStorage, generateOfflineInvoiceNo } from "../lib/syncQueue";
 
 export default function POS() {
   const { toast, confirm, prompt } = useFeedback();
@@ -31,10 +33,14 @@ export default function POS() {
   const suppliersFetch = useFetch('/inventory/suppliers');
   const customersFetch = useFetch('/customers?limit=100');
   const salesFetch = useFetch('/pos/sales');
-  const repairsFetch = useFetch('/repairs'); // To link tickets
-  const reservationsFetch = useFetch('/product-reservations');
   const { hasCapability } = useCapabilities();
+  const hasRepairs = hasCapability("repairs_management");
+  const repairsFetch = useFetch(hasRepairs ? '/repairs' : null); // To link tickets
+  const reservationsFetch = useFetch('/product-reservations');
 
+  const [isTouchMode, setIsTouchMode] = useState(() => localStorage.getItem("pos_touch_mode") !== "false");
+  const [touchPadTarget, setTouchPadTarget] = useState("cash"); // "cash" | "qty" | "discount"
+  const [touchPadBuffer, setTouchPadBuffer] = useState("");
   const [mode, setMode] = useState("sale"); // sale | repair | reservation
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -854,6 +860,74 @@ export default function POS() {
     updateItem(itemId, 'quantity', next);
   };
 
+  const handleNumpadPress = (key) => {
+    if (touchPadTarget === "cash") {
+      let currentVal = String(cashReceived || "");
+      if (key === "C") {
+        setCashReceived("");
+      } else if (key === "DEL") {
+        setCashReceived(currentVal.slice(0, -1));
+      } else if (key === ".") {
+        if (!currentVal.includes(".")) setCashReceived(currentVal + ".");
+      } else if (key === "00") {
+        if (currentVal && currentVal !== "0") setCashReceived(currentVal + "00");
+      } else {
+        setCashReceived(currentVal === "0" ? String(key) : currentVal + String(key));
+      }
+    } else if (touchPadTarget === "qty") {
+      const selectedItem = cart[selectedCartIndex];
+      if (!selectedItem) {
+        toast("Select an item in cart first", "info");
+        return;
+      }
+      let currentQty = String(touchPadBuffer || "");
+      if (key === "C") {
+        setTouchPadBuffer("");
+      } else if (key === "DEL") {
+        const next = currentQty.slice(0, -1);
+        setTouchPadBuffer(next);
+        if (next) updateItem(selectedItem.item_id, 'quantity', Math.max(1, Number(next)));
+      } else if (key === ".") {
+        if (!currentQty.includes(".")) {
+          const next = currentQty + ".";
+          setTouchPadBuffer(next);
+        }
+      } else if (key === "00") {
+        const next = currentQty ? currentQty + "00" : "0";
+        setTouchPadBuffer(next);
+        updateItem(selectedItem.item_id, 'quantity', Math.max(1, Number(next)));
+      } else {
+        const next = currentQty === "0" ? String(key) : currentQty + String(key);
+        setTouchPadBuffer(next);
+        updateItem(selectedItem.item_id, 'quantity', Math.max(1, Number(next)));
+      }
+    } else if (touchPadTarget === "discount") {
+      let currentDisc = String(discountValue || "");
+      if (key === "C") {
+        updateDiscountValue(0);
+      } else if (key === "DEL") {
+        const next = currentDisc.slice(0, -1);
+        updateDiscountValue(next || 0);
+      } else if (key === ".") {
+        if (!currentDisc.includes(".")) updateDiscountValue(currentDisc + ".");
+      } else if (key === "00") {
+        if (currentDisc && currentDisc !== "0") updateDiscountValue(currentDisc + "00");
+      } else {
+        const next = currentDisc === "0" ? String(key) : currentDisc + String(key);
+        updateDiscountValue(next);
+      }
+    }
+  };
+
+  const toggleTouchMode = () => {
+    setIsTouchMode(prev => {
+      const next = !prev;
+      localStorage.setItem("pos_touch_mode", String(next));
+      toast(next ? "Touch Terminal View enabled" : "Classic View enabled", "info");
+      return next;
+    });
+  };
+
   const clearCart = () => {
     setCart([]);
     setDiscountValue(0);
@@ -866,6 +940,7 @@ export default function POS() {
     setReservationNo("");
     setSelectedAdvanceMap({});
     setSelectedCreditMap({});
+    setTouchPadBuffer("");
   };
 
   const suspendCurrentCart = () => {
@@ -1135,27 +1210,72 @@ export default function POS() {
         return;
       }
       const endpoint = mode === "repair" ? "/pos/checkout/repair" : mode === "reservation" ? "/pos/checkout/reservation" : "/pos/checkout";
-      if (!navigator.onLine) {
-        syncQueue.enqueue("sale_created", { endpoint, payload });
-        toast("Checkout queued locally (offline mode active)", "success");
+      
+      const processOfflineCheckout = async () => {
+        const offlineInvNo = generateOfflineInvoiceNo("BR01", "POS01");
+        const offlineRecord = {
+          offline_invoice_no: offlineInvNo,
+          payload,
+          created_at: new Date().toISOString(),
+          terminal_id: "POS-01",
+          total: Number(total.toFixed(2)),
+          items: cartItems.map(i => ({ ...i }))
+        };
+        await offlineStorage.saveOfflineSale(offlineRecord);
+        const mockOfflineSale = {
+          id: `OFF-${Date.now()}`,
+          invoice_no: offlineInvNo,
+          total: Number(total.toFixed(2)),
+          subtotal: Number(subtotal.toFixed(2)),
+          payment_method: paymentMethod,
+          items: cartItems.map(i => ({
+            item_name: i.name,
+            quantity: i.quantity,
+            unit_price: i.sale_price,
+            total: i.sale_price * i.quantity
+          })),
+          created_at: new Date().toISOString(),
+          is_offline: true
+        };
+        setLastSale(mockOfflineSale);
+        setShowSaleCompleteModal(true);
+        toast(`Offline sale saved successfully (#${offlineInvNo})`, "success");
+        if (autoPrint) { directPrintReceipt(mockOfflineSale); }
         clearCart();
+        setSelectedAdvanceMap({});
+        setAvailableAdvances([]);
+        setSelectedCreditMap({});
+        setAvailableCredits([]);
         localStorage.removeItem("pos_current_draft");
+      };
+
+      if (!navigator.onLine) {
+        await processOfflineCheckout();
         return;
       }
-      const { data: r } = await api.post(endpoint, payload);
-      setLastSale(r);
-      setShowSaleCompleteModal(true);
-      toast("Sale completed successfully", "success");
-      if (autoPrint) { directPrintReceipt(r); }
-      clearCart();
-      setSelectedAdvanceMap({});
-      setAvailableAdvances([]);
-      setSelectedCreditMap({});
-      setAvailableCredits([]);
-      localStorage.removeItem("pos_current_draft");
-      const refreshed = await api.get('/pos/sales');
-      salesFetch.setData(refreshed.data);
-      inventoryFetch.refresh();
+
+      try {
+        const { data: r } = await api.post(endpoint, payload);
+        setLastSale(r);
+        setShowSaleCompleteModal(true);
+        toast("Sale completed successfully", "success");
+        if (autoPrint) { directPrintReceipt(r); }
+        clearCart();
+        setSelectedAdvanceMap({});
+        setAvailableAdvances([]);
+        setSelectedCreditMap({});
+        setAvailableCredits([]);
+        localStorage.removeItem("pos_current_draft");
+        const refreshed = await api.get('/pos/sales');
+        salesFetch.setData(refreshed.data);
+        inventoryFetch.refresh();
+      } catch (postErr) {
+        if (!navigator.onLine || postErr?.code === "ERR_NETWORK" || !postErr.response) {
+          await processOfflineCheckout();
+          return;
+        }
+        throw postErr;
+      }
     } catch (err) {
       // Log full server response to aid debugging (422 validation details)
       const serverDetail = err?.response?.data;
@@ -1167,9 +1287,7 @@ export default function POS() {
         console.error("Failed fields:", serverDetail.meta.errors.map(e => e.loc?.join(".")).join(", "));
       }
       
-      // Log the payload that was sent for debugging
       console.debug("Checkout payload sent:", payload);
-      
       const message = serverDetail?.detail || serverDetail?.message || (typeof serverDetail === "string" ? serverDetail : null) || err.message || "Checkout failed";
       toast(message, "error");
     }
@@ -1645,12 +1763,14 @@ export default function POS() {
           >
             Product Sale
           </button>
-          <button 
-            className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "repair" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
-            onClick={() => setMode("repair")}
-          >
-            Repair Billing
-          </button>
+          {hasRepairs && (
+            <button 
+              className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "repair" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
+              onClick={() => setMode("repair")}
+            >
+              Repair Billing
+            </button>
+          )}
           <button 
             className={`px-3 2xl:px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${mode === "reservation" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
             onClick={() => setMode("reservation")}
@@ -1719,14 +1839,109 @@ export default function POS() {
             <span className="text-[10px] text-amber-800 dark:text-amber-400 font-bold uppercase tracking-widest leading-none mb-1">Due Now</span>
             <span className="text-base font-black text-amber-900 dark:text-amber-300 leading-none">LKR {Math.round(dueAfterCredits).toLocaleString()}</span>
           </div>
+
+          {/* VIEW SWITCHER: TOUCH MODE VS CLASSIC */}
+          <button
+            type="button"
+            onClick={toggleTouchMode}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-black uppercase tracking-wider transition-all shadow-sm ${
+              isTouchMode
+                ? "bg-indigo-600 border-indigo-700 text-white shadow-indigo-500/20"
+                : "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+            }`}
+            title="Switch between Touch Terminal Pad Mode and Classic Desktop Mode"
+          >
+            <span className={`w-2 h-2 rounded-full ${isTouchMode ? "bg-emerald-400 animate-pulse" : "bg-slate-400"}`} />
+            <span>{isTouchMode ? "Touch Mode ON" : "Classic Mode"}</span>
+          </button>
         </div>
       </div>
 
-      {/* 3-PANEL WORKSPACE */}
-      <div className="grid flex-1 min-h-0 gap-3 overflow-hidden grid-cols-1 xl:grid-cols-[minmax(250px,0.82fr)_minmax(420px,1.18fr)_minmax(300px,0.9fr)] 2xl:grid-cols-[minmax(300px,0.85fr)_minmax(560px,1.35fr)_minmax(320px,0.8fr)]">
-        
-        {/* LEFT PANEL: PRODUCT EXPLORER (30%) */}
-        <div className="min-h-0 flex flex-col bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm">
+      {/* MAIN VIEW: TOUCH POS TERMINAL OR CLASSIC DESKTOP WORKSPACE */}
+      {isTouchMode ? (
+        <TouchPOSTerminal
+          mode={mode}
+          setMode={setMode}
+          repairTicketNo={repairTicketNo}
+          setRepairTicketNo={setRepairTicketNo}
+          repairTicketRef={repairTicketRef}
+          loadRepairTicketToCart={loadRepairTicketToCart}
+          addLaborCharge={addLaborCharge}
+          reservationNo={reservationNo}
+          setReservationNo={setReservationNo}
+          reservationRef={reservationRef}
+          loadReservationToCart={loadReservationToCart}
+          returnInvoiceLookup={returnInvoiceLookup}
+          setReturnInvoiceLookup={setReturnInvoiceLookup}
+          lookupReturnInvoice={lookupReturnInvoice}
+          returnSearchBusy={returnSearchBusy}
+          returnInvoicePayload={returnInvoicePayload}
+          selectedReturnItem={selectedReturnItem}
+          setSelectedReturnItem={setSelectedReturnItem}
+          returnAction={returnAction}
+          setReturnAction={setReturnAction}
+          returnQuantity={returnQuantity}
+          setReturnQuantity={setReturnQuantity}
+          returnNotes={returnNotes}
+          setReturnNotes={setReturnNotes}
+          processReturnAction={processReturnAction}
+          returnBusy={returnBusy}
+          cart={cart}
+          selectedCartIndex={selectedCartIndex}
+          setSelectedCartIndex={setSelectedCartIndex}
+          addItem={addItem}
+          stepQty={stepQty}
+          updateItem={updateItem}
+          removeItem={removeItem}
+          clearCart={clearCart}
+          subtotal={subtotal}
+          discountAmount={discountAmount}
+          discountMode={discountMode}
+          setDiscountMode={setDiscountMode}
+          discountValue={discountValue}
+          updateDiscountValue={updateDiscountValue}
+          maxDiscountAllowed={maxDiscountAllowed}
+          maxDiscountPercentAllowed={maxDiscountPercentAllowed}
+          discountError={discountError}
+          taxAmount={taxAmount}
+          grandTotal={grandTotal}
+          dueAfterCredits={dueAfterCredits}
+          appliedAdvanceTotal={appliedAdvanceTotal}
+          appliedStoreCreditTotal={appliedStoreCreditTotal}
+          paymentMethod={paymentMethod}
+          setPaymentMethod={setPaymentMethod}
+          cashReceived={cashReceived}
+          setCashReceived={setCashReceived}
+          change={change}
+          signedChange={signedChange}
+          checkout={checkout}
+          checkoutDisabled={checkoutDisabled}
+          hasNegativeMargin={hasNegativeMargin}
+          filteredInventory={filteredInventory}
+          categoryOptions={categoryOptions}
+          activeCategory={activeCategory}
+          setActiveCategory={setActiveCategory}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          scanCode={scanCode}
+          setScanCode={setScanCode}
+          tryAddByCode={tryAddByCode}
+          barcodeRef={barcodeRef}
+          productSearchRef={productSearchRef}
+          customerId={customerId}
+          setCustomerId={setCustomerId}
+          customers={customersFetch.data || []}
+          setShowNewCustomerModal={setShowNewCustomerModal}
+          openProductDetail={openProductDetail}
+          lastSale={lastSale}
+          printReceipt={printReceipt}
+        />
+      ) : (
+        /* 3-PANEL WORKSPACE (CLASSIC) */
+        <div className="grid flex-1 min-h-0 gap-3 overflow-hidden grid-cols-1 xl:grid-cols-[minmax(250px,0.82fr)_minmax(420px,1.18fr)_minmax(300px,0.9fr)] 2xl:grid-cols-[minmax(300px,0.85fr)_minmax(560px,1.35fr)_minmax(320px,0.8fr)]">
+          
+          {/* LEFT PANEL: PRODUCT EXPLORER (30%) */}
+          <div className="min-h-0 flex flex-col bg-white dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm">
           <div className="p-3 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-slate-900/50 space-y-2 shrink-0">
             <div className="relative">
               <Barcode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
@@ -1750,29 +1965,29 @@ export default function POS() {
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
-            
+
             {/* Category Pills */}
             <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1 pt-1">
               {categoryOptions.map(cat => (
                 <button 
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-colors border ${activeCategory === cat ? "bg-indigo-600 border-indigo-600 text-white" : "bg-slate-100 dark:bg-black/20 border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}
+                  className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-colors border ${activeCategory === cat ? "bg-indigo-600 border-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white"}`}
                 >
                   {cat}
                 </button>
               ))}
             </div>
-            
+
             <button 
               onClick={() => setQuickAddOpen((open) => !open)}
-              className={`w-full flex items-center justify-center gap-2 rounded-xl py-2 text-xs font-bold transition-all shadow-sm ${
+              className={`w-full flex items-center justify-center gap-2 rounded-xl py-2 px-3 text-xs font-black uppercase tracking-wider transition-all shadow-sm ${
                 quickAddOpen 
-                  ? "bg-indigo-50 text-indigo-700 border border-indigo-300 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/40 shadow-indigo-500/10" 
-                  : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-gradient-to-r dark:from-indigo-600/15 dark:via-purple-600/15 dark:to-indigo-600/15 dark:text-indigo-200 dark:border-indigo-500/30"
+                  ? "bg-indigo-600 text-white shadow-indigo-600/30" 
+                  : "bg-indigo-600 text-white hover:bg-indigo-500 shadow-md shadow-indigo-600/20"
               }`}
             >
-              {quickAddOpen ? <X size={14} /> : <Zap size={14} className="text-indigo-600 dark:text-indigo-400 animate-pulse" />}
+              {quickAddOpen ? <X size={14} className="stroke-[2.5]" /> : <Zap size={14} className="text-amber-300 stroke-[2.5]" />}
               <span>{quickAddOpen ? "Hide Quick Add Form" : "Quick Add / Manual Sale"}</span>
             </button>
           </div>
@@ -1852,62 +2067,48 @@ export default function POS() {
               <div>
                 <button 
                   type="button" 
-                  onClick={() => setQuickAddOptional((v) => !v)} 
-                  className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-semibold transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/20"
+                  onClick={() => setQuickAddDetailsOpen((open) => !open)} 
+                  className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-semibold"
                 >
-                  <ChevronDown size={14} className={quickAddOptional ? "rotate-180 transition-transform duration-200" : "transition-transform duration-200"} />
-                  {quickAddOptional ? "Hide Optional Details" : "+ More Item Details (SKU, Cost, Tax, Discount)"}
+                  <span>{quickAddDetailsOpen ? "Hide Advanced Options" : "Show Advanced Options (Cost, Serial, Warranty)"}</span>
+                  <ChevronDown size={13} className={`transform transition-transform ${quickAddDetailsOpen ? 'rotate-180' : ''}`} />
                 </button>
               </div>
 
-              {/* Optional Fields */}
-              {quickAddOptional ? (
-                <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 p-3 bg-black/40 rounded-xl border border-white/10 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <Input label="SKU / Product Code" name="sku" value={quickAddForm.sku} onChange={handleQuickAddChange} placeholder="Auto-generated if empty" />
-                  <Input label="Cost Price (LKR)" type="text" inputMode="decimal" autoComplete="off" name="cost_price" value={quickAddForm.cost_price} onChange={handleQuickAddChange} placeholder="0.00" />
-                  <Input label="Tax Rate (%)" type="text" inputMode="decimal" autoComplete="off" name="tax_rate" value={quickAddForm.tax_rate} onChange={handleQuickAddChange} placeholder="0" />
-                  <Input label="Discount (%)" type="text" inputMode="decimal" autoComplete="off" name="discount" value={quickAddForm.discount} onChange={handleQuickAddChange} placeholder="0" />
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-400 mb-1">Item Description / Notes</label>
-                    <textarea
-                      name="description"
-                      value={quickAddForm.description}
-                      onChange={handleQuickAddChange}
-                      placeholder="Brief details about the item..."
-                      className="w-full min-h-[64px] rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none transition-all"
-                    />
+              {quickAddDetailsOpen ? (
+                <div className="space-y-2.5 border-t border-white/5 pt-2.5">
+                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
+                    <Input label="Cost Price (LKR)" type="text" inputMode="decimal" autoComplete="off" name="cost_price" value={quickAddForm.cost_price} onChange={handleQuickAddChange} placeholder="0.00" />
+                    <Input label="Min Selling Price (LKR)" type="text" inputMode="decimal" autoComplete="off" name="min_sale_price" value={quickAddForm.min_sale_price} onChange={handleQuickAddChange} placeholder="0.00" />
+                    <Input label="SKU / Item Code" name="sku" value={quickAddForm.sku} onChange={handleQuickAddChange} placeholder="Optional" />
+                    <Input label="Barcode" name="barcode" value={quickAddForm.barcode} onChange={handleQuickAddChange} placeholder="Optional" />
+                    <Input label="Warranty (Days)" type="text" inputMode="numeric" autoComplete="off" name="warranty_days" value={quickAddForm.warranty_days} onChange={handleQuickAddChange} placeholder="0" />
+                    <Input label="Serial Number" name="serial_number" value={quickAddForm.serial_number} onChange={handleQuickAddChange} placeholder="Optional" />
+                  </div>
+                  <div className="flex flex-wrap gap-4 pt-1">
+                    <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                      <input type="checkbox" name="is_serialized" checked={quickAddForm.is_serialized} onChange={handleQuickAddChange} className="rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-indigo-400" />
+                      <span>Track Serial</span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                      <input type="checkbox" name="is_taxable" checked={quickAddForm.is_taxable} onChange={handleQuickAddChange} className="rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-indigo-400" />
+                      <span>Apply Tax</span>
+                    </label>
                   </div>
                 </div>
               ) : null}
 
-              {/* Action Cards */}
-              <div className="grid gap-2 sm:grid-cols-3 pt-1">
-                <button 
-                  type="button" 
-                  disabled={quickAddLoading} 
-                  onClick={() => submitQuickAdd("temporary")} 
-                  className="relative overflow-hidden group border border-slate-700 hover:border-slate-500 bg-gradient-to-b from-slate-800/90 to-slate-900 hover:from-slate-800 hover:to-slate-850 px-3 py-2.5 rounded-xl text-left transition-all shadow-md disabled:opacity-60"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-slate-700/60 text-slate-300 group-hover:text-white transition-colors">
-                      <Clock size={16} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white group-hover:text-indigo-200 transition-colors">Temporary Item</div>
-                      <div className="text-[10px] text-slate-400">This transaction only</div>
-                    </div>
-                  </div>
-                </button>
-
+              {/* Action Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-white/10">
                 <button 
                   type="button" 
                   disabled={quickAddLoading} 
                   onClick={() => submitQuickAdd("draft")} 
-                  className="relative overflow-hidden group border border-amber-500/40 hover:border-amber-400/80 bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-950 px-3 py-2.5 rounded-xl text-left transition-all shadow-md disabled:opacity-60"
+                  className="relative overflow-hidden group border border-amber-500/30 hover:border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-2.5 rounded-xl text-left transition-all disabled:opacity-60"
                 >
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 group-hover:bg-amber-500/30 transition-colors">
-                      <FileText size={16} />
+                    <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-300 shadow-sm">
+                      <Clock size={16} />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-amber-300 group-hover:text-amber-200 transition-colors">Save as Draft</div>
@@ -1915,27 +2116,10 @@ export default function POS() {
                     </div>
                   </div>
                 </button>
-
-                <button 
-                  type="button" 
-                  disabled={quickAddLoading} 
-                  onClick={() => submitQuickAdd("inventory")} 
-                  className="relative overflow-hidden group border border-indigo-400/40 hover:border-indigo-300 bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-3 py-2.5 rounded-xl text-left transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-60"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-white/20 text-white shadow-sm">
-                      <PackagePlus size={16} />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white">Save to Inventory</div>
-                      <div className="text-[10px] text-indigo-100/80">Permanent product</div>
-                    </div>
-                  </div>
-                </button>
               </div>
             </div>
           ) : null}
-          
+
           <div className="flex-1 overflow-y-auto custom-scrollbar p-2 grid grid-cols-1 2xl:grid-cols-2 gap-2 content-start">
             {catalogLoading && (
               <div className="col-span-2 text-center py-3 text-[11px] text-slate-400">Searching products...</div>
@@ -1976,59 +2160,37 @@ export default function POS() {
                 tabIndex={0}
                 className="cursor-pointer bg-slate-50 hover:bg-indigo-50/40 dark:bg-black/20 dark:hover:bg-indigo-500/10 border border-slate-200 dark:border-white/5 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all p-3 rounded-xl flex flex-col text-left group shadow-sm"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-semibold text-sm text-slate-800 dark:text-slate-200 line-clamp-2 leading-tight group-hover:text-indigo-600 dark:group-hover:text-white">{i.name}</div>
+                <div className="flex items-start justify-between gap-1.5">
+                  <div className="font-bold text-slate-900 dark:text-slate-100 line-clamp-1 leading-tight group-hover:text-indigo-600 dark:group-hover:text-white text-xs">{i.name}</div>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       openProductDetail(i);
                     }}
-                    className="shrink-0 p-1 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10"
+                    className="shrink-0 p-1 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     title="View details"
                   >
                     <Info size={12} />
                   </button>
                 </div>
-                <div className="text-[10px] text-slate-500 mt-1">{i.sku || 'No SKU'}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-1">
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${stockLabel === "Available" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 border border-emerald-200 dark:border-transparent" : stockLabel === "Low Stock" ? "bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300 border border-amber-200 dark:border-transparent" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300 border border-rose-200 dark:border-transparent"}`}>
-                    {stockLabel}
+                <div className="flex items-center justify-between mt-1 text-[10px]">
+                  <span className="font-mono text-slate-500 truncate max-w-[100px]">{i.sku || 'No SKU'}</span>
+                  <span className={`px-1.5 py-0.2 rounded font-bold text-[9px] ${stockLabel === "Available" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : stockLabel === "Low Stock" ? "bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"}`}>
+                    {availableQty} in stock
                   </span>
-                  {Number(i.warranty_days || 0) > 0 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300 border border-sky-200 dark:border-transparent">
-                      {Number(i.warranty_days)}d Warranty
-                    </span>
-                  )}
                 </div>
-                <div className="mt-auto pt-3 flex flex-col gap-1.5 w-full">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">Rs. {i.sale_price.toLocaleString()}</span>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${availableQty > 5 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400" : availableQty > 0 ? "bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300" : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"}`}>
-                      {availableQty} avail
-                    </span>
-                  </div>
-                  {reservedQty > 0 && (
-                    <div className="flex justify-between items-center text-[10px]">
-                      <span className="text-slate-500">Reserved:</span>
-                      <span className="text-cyan-600 dark:text-cyan-300 font-bold">{reservedQty}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-500">Margin:</span>
-                    <span className={margin < 0 ? "text-rose-600 dark:text-rose-400 font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold"}>
-                      {marginPercent}% (Rs. {Math.round(margin).toLocaleString()})
-                    </span>
-                  </div>
+                <div className="mt-2 pt-1 border-t border-slate-200 dark:border-white/5 flex items-center justify-between">
+                  <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">Rs. {i.sale_price.toLocaleString()}</span>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       addItem(i);
                     }}
-                    className="mt-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-indigo-600/20 dark:hover:bg-indigo-600/30 dark:text-indigo-200 dark:border-indigo-400/30 text-[10px] font-bold py-1 transition"
+                    className="px-2 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] transition active:scale-95 shadow-sm"
                   >
-                    Quick Add
+                    + Add
                   </button>
                 </div>
               </div>
@@ -2036,11 +2198,8 @@ export default function POS() {
             })}
             {filteredInventory.length === 0 && (
               <div className="col-span-2 flex flex-col items-center justify-center py-12 px-4 text-center">
-                <div className="mb-2.5 grid h-10 w-10 place-items-center rounded-xl border border-slate-300 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-400">
-                  <Boxes size={20} />
-                </div>
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No Products Found</p>
-                <p className="text-[11px] text-slate-500 max-w-[200px] mt-0.5">Try searching with a different keyword or scan another barcode.</p>
+                <PackageOpen size={24} className="text-slate-400 mb-1" />
+                <div className="text-xs font-bold text-slate-700 dark:text-slate-300">No products found</div>
               </div>
             )}
           </div>
@@ -2135,60 +2294,61 @@ export default function POS() {
                     const margin = inv ? (c.price - inv.cost_price) : 0;
                     const isNegativeMargin = !c.is_labor && margin < 0;
                     return (
-                    <tr key={`${c.item_id}-${idx}`} onClick={() => setSelectedCartIndex(idx)} className={`hover:bg-slate-100 dark:hover:bg-white/5 transition-colors group ${selectedCartIndex === idx ? "bg-indigo-50/80 dark:bg-indigo-500/10 border-l-2 border-indigo-500" : ""} ${isNegativeMargin ? "bg-rose-500/5" : ""}`}>
-                       <td className="p-3">
-                         <div className="font-semibold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <tr key={`${c.item_id}-${idx}`} onClick={() => { setSelectedCartIndex(idx); setTouchPadBuffer(String(c.quantity || "1")); }} className={`hover:bg-slate-100 dark:hover:bg-white/5 transition-colors group cursor-pointer ${selectedCartIndex === idx ? "bg-indigo-50/90 dark:bg-indigo-500/15 border-l-4 border-indigo-600 dark:border-indigo-400" : ""} ${isNegativeMargin ? "bg-rose-500/5" : ""} ${isTouchMode ? "py-3" : ""}`}>
+                       <td className={`${isTouchMode ? "p-3.5" : "p-3"}`}>
+                         <div className={`font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 ${isTouchMode ? "text-base" : "text-sm"}`}>
                            {c.name}
-                           {isNegativeMargin && <AlertCircle size={14} className="text-rose-400" />}
+                           {isNegativeMargin && <AlertCircle size={16} className="text-rose-500 shrink-0" />}
                          </div>
+                         {isTouchMode && c.sku && <div className="text-[11px] text-slate-400 font-mono mt-0.5">{c.sku}</div>}
                        </td>
-                       <td className="p-3 text-center">
-                         <span className={`inline-flex px-2 py-1 rounded text-[10px] font-bold uppercase ${c.line_type === "manual_product" ? "bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-500/30" : c.line_type === "product" || c.line_type === "spare_part" ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
+                       <td className={`${isTouchMode ? "p-3.5" : "p-3"} text-center`}>
+                         <span className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${c.line_type === "manual_product" ? "bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-500/30" : c.line_type === "product" || c.line_type === "spare_part" ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
                            {c.line_type === "manual_product" ? "Quick Sale" : String(c.line_type || "product").replace("_", " ")}
                          </span>
                        </td>
-                       <td className="p-3">
-                         <div className="flex items-center justify-center bg-slate-100 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg overflow-hidden">
-                           <button onClick={() => stepQty(c.item_id, -1)} className="px-2 py-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10"><Minus size={12}/></button>
+                       <td className={`${isTouchMode ? "p-3.5" : "p-3"}`}>
+                         <div className={`flex items-center justify-center bg-slate-100 dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-xl overflow-hidden shadow-sm ${isTouchMode ? "h-11" : ""}`}>
+                           <button type="button" onClick={(e) => { e.stopPropagation(); stepQty(c.item_id, -1); }} className={`${isTouchMode ? "px-3.5 py-2 text-base" : "px-2 py-1.5"} text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition active:scale-95`}><Minus size={isTouchMode ? 16 : 12}/></button>
                           <input 
                             type="number" 
-                            className="w-8 bg-transparent text-center text-sm font-bold text-slate-900 dark:text-white outline-none no-spinners" 
+                            className={`${isTouchMode ? "w-12 text-base" : "w-8 text-sm"} bg-transparent text-center font-black text-slate-900 dark:text-white outline-none no-spinners`} 
                             value={c.quantity}
                             onChange={(e) => updateItem(c.item_id, 'quantity', Math.max(1, Number(e.target.value)))}
                           />
-                          <button onClick={() => stepQty(c.item_id, 1)} className="px-2 py-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10"><Plus size={12}/></button>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); stepQty(c.item_id, 1); }} className={`${isTouchMode ? "px-3.5 py-2 text-base" : "px-2 py-1.5"} text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition active:scale-95`}><Plus size={isTouchMode ? 16 : 12}/></button>
                         </div>
                       </td>
-                      <td className="p-3">
+                      <td className={`${isTouchMode ? "p-3.5" : "p-3"}`}>
                         <input 
                           type="number" 
-                          className={`w-full bg-transparent text-right text-sm font-semibold outline-none focus:bg-slate-100 dark:focus:bg-white/5 border border-transparent focus:border-slate-300 dark:focus:border-white/10 rounded px-1 text-slate-900 dark:text-white ${isNegativeMargin ? "text-rose-600 dark:text-rose-400" : ""}`}
+                          className={`w-full bg-transparent text-right font-black outline-none focus:bg-slate-100 dark:focus:bg-white/5 border border-transparent focus:border-slate-300 dark:focus:border-white/10 rounded-lg px-2 text-slate-900 dark:text-white ${isTouchMode ? "text-base py-1.5" : "text-sm"} ${isNegativeMargin ? "text-rose-600 dark:text-rose-400" : ""}`}
                           value={c.price}
                           onChange={(e) => updateItem(c.item_id, 'price', Math.max(0, Number(e.target.value)))}
                         />
                       </td>
-                      <td className="p-3 text-center">
+                      <td className={`${isTouchMode ? "p-3.5" : "p-3"} text-center`}>
                         {c.is_labor ? (
                           <span className="text-xs text-slate-500">-</span>
                         ) : (
-                          <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-black/30 border border-slate-300 dark:border-white/10 rounded px-1.5 py-0.5">
+                          <div className={`inline-flex items-center gap-1 bg-slate-100 dark:bg-black/30 border border-slate-300 dark:border-white/10 rounded-lg px-2 py-1 ${isTouchMode ? "h-9" : ""}`}>
                             <input
                               type="number"
-                              className="bg-transparent text-[10px] w-10 text-center text-slate-800 dark:text-slate-200 outline-none"
+                              className={`bg-transparent ${isTouchMode ? "text-xs w-12" : "text-[10px] w-10"} text-center font-bold text-slate-800 dark:text-slate-200 outline-none`}
                               value={c.warranty_days}
                               onChange={(e) => updateItem(c.item_id, 'warranty_days', Number(e.target.value))}
                               title="Warranty in days"
                             />
-                            <span className="text-[10px] text-slate-500">d</span>
+                            <span className="text-[10px] text-slate-500 font-bold">d</span>
                           </div>
                         )}
                       </td>
-                      <td className="p-3 text-right font-black text-indigo-600 dark:text-indigo-300">
+                      <td className={`${isTouchMode ? "p-3.5 text-base" : "p-3 text-sm"} text-right font-black text-indigo-600 dark:text-indigo-300`}>
                         {(c.price * c.quantity).toLocaleString()}
                       </td>
-                      <td className="p-3 text-right">
-                        <button onClick={() => removeItem(c.item_id)} className="text-rose-500/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors p-1 rounded hover:bg-rose-500/10">
-                          <Trash2 size={16} />
+                      <td className={`${isTouchMode ? "p-3.5" : "p-3"} text-right`}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); removeItem(c.item_id); }} className="text-rose-500/60 hover:text-rose-600 dark:hover:text-rose-400 transition-colors p-2 rounded-xl hover:bg-rose-500/10 active:scale-95" title="Remove item">
+                          <Trash2 size={isTouchMode ? 18 : 16} />
                         </button>
                       </td>
                     </tr>
@@ -2634,39 +2794,71 @@ export default function POS() {
                   )}
                 </div>
 
-                {/* 2. ORDER SUMMARY & DUE NOW HERO */}
-                <div className="rounded-2xl border border-slate-200 dark:border-amber-400/30 bg-slate-50 dark:bg-gradient-to-b dark:from-amber-950/20 dark:via-slate-900/90 dark:to-slate-950 p-3.5 shadow-sm dark:shadow-xl space-y-2.5">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                {/* 2. UNIFIED ORDER SUMMARY, DISCOUNT & DUE NOW CARD (COMPACT VIEWPORT) */}
+                <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/60 p-3 shadow-sm space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                     <span>Subtotal ({cart.reduce((sum, item) => sum + Number(item.quantity || 1), 0)} items)</span>
-                    <span className="font-semibold text-slate-900 dark:text-slate-200">LKR {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  {discountAmount > 0 && (
-                    <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400">
-                      <span>Discount ({discountMode === 'percent' ? `${discountValue}%` : 'Flat'})</span>
-                      <span className="font-semibold">- LKR {discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  )}
-                  {Number(taxAmount || 0) > 0 && (
-                    <div className="flex items-center justify-between text-[11px] text-sky-700 dark:text-sky-400">
-                      <span>Tax</span>
-                      <span className="font-semibold">+ LKR {Number(taxAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  )}
-                  <div className="border-t border-slate-200 dark:border-white/10 pt-2 flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Total Amount</span>
-                    <span className="text-sm font-black text-slate-900 dark:text-indigo-200">LKR {Math.round(grandTotal).toLocaleString()}</span>
+                    <span className="font-bold text-slate-900 dark:text-slate-200">LKR {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
 
+                  {/* Inline Discount Control */}
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200 dark:border-white/5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <Percent size={12} className="text-indigo-600 dark:text-indigo-400" />
+                      <span>Discount</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-0.5 rounded-lg bg-slate-200 dark:bg-black/50 p-0.5 border border-slate-300 dark:border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => setDiscountMode('percent')}
+                          className={`px-1.5 py-0.5 text-[9px] font-black rounded transition ${discountMode === 'percent' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 dark:text-slate-400'}`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiscountMode('amount')}
+                          className={`px-1.5 py-0.5 text-[9px] font-black rounded transition ${discountMode === 'amount' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 dark:text-slate-400'}`}
+                        >
+                          LKR
+                        </button>
+                      </div>
+                      <input
+                        aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
+                        type="number"
+                        className="w-20 bg-white dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-2 py-0.5 text-right text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                        placeholder={discountMode === 'percent' ? '0 %' : '0 LKR'}
+                        value={discountValue}
+                        onChange={e => updateDiscountValue(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {discountAmount > 0 && (
+                    <div className="flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 font-semibold">
+                      <span>Discount Applied</span>
+                      <span>- LKR {discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+
+                  {Number(taxAmount || 0) > 0 && (
+                    <div className="flex items-center justify-between text-xs text-sky-600 dark:text-sky-400 font-semibold">
+                      <span>Tax</span>
+                      <span>+ LKR {Number(taxAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+
                   {(appliedAdvanceTotal > 0 || appliedStoreCreditTotal > 0) && (
-                    <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 text-[10px]">
                       {appliedAdvanceTotal > 0 && (
-                        <div className="rounded-lg bg-emerald-50 dark:bg-black/40 px-2.5 py-1 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20 flex justify-between">
+                        <div className="rounded-lg bg-emerald-50 dark:bg-black/40 px-2 py-1 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20 flex justify-between">
                           <span>Advance:</span>
                           <strong>-LKR {Math.round(appliedAdvanceTotal).toLocaleString()}</strong>
                         </div>
                       )}
                       {appliedStoreCreditTotal > 0 && (
-                        <div className="rounded-lg bg-cyan-50 dark:bg-black/40 px-2.5 py-1 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/20 flex justify-between">
+                        <div className="rounded-lg bg-cyan-50 dark:bg-black/40 px-2 py-1 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/20 flex justify-between">
                           <span>Credit:</span>
                           <strong>-LKR {Math.round(appliedStoreCreditTotal).toLocaleString()}</strong>
                         </div>
@@ -2674,62 +2866,17 @@ export default function POS() {
                     </div>
                   )}
 
-                  {/* PROMINENT DUE NOW HERO BOX */}
-                  <div className="rounded-xl border border-amber-300 dark:border-amber-400/40 bg-amber-50 dark:bg-gradient-to-r dark:from-amber-500/20 dark:via-amber-500/10 dark:to-transparent p-3 flex items-center justify-between shadow-inner mt-2">
+                  {/* PROMINENT DUE NOW HERO BOX (COMPACT) */}
+                  <div className="rounded-xl border border-amber-300 dark:border-amber-400/40 bg-gradient-to-r from-amber-50 to-amber-100/60 dark:from-amber-500/20 dark:via-amber-500/10 dark:to-transparent p-2.5 flex items-center justify-between shadow-inner mt-1">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300/90">DUE NOW</p>
-                      <p className="text-2xl sm:text-3xl font-black leading-none text-slate-950 dark:text-white tracking-tight mt-0.5">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300/90">DUE NOW</p>
+                      <p className="text-xl sm:text-2xl font-black leading-none text-slate-950 dark:text-white tracking-tight mt-0.5">
                         LKR {Math.round(dueAfterCredits).toLocaleString()}
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full bg-amber-200 dark:bg-amber-400/20 border border-amber-300 dark:border-amber-400/30 text-amber-900 dark:text-amber-200 text-[10px] font-extrabold uppercase">
+                    <span className="px-2 py-0.5 rounded-full bg-amber-200 dark:bg-amber-400/20 border border-amber-300 dark:border-amber-400/30 text-amber-900 dark:text-amber-200 text-[10px] font-black uppercase">
                       {cart.length} {cart.length === 1 ? 'Item' : 'Items'}
                     </span>
-                  </div>
-                </div>
-
-                {/* 3. DISCOUNT BAR */}
-                <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-black/30 p-2.5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                      <Percent size={13} className="text-indigo-600 dark:text-indigo-400" />
-                      <span>Discount</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-black/50 p-0.5 border border-slate-200 dark:border-white/10">
-                        <button
-                          type="button"
-                          onClick={() => setDiscountMode('amount')}
-                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'amount' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
-                        >
-                          LKR
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDiscountMode('percent')}
-                          className={`px-2 py-0.5 text-[10px] font-extrabold rounded-md transition ${discountMode === 'percent' ? 'bg-indigo-600 text-white shadow' : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'}`}
-                        >
-                          %
-                        </button>
-                      </div>
-                      <input
-                        aria-label={discountMode === 'percent' ? 'Discount percentage' : 'Discount amount in LKR'}
-                        type="number"
-                        className="w-24 bg-white dark:bg-black/40 border border-slate-300 dark:border-white/10 rounded-lg px-2.5 py-1 text-right text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                        placeholder={discountMode === 'percent' ? '0 %' : '0 LKR'}
-                        value={discountValue}
-                        onChange={e => updateDiscountValue(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-right">
-                    {discountError ? (
-                      <span className="text-rose-600 dark:text-rose-400 font-semibold">{discountError}</span>
-                    ) : (
-                      <span className="text-slate-500">
-                        {discountMode === 'percent' ? `Max allowed: ${Math.max(0, Math.floor(maxDiscountPercentAllowed))}%` : `Max allowed: LKR ${Math.round(maxDiscountAllowed)}`}
-                      </span>
-                    )}
                   </div>
                 </div>
 
@@ -2740,38 +2887,136 @@ export default function POS() {
                     <span className="text-indigo-600 dark:text-indigo-400 font-bold text-[10px]">{paymentMethod}</span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                    {[
-                      { id: "Cash", label: "Cash", icon: Banknote, key: "F4" },
-                      { id: "Card", label: "Card", icon: CreditCard, key: "F5" },
-                      { id: "Bank Transfer", label: "Bank", icon: Banknote, key: "F6" },
-                      { id: "Store Credit", label: "Credit", icon: Wallet, key: "F7" },
-                      { id: "Mixed", label: "Mixed", icon: Wallet, key: "F8" },
-                    ].map((item) => {
-                      const IconComponent = item.icon;
-                      const isActive = paymentMethod === item.id;
-                      return (
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                      {[
+                        { id: "Cash", label: "Cash", icon: Banknote, key: "F4" },
+                        { id: "Card", label: "Card", icon: CreditCard, key: "F5" },
+                        { id: "Bank Transfer", label: "Bank", icon: Landmark, key: "F6" },
+                        { id: "Store Credit", label: "Credit", icon: Wallet, key: "F7" },
+                        { id: "Mixed", label: "Mixed", icon: Layers, key: "F8" },
+                      ].map((item) => {
+                        const IconComponent = item.icon;
+                        const isActive = paymentMethod === item.id;
+                        return (
+                          <button
+                            key={`rail-${item.id}`}
+                            type="button"
+                            onClick={() => setPaymentMethod(item.id)}
+                            className={`flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-black transition-all shadow-sm ${
+                              isActive
+                                ? "border-indigo-500 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400/40"
+                                : "border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/90 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-850"
+                            }`}
+                          >
+                            <IconComponent size={14} className={`stroke-[2.5] ${isActive ? "text-white" : "text-slate-500 dark:text-slate-400"}`} />
+                            <span>{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                  {/* TOUCH NUMPAD & QUICK TENDER (VISIBLE IN TOUCH MODE) */}
+                  {isTouchMode && (
+                    <div className="rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-slate-50 dark:bg-black/40 p-3 space-y-2.5 shadow-sm">
+                      {/* Numpad Target Switcher */}
+                      <div className="flex items-center justify-between gap-1 bg-slate-200/80 dark:bg-black/60 p-1 rounded-xl">
                         <button
-                          key={`rail-${item.id}`}
                           type="button"
-                          onClick={() => setPaymentMethod(item.id)}
-                          className={`flex items-center justify-between rounded-xl border px-2.5 py-2 text-[11px] font-extrabold transition-all shadow-sm ${
-                            isActive
-                              ? "border-indigo-600 bg-indigo-50 text-indigo-900 dark:border-indigo-400/90 dark:bg-gradient-to-r dark:from-indigo-600/30 dark:to-purple-600/30 dark:text-white shadow-indigo-500/10 dark:shadow-indigo-950/40 ring-1 ring-indigo-500/30 dark:ring-indigo-400/50"
-                              : "border-slate-200 dark:border-white/10 bg-white dark:bg-black/30 text-slate-700 dark:text-slate-400 hover:border-slate-300 dark:hover:border-white/20 hover:text-slate-950 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-black/50"
+                          onClick={() => setTouchPadTarget("cash")}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+                            touchPadTarget === "cash"
+                              ? "bg-emerald-600 text-white shadow-md"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                           }`}
                         >
-                          <span className="flex items-center gap-1.5">
-                            <IconComponent size={13} className={isActive ? "text-indigo-600 dark:text-indigo-300" : "text-slate-400 dark:text-slate-500"} />
-                            {item.label}
-                          </span>
-                          <span className={`rounded px-1 py-0.5 text-[8px] font-bold border ${isActive ? "bg-indigo-100 dark:bg-indigo-500/30 border-indigo-200 dark:border-indigo-400/40 text-indigo-700 dark:text-indigo-200" : "bg-slate-100 dark:bg-black/40 border-slate-200 dark:border-white/5 text-slate-500"}`}>
-                            {item.key}
-                          </span>
+                          Cash In
                         </button>
-                      );
-                    })}
-                  </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTouchPadTarget("qty");
+                            const cur = cart[selectedCartIndex];
+                            if (cur) setTouchPadBuffer(String(cur.quantity || "1"));
+                          }}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+                            touchPadTarget === "qty"
+                              ? "bg-indigo-600 text-white shadow-md"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                          }`}
+                        >
+                          Qty
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTouchPadTarget("discount")}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+                            touchPadTarget === "discount"
+                              ? "bg-rose-600 text-white shadow-md"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                          }`}
+                        >
+                          Disc
+                        </button>
+                      </div>
+
+                      {/* Display readout of what's currently being typed */}
+                      <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white dark:bg-black/60 border border-slate-200 dark:border-white/10 shadow-inner">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          {touchPadTarget === "cash" ? "Cash Given" : touchPadTarget === "qty" ? `Qty (Item #${selectedCartIndex + 1})` : "Discount Value"}
+                        </span>
+                        <span className="text-xl font-black text-slate-900 dark:text-white">
+                          {touchPadTarget === "cash"
+                            ? (cashReceived !== "" ? `LKR ${Number(cashReceived).toLocaleString()}` : "0.00")
+                            : touchPadTarget === "qty"
+                            ? (touchPadBuffer || (cart[selectedCartIndex]?.quantity || 1))
+                            : `${discountValue} ${discountMode === 'percent' ? '%' : 'LKR'}`}
+                        </span>
+                      </div>
+
+                      {/* 4x4 Grid Numeric Keypad */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[
+                          "7", "8", "9", "C",
+                          "4", "5", "6", "DEL",
+                          "1", "2", "3", "00",
+                          ".", "0", "EXACT", "ENTER"
+                        ].map((btnKey) => {
+                          const isSpecial = btnKey === "C" || btnKey === "DEL";
+                          return (
+                            <button
+                              key={`touch-pad-${btnKey}`}
+                              type="button"
+                              onClick={() => {
+                                if (btnKey === "EXACT") {
+                                  setCashReceived(Math.round(dueAfterCredits));
+                                  setPaymentMethod("Cash");
+                                } else if (btnKey === "ENTER") {
+                                  if (touchPadTarget === "cash" && !checkoutDisabled) {
+                                    checkout();
+                                  } else {
+                                    setTouchPadTarget("cash");
+                                  }
+                                } else {
+                                  handleNumpadPress(btnKey);
+                                }
+                              }}
+                              className={`h-11 rounded-xl font-black text-sm flex items-center justify-center transition-all active:scale-95 shadow-sm select-none ${
+                                btnKey === "ENTER"
+                                  ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 font-extrabold"
+                                  : btnKey === "EXACT"
+                                  ? "bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold"
+                                  : isSpecial
+                                  ? "bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300"
+                                  : "bg-white hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-900 dark:text-white border border-slate-200 dark:border-white/10 text-base"
+                              }`}
+                            >
+                              {btnKey}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* DYNAMIC PAYMENT INPUTS */}
                   {paymentMethod === "Cash" && (
@@ -2910,44 +3155,44 @@ export default function POS() {
 
                 {/* 6. SECONDARY QUICK ACTIONS TOOLBAR */}
                 <div className="flex items-center justify-between gap-2 pt-1">
-                  <div className="flex items-center gap-1.5 flex-1">
+                  <div className="grid grid-cols-4 gap-2 flex-1">
                     <button
                       type="button"
                       onClick={clearCart}
-                      className="p-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-300 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/20 transition-colors shadow-sm"
+                      className="py-2 px-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-300 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 dark:border-rose-800/40 transition-colors shadow-sm flex items-center justify-center"
                       title="Clear Cart (ESC)"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={16} className="stroke-[2.5]" />
                     </button>
                     <button
                       type="button"
                       onClick={printReceipt}
                       disabled={!lastSale}
-                      className={`p-2.5 rounded-xl border transition-colors shadow-sm ${
+                      className={`py-2 px-2.5 rounded-xl border transition-colors shadow-sm flex items-center justify-center ${
                         lastSale
-                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:border-indigo-500/30 dark:text-indigo-300 dark:hover:bg-indigo-500/20'
-                          : 'bg-slate-100 border-slate-300 text-slate-400 dark:bg-white/5 dark:border-white/5 dark:text-slate-600 cursor-not-allowed'
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:border-indigo-500/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60'
+                          : 'bg-slate-100 border-slate-200 text-slate-400 dark:bg-white/5 dark:border-white/10 dark:text-slate-500 cursor-not-allowed'
                       }`}
                       title="Print Last Receipt (Ctrl+P)"
                     >
-                      <Printer size={16} />
+                      <Printer size={16} className="stroke-[2.5]" />
                     </button>
                     <button
                       type="button"
                       onClick={suspendCurrentCart}
-                      className="relative p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 dark:border-white/10 transition-colors shadow-sm"
+                      className="relative py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-white/10 transition-colors shadow-sm flex items-center justify-center"
                       title="Suspend Cart"
                     >
-                      <Save size={16} />
+                      <Save size={16} className="stroke-[2.5]" />
                       {pendingSync && <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full animate-pulse" title="Auto-saving..." />}
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowSuspendPicker(true)}
-                      className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 dark:border-white/10 transition-colors shadow-sm"
+                      className="py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-white/10 transition-colors shadow-sm flex items-center justify-center"
                       title="Resume Cart"
                     >
-                      <FolderOpen size={16} />
+                      <FolderOpen size={16} className="stroke-[2.5]" />
                     </button>
                   </div>
                 </div>
@@ -3266,6 +3511,7 @@ export default function POS() {
         </div>
 
       </div>
+      )}
 
       {/* RETURN MODAL */}
       <AppModal

@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import api from "../lib/api";
 
-const CapabilityContext = createContext({
-  industryType: "MOBILE_RETAIL",
-  capabilities: {
+export const INDUSTRY_TEMPLATES = {
+  MOBILE_RETAIL: {
     imei_tracking: true,
     serial_tracking: true,
     repairs_management: true,
@@ -19,15 +18,40 @@ const CapabilityContext = createContext({
     season_management: false,
     unit_conversions: false,
   },
-  hasCapability: () => true,
-  isLoading: false,
-  refreshCapabilities: async () => {},
-});
-
-export function CapabilityProvider({ children }) {
-  const [industryType, setIndustryType] = useState("MOBILE_RETAIL");
-  const [capabilities, setCapabilities] = useState({
-    imei_tracking: true,
+  GROCERY: {
+    imei_tracking: false,
+    serial_tracking: false,
+    repairs_management: false,
+    warranty_management: false,
+    warranty_claims: false,
+    trade_ins: false,
+    batch_tracking: true,
+    expiry_tracking: true,
+    weighted_products: true,
+    decimal_quantities: true,
+    variants_matrix: false,
+    size_color_variants: false,
+    season_management: false,
+    unit_conversions: true,
+  },
+  FASHION: {
+    imei_tracking: false,
+    serial_tracking: false,
+    repairs_management: false,
+    warranty_management: false,
+    warranty_claims: false,
+    trade_ins: false,
+    batch_tracking: false,
+    expiry_tracking: false,
+    weighted_products: false,
+    decimal_quantities: false,
+    variants_matrix: true,
+    size_color_variants: true,
+    season_management: true,
+    unit_conversions: false,
+  },
+  ELECTRONICS: {
+    imei_tracking: false,
     serial_tracking: true,
     repairs_management: true,
     warranty_management: true,
@@ -41,20 +65,98 @@ export function CapabilityProvider({ children }) {
     size_color_variants: false,
     season_management: false,
     unit_conversions: false,
-  });
+  },
+  COSMETICS: {
+    imei_tracking: false,
+    serial_tracking: false,
+    repairs_management: false,
+    warranty_management: false,
+    warranty_claims: false,
+    trade_ins: false,
+    batch_tracking: true,
+    expiry_tracking: true,
+    weighted_products: false,
+    decimal_quantities: false,
+    variants_matrix: true,
+    size_color_variants: false,
+    season_management: false,
+    unit_conversions: false,
+  },
+  GENERAL_RETAIL: {
+    imei_tracking: false,
+    serial_tracking: false,
+    repairs_management: false,
+    warranty_management: true,
+    warranty_claims: false,
+    trade_ins: false,
+    batch_tracking: false,
+    expiry_tracking: false,
+    weighted_products: false,
+    decimal_quantities: false,
+    variants_matrix: true,
+    size_color_variants: false,
+    season_management: false,
+    unit_conversions: false,
+  },
+};
+
+function getInitialCapabilityState() {
+  try {
+    const raw = localStorage.getItem("istore_license_token");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const payload = parsed.payload || parsed;
+      const ind = (payload.industry_code || "").toUpperCase();
+      const signedCaps = payload.capabilities || [];
+      
+      const template = INDUSTRY_TEMPLATES[ind] || INDUSTRY_TEMPLATES["MOBILE_RETAIL"];
+      let base = { ...template };
+      if (Array.isArray(signedCaps) && signedCaps.length > 0) {
+        Object.keys(base).forEach((k) => {
+          base[k] = signedCaps.includes("all") ? true : signedCaps.includes(k);
+        });
+      }
+      return {
+        industryType: ind || "MOBILE_RETAIL",
+        capabilities: base,
+      };
+    }
+  } catch (_e) {}
+  return {
+    industryType: "MOBILE_RETAIL",
+    capabilities: INDUSTRY_TEMPLATES["MOBILE_RETAIL"],
+  };
+}
+
+const initial = getInitialCapabilityState();
+
+const CapabilityContext = createContext({
+  industryType: initial.industryType,
+  capabilities: initial.capabilities,
+  hasCapability: () => true,
+  isLoading: false,
+  refreshCapabilities: async () => {},
+});
+
+export function CapabilityProvider({ children }) {
+  const [industryType, setIndustryType] = useState(() => getInitialCapabilityState().industryType);
+  const [capabilities, setCapabilities] = useState(() => getInitialCapabilityState().capabilities);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchCapabilities = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await api.get("/saas/tenant/capabilities");
+      const res = await api.get("/saas/capabilities");
       if (res.data && res.data.capabilities) {
-        setIndustryType(res.data.industry_type || "MOBILE_RETAIL");
+        const ind = (res.data.industry_type || "MOBILE_RETAIL").toUpperCase();
+        setIndustryType(ind);
         setCapabilities(res.data.capabilities);
       }
     } catch (e) {
-      // Fallback gracefully to mobile retail defaults on network / local offline mode
-      console.warn("Could not fetch tenant capabilities, using defaults:", e);
+      // Fallback gracefully to cached license or defaults
+      const cached = getInitialCapabilityState();
+      setIndustryType(cached.industryType);
+      setCapabilities(cached.capabilities);
     } finally {
       setIsLoading(false);
     }
@@ -62,6 +164,21 @@ export function CapabilityProvider({ children }) {
 
   useEffect(() => {
     fetchCapabilities();
+
+    const handleLicenseUpdate = (event) => {
+      if (event.detail) {
+        const ind = (event.detail.industry_code || "").toUpperCase();
+        const template = INDUSTRY_TEMPLATES[ind] || INDUSTRY_TEMPLATES["MOBILE_RETAIL"];
+        setIndustryType(ind);
+        setCapabilities({ ...template });
+      }
+      fetchCapabilities();
+    };
+
+    window.addEventListener("istore_license_updated", handleLicenseUpdate);
+    return () => {
+      window.removeEventListener("istore_license_updated", handleLicenseUpdate);
+    };
   }, [fetchCapabilities]);
 
   const hasCapability = useCallback(

@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from sqlalchemy.exc import OperationalError
@@ -15,6 +15,8 @@ from app.constants import (
 )
 from app.database import get_db
 from app.auth import get_current_user, require_permission
+from app.core.tenant_guard import scope_query
+from app.services.capability_service import has_capability
 from app.models import (
     AdvancePayment,
     Sale,
@@ -286,19 +288,31 @@ def send_export_report_email(
 
 @router.get('/summary', dependencies=[Depends(require_permission("reports.view"))])
 def summary(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
-    # Date Filtering
-    sales_q = db.query(Sale)
-    repair_sales_q = db.query(Sale).filter(
-        Sale.repair_ticket_id.isnot(None),
-        Sale.is_voided == False,  # noqa: E712
-        Sale.is_return == False,  # noqa: E712
+    org_id = current_user.organization_id if current_user else None
+    has_repairs = has_capability(db, org_id, "repairs_management")
+
+    # Date Filtering (scoped)
+    sales_q = scope_query(db.query(Sale), Sale, request)
+    repair_sales_q = scope_query(
+        db.query(Sale).filter(
+            Sale.repair_ticket_id.isnot(None),
+            Sale.is_voided == False,  # noqa: E712
+            Sale.is_return == False,  # noqa: E712
+        ),
+        Sale,
+        request,
     )
-    expense_q = db.query(Expense).filter(Expense.status.in_(["Approved", "Paid"]))
+    expense_q = scope_query(
+        db.query(Expense).filter(Expense.status.in_(["Approved", "Paid"])),
+        Expense,
+        request,
+    )
     
     if date_from:
         start_dt = datetime.fromisoformat(date_from)
@@ -319,32 +333,40 @@ def summary(
     # Cash/card totals across ALL non-voided sales (products + repairs) for cash-drawer audit
     cash_sales = sales_q.filter(Sale.is_voided == False).with_entities(func.coalesce(func.sum(Sale.cash_amount), 0)).scalar() or 0
     card_sales = sales_q.filter(Sale.is_voided == False).with_entities(func.coalesce(func.sum(Sale.card_amount), 0)).scalar() or 0
-    voided_total = db.query(func.coalesce(func.sum(Sale.total), 0)).filter(Sale.is_voided == True).scalar() or 0
+    voided_total = scope_query(db.query(func.coalesce(func.sum(Sale.total), 0)).filter(Sale.is_voided == True), Sale, request).scalar() or 0
     
     # Product-only COGS (exclude repair invoices to avoid double-counting)
     product_sale_ids = product_sales_q.with_entities(Sale.id)
-    product_cogs = db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.cost_price), 0))\
-             .filter(SaleItem.sale_id.in_(product_sale_ids)).scalar() or 0
+    product_cogs_q = db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.cost_price), 0))\
+        .filter(SaleItem.sale_id.in_(product_sale_ids))
+    product_cogs = product_cogs_q.scalar() or 0
     
     # Repair Stats (accounting-exact from repair-linked invoices)
-    repair_revenue = repair_sales_q.with_entities(func.coalesce(func.sum(Sale.total), 0)).scalar() or 0
-    repair_paid = repair_sales_q.with_entities(func.coalesce(func.sum(Sale.amount_paid), 0)).scalar() or 0
-    repair_outstanding = repair_sales_q.with_entities(func.coalesce(func.sum(Sale.balance_due), 0)).scalar() or 0
-    repair_sale_ids = repair_sales_q.with_entities(Sale.id)
-    repair_parts_cost = (
-        db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.cost_price), 0))
-        .filter(
-            SaleItem.sale_id.in_(repair_sale_ids),
-            SaleItem.line_type == "spare_part",
+    repair_revenue = 0
+    repair_paid = 0
+    repair_outstanding = 0
+    repair_parts_cost = 0
+    total_repairs_all_time = 0
+    if has_repairs:
+        repair_revenue = repair_sales_q.with_entities(func.coalesce(func.sum(Sale.total), 0)).scalar() or 0
+        repair_paid = repair_sales_q.with_entities(func.coalesce(func.sum(Sale.amount_paid), 0)).scalar() or 0
+        repair_outstanding = repair_sales_q.with_entities(func.coalesce(func.sum(Sale.balance_due), 0)).scalar() or 0
+        repair_sale_ids = repair_sales_q.with_entities(Sale.id)
+        repair_parts_cost = (
+            db.query(func.coalesce(func.sum(SaleItem.quantity * SaleItem.cost_price), 0))
+            .filter(
+                SaleItem.sale_id.in_(repair_sale_ids),
+                SaleItem.line_type == "spare_part",
+            )
+            .scalar()
+            or 0
         )
-        .scalar()
-        or 0
-    )
+        total_repairs_all_time = scope_query(db.query(func.count(RepairTicket.id)), RepairTicket, request).scalar() or 0
+
     total_expenses = expense_q.with_entities(func.coalesce(func.sum(Expense.amount), 0)).scalar() or 0
     
     # Inventory
-    inventory_value = db.query(func.coalesce(func.sum(InventoryItem.quantity * InventoryItem.cost_price), 0)).scalar() or 0
-    total_repairs_all_time = db.query(func.count(RepairTicket.id)).scalar() or 0
+    inventory_value = scope_query(db.query(func.coalesce(func.sum(InventoryItem.quantity * InventoryItem.cost_price), 0)), InventoryItem, request).scalar() or 0
     
     # Combined totals: product sales + repair sales (no overlap)
     total_revenue = product_sales_revenue + repair_revenue
@@ -390,6 +412,7 @@ def summary(
 
 @router.get('/expenses', dependencies=[Depends(require_permission("reports.view"))])
 def detailed_expenses_report(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
@@ -397,7 +420,11 @@ def detailed_expenses_report(
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
-    exp_q = db.query(Expense).options(joinedload(Expense.created_by), joinedload(Expense.approved_by), joinedload(Expense.supplier))
+    exp_q = scope_query(
+        db.query(Expense).options(joinedload(Expense.created_by), joinedload(Expense.approved_by), joinedload(Expense.supplier)),
+        Expense,
+        request,
+    )
     if date_from:
         exp_q = exp_q.filter(Expense.expense_date >= datetime.fromisoformat(date_from))
     if date_to:
@@ -441,6 +468,7 @@ def detailed_expenses_report(
 
 @router.get('/advance-payments/summary', dependencies=[Depends(require_permission("reports.view"))])
 def advance_payment_summary(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     customer_id: int | None = Query(default=None),
@@ -452,7 +480,7 @@ def advance_payment_summary(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = db.query(AdvancePayment).filter(AdvancePayment.is_deleted == False)  # noqa: E712
+    query = scope_query(db.query(AdvancePayment).filter(AdvancePayment.is_deleted == False), AdvancePayment, request)  # noqa: E712
     if date_from:
         try:
             query = query.filter(AdvancePayment.payment_date >= datetime.fromisoformat(str(date_from)))
@@ -529,6 +557,7 @@ def advance_payment_summary(
 
 @router.get('/product-reservations', dependencies=[Depends(require_permission("reports.view"))])
 def product_reservations_report(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     customer_id: int | None = Query(default=None),
@@ -537,7 +566,7 @@ def product_reservations_report(
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
-    query = db.query(ProductReservation)
+    query = scope_query(db.query(ProductReservation), ProductReservation, request)
     if date_from:
         try:
             query = query.filter(ProductReservation.created_at >= datetime.fromisoformat(str(date_from)))
@@ -610,6 +639,7 @@ def product_reservations_report(
 
 @router.get('/audit-activity', dependencies=[Depends(require_permission("reports.view"))])
 def audit_activity_report(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     limit: int = Query(default=500, ge=50, le=2000),
@@ -617,8 +647,8 @@ def audit_activity_report(
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
-    activity_q = db.query(ActivityLog).options(joinedload(ActivityLog.user))
-    security_q = db.query(SecurityAuditLog).options(joinedload(SecurityAuditLog.user))
+    activity_q = scope_query(db.query(ActivityLog).options(joinedload(ActivityLog.user)), ActivityLog, request)
+    security_q = scope_query(db.query(SecurityAuditLog).options(joinedload(SecurityAuditLog.user)), SecurityAuditLog, request)
     start_dt = datetime.fromisoformat(date_from) if date_from else None
     end_dt_exclusive = (datetime.fromisoformat(date_to) + timedelta(days=1)) if date_to else None
 
@@ -721,17 +751,23 @@ def audit_activity_report(
 
 @router.get('/audit-repair-history', dependencies=[Depends(require_permission("reports.view"))])
 def audit_repair_history_report(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=100, le=3000),
     page: int = Query(default=1, ge=1),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
-    query = (
+    org_id = current_user.organization_id if current_user else None
+    if not has_capability(db, org_id, "repairs_management"):
+        return []
+
+    base_q = (
         db.query(RepairHistory, RepairTicket)
         .join(RepairTicket, RepairTicket.id == RepairHistory.repair_id)
     )
+    query = scope_query(base_q, RepairTicket, request)
     if date_from:
         query = query.filter(RepairHistory.created_at >= datetime.fromisoformat(date_from))
     if date_to:
@@ -763,8 +799,10 @@ def audit_repair_history_report(
         })
     return output
 
+
 @router.get('/export-sales', dependencies=[Depends(require_permission("reports.export"))])
 def export_sales(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -774,7 +812,7 @@ def export_sales(
     import io
     from fastapi.responses import StreamingResponse
     
-    sales_q = db.query(Sale)
+    sales_q = scope_query(db.query(Sale), Sale, request)
     if date_from:
         sales_q = sales_q.filter(Sale.created_at >= datetime.fromisoformat(date_from))
     if date_to:
@@ -807,6 +845,7 @@ def export_sales(
 
 @router.get('/export-repairs', dependencies=[Depends(require_permission("reports.export"))])
 def export_repairs(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -815,8 +854,12 @@ def export_repairs(
     import csv
     import io
     from fastapi.responses import StreamingResponse
+
+    org_id = user.organization_id if user else None
+    if not has_capability(db, org_id, "repairs_management"):
+        raise HTTPException(status_code=403, detail="Repairs capability is not licensed for this organization")
     
-    rep_q = db.query(RepairTicket)
+    rep_q = scope_query(db.query(RepairTicket), RepairTicket, request)
     if date_from:
         rep_q = rep_q.filter(RepairTicket.created_at >= datetime.fromisoformat(date_from))
     if date_to:
@@ -849,6 +892,7 @@ def export_repairs(
 
 @router.get('/export-inventory', dependencies=[Depends(require_permission("reports.export"))])
 def export_inventory(
+    request: Request,
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
@@ -856,7 +900,7 @@ def export_inventory(
     import io
     from fastapi.responses import StreamingResponse
     
-    inv_q = db.query(InventoryItem)
+    inv_q = scope_query(db.query(InventoryItem), InventoryItem, request)
     
     output = io.StringIO()
     writer = csv.writer(output)
@@ -885,6 +929,7 @@ def export_inventory(
 
 @router.get('/sales', dependencies=[Depends(require_permission("reports.view"))])
 def detailed_sales_report(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
@@ -892,7 +937,7 @@ def detailed_sales_report(
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
-    sales_q = db.query(Sale)
+    sales_q = scope_query(db.query(Sale), Sale, request)
     if date_from:
         start_dt = datetime.fromisoformat(date_from)
         sales_q = sales_q.filter(Sale.created_at >= start_dt)
@@ -931,7 +976,7 @@ def detailed_sales_report(
 
     cancel_meta_map: dict[int, dict[str, Any]] = {}
     if sale_ids:
-        void_logs = (
+        void_logs = scope_query(
             db.query(ActivityLog)
             .options(joinedload(ActivityLog.user))
             .filter(
@@ -939,9 +984,10 @@ def detailed_sales_report(
                 ActivityLog.action == "Void",
                 ActivityLog.entity_id.in_(sale_ids),
             )
-            .order_by(ActivityLog.created_at.desc())
-            .all()
-        )
+            .order_by(ActivityLog.created_at.desc()),
+            ActivityLog,
+            request,
+        ).all()
         for log in void_logs:
             if log.entity_id in cancel_meta_map:
                 continue
@@ -1009,13 +1055,18 @@ def detailed_sales_report(
 
 @router.get('/repairs', dependencies=[Depends(require_permission("reports.view"))])
 def detailed_repairs_report(
+    request: Request,
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
+    org_id = current_user.organization_id if current_user else None
+    if not has_capability(db, org_id, "repairs_management"):
+        return []
+
     def classify_issue(issue_text: str | None) -> str:
         text = str(issue_text or "").lower()
         if any(token in text for token in ["screen", "display", "touch", "glass"]):
@@ -1052,7 +1103,7 @@ def detailed_repairs_report(
         return brand or "Unknown", model or raw
 
     now_utc = utcnow()
-    rep_q = db.query(RepairTicket)
+    rep_q = scope_query(db.query(RepairTicket), RepairTicket, request)
     if date_from:
         start_dt = datetime.fromisoformat(date_from)
         rep_q = rep_q.filter(RepairTicket.created_at >= start_dt)
@@ -1259,12 +1310,13 @@ def detailed_repairs_report(
 
 @router.get('/inventory', dependencies=[Depends(require_permission("reports.view"))])
 def detailed_inventory_report(
+    request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
     _=Depends(get_current_user)
 ):
-    inv_q = db.query(InventoryItem).order_by(InventoryItem.id.desc())
+    inv_q = scope_query(db.query(InventoryItem), InventoryItem, request).order_by(InventoryItem.id.desc())
     paged_q, _, _ = _paginate_query(inv_q, page=page, page_size=page_size)
     items = paged_q.all()
     return [{

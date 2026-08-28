@@ -367,6 +367,7 @@ app.include_router(analytics_ai_router)
 app.include_router(ai_router)
 app.include_router(sync_router, prefix="/api")
 from app.routers.saas_router import router as saas_router
+app.include_router(saas_router)
 app.include_router(saas_router, prefix="/api")
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
@@ -419,6 +420,27 @@ def _write_module_audit_log(request: Request, status_code: int, elapsed_ms: floa
             )
     except Exception as log_error:
         logger.warning(f"Failed to write module audit log: {log_error}")
+
+from app.core.license_guard import require_active_license
+
+@app.middleware("http")
+async def license_enforcement_middleware(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    try:
+        await require_active_license(request)
+    except HTTPException as http_exc:
+        headers = _cors_error_headers(request)
+        content = http_exc.detail if isinstance(http_exc.detail, dict) else {
+            "error": "LICENSE_REQUIRED",
+            "message": str(http_exc.detail)
+        }
+        return JSONResponse(
+            status_code=http_exc.status_code,
+            content=content,
+            headers=headers
+        )
+    return await call_next(request)
 
 @app.middleware("http")
 async def request_monitor_middleware(request: Request, call_next):

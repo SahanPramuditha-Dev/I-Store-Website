@@ -77,7 +77,7 @@ class InventoryIn(BaseModel):
     warranty_days: int = 0
     sku: str
     barcode: str | None = None
-    quantity: int = 0
+    quantity: float = 0
     cost_price: float = 0
     sale_price: float = 0
     wholesale_price: float = 0
@@ -89,6 +89,11 @@ class InventoryIn(BaseModel):
     supplier_warranty_days: int = 0
     has_serials: bool = False
     supplier_id: int | None = None
+    unit_of_measure: str | None = "pcs"
+    is_weighted: bool = False
+    allow_decimal_qty: bool = False
+    batch_number: str | None = None
+    expiry_date: date | None = None
 
 class InventoryOut(InventoryIn):
     id: int
@@ -128,7 +133,7 @@ class SaleLine(BaseModel):
     item_id: int | None = None
     line_type: str = "product"
     description: str | None = None
-    quantity: int
+    quantity: float
     price: float
     warranty_days: int = 0
     serial_number: str | None = None

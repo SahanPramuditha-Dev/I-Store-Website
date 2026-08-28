@@ -206,6 +206,11 @@ export default function Inventory() {
     barcode: "",
     supplier_id: "",
     has_serials: false,
+    unit_of_measure: "pcs",
+    is_weighted: false,
+    allow_decimal_qty: false,
+    batch_number: "",
+    expiry_date: "",
   });
   const [adjustForm, setAdjustForm] = useState({ qty: 0, note: "" });
   const [serialForm, setSerialForm] = useState("");
@@ -241,6 +246,11 @@ export default function Inventory() {
     barcode: "",
     supplier_id: "",
     has_serials: false,
+    unit_of_measure: "pcs",
+    is_weighted: false,
+    allow_decimal_qty: false,
+    batch_number: "",
+    expiry_date: "",
   };
 
   const resetProductForm = () => {
@@ -806,6 +816,11 @@ export default function Inventory() {
                       barcode: item.barcode || "",
                       supplier_id: item.supplier_id ? String(item.supplier_id) : "",
                       has_serials: Boolean(item.has_serials),
+                      unit_of_measure: item.unit_of_measure || "pcs",
+                      is_weighted: Boolean(item.is_weighted),
+                      allow_decimal_qty: Boolean(item.allow_decimal_qty),
+                      batch_number: item.batch_number || "",
+                      expiry_date: item.expiry_date ? String(item.expiry_date).slice(0, 10) : "",
                     });
                     setShowAddModal(true);
                   }}
@@ -1133,13 +1148,27 @@ export default function Inventory() {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3">
-              {hasCapability("imei_tracking") ? (
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-slate-900 text-indigo-600 focus:ring-indigo-500/30" checked={form.has_serials} onChange={(e) => setForm({ ...form, has_serials: e.target.checked })} />
-                  <span className="text-xs font-semibold text-slate-300">Track serial numbers / IMEI</span>
-                </label>
-              ) : <div />}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3">
+              <div className="flex flex-wrap items-center gap-4">
+                {(hasCapability("imei_tracking") || hasCapability("serial_tracking")) && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-slate-900 text-indigo-600 focus:ring-indigo-500/30" checked={form.has_serials} onChange={(e) => setForm({ ...form, has_serials: e.target.checked })} />
+                    <span className="text-xs font-semibold text-slate-300">Serial / IMEI tracking</span>
+                  </label>
+                )}
+                {hasCapability("weighted_products") && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-slate-900 text-indigo-600 focus:ring-indigo-500/30" checked={form.is_weighted} onChange={(e) => setForm({ ...form, is_weighted: e.target.checked })} />
+                    <span className="text-xs font-semibold text-slate-300">Weighted Product</span>
+                  </label>
+                )}
+                {hasCapability("decimal_quantities") && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="h-4 w-4 rounded border-white/20 bg-slate-900 text-indigo-600 focus:ring-indigo-500/30" checked={form.allow_decimal_qty} onChange={(e) => setForm({ ...form, allow_decimal_qty: e.target.checked })} />
+                    <span className="text-xs font-semibold text-slate-300">Allow Decimal Qty</span>
+                  </label>
+                )}
+              </div>
 
               <div className="flex gap-2">
                 <button type="button" onClick={() => { setShowAddModal(false); resetProductForm(); }} className="rounded-xl border border-white/10 bg-slate-900 px-4 py-2 text-xs font-bold text-slate-400 hover:bg-white/5">

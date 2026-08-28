@@ -1,30 +1,34 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageHeader } from "../../components/UI";
+import { useCapabilities } from "../../context/CapabilityContext";
 
-export const inventoryTabs = [
-  ["/inventory/overview", "Overview"],
-  ["/inventory/master-products", "Master Catalog"],
-  ["/inventory/products", "Products (SKUs)"],
-  ["/inventory/product-types", "Product Types"],
-  ["/inventory/categories", "Categories"],
-  ["/inventory/brands", "Brands"],
-  ["/inventory/variants", "Variants"],
-  ["/inventory/serials", "Serials / IMEI"],
-  ["/inventory/movements", "Movements"],
-  ["/inventory/grn", "GRN"],
-  ["/inventory/stock-take", "Stock Take"],
-  ["/inventory/price-adjustments", "Price Adjust"],
-  ["/inventory/discounts", "Discount Offers"],
-  ["/inventory/reports", "Reports"],
-  ["/inventory/batches", "Batches & Expiry"],
-  ["/inventory/suppliers", "Suppliers"],
-  ["/inventory/supplier-ledger", "Supplier Ledger"],
+export const rawInventoryTabs = [
+  ["/inventory/overview", "Overview", null],
+  ["/inventory/master-products", "Master Catalog", null],
+  ["/inventory/products", "Products (SKUs)", null],
+  ["/inventory/product-types", "Product Types", null],
+  ["/inventory/categories", "Categories", null],
+  ["/inventory/brands", "Brands", null],
+  ["/inventory/variants", "Variants", (caps) => Boolean(caps.variants_matrix || caps.size_color_variants)],
+  ["/inventory/serials", "Serials / IMEI", (caps) => Boolean(caps.imei_tracking || caps.serial_tracking)],
+  ["/inventory/movements", "Movements", null],
+  ["/inventory/grn", "GRN", null],
+  ["/inventory/stock-take", "Stock Take", null],
+  ["/inventory/price-adjustments", "Price Adjust", null],
+  ["/inventory/discounts", "Discount Offers", null],
+  ["/inventory/reports", "Reports", null],
+  ["/inventory/batches", "Batches & Expiry", (caps) => Boolean(caps.batch_tracking || caps.expiry_tracking)],
+  ["/inventory/suppliers", "Suppliers", null],
+  ["/inventory/supplier-ledger", "Supplier Ledger", null],
 ];
 
 export function InventoryModuleTabs() {
+  const { capabilities } = useCapabilities();
+  const visibleTabs = rawInventoryTabs.filter(([, , check]) => !check || check(capabilities));
+
   return (
     <div className="app-tab-strip rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 p-2 shadow-sm dark:shadow-none">
-      {inventoryTabs.map(([to, label]) => (
+      {visibleTabs.map(([to, label]) => (
         <NavLink
           key={to}
           to={to}

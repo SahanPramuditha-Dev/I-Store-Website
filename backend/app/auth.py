@@ -105,6 +105,30 @@ def get_current_user(
     request.state.current_branch_id = user.branch_id
     return user
 
+
+def get_current_user_optional(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Gracefully extracts authenticated user if present, without throwing 401."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        username = payload.get("sub")
+        if username:
+            user = db.query(User).filter(User.username == username).first()
+            if user and bool(user.is_active) and not bool(user.is_deleted):
+                return user
+    except Exception:
+        pass
+    return None
+
+
 def require_admin(user: User = Depends(get_current_user)):
     role = str(user.role or "").lower()
     if "owner" in role or "admin" in role:

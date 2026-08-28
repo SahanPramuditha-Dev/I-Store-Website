@@ -57,7 +57,20 @@ function Write-StatusPanel {
 # ── Utility: check if a TCP port is listening ─────────────────────────────────
 function Test-Port {
     param([int]$Port)
-    return [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    $listening = [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    if ($listening) { return $true }
+    try {
+        $socket = New-Object System.Net.Sockets.TcpClient
+        $async = $socket.BeginConnect("127.0.0.1", $Port, $null, $null)
+        $wait = $async.AsyncWaitHandle.WaitOne(400, $false)
+        if ($wait -and $socket.Connected) {
+            $socket.EndConnect($async)
+            $socket.Close()
+            return $true
+        }
+        $socket.Close()
+    } catch {}
+    return $false
 }
 
 # ── Utility: HTTP health check ────────────────────────────────────────────────
@@ -125,7 +138,9 @@ if (-not (Test-Path $ENV_FILE)) {
 $secretKey = (Get-Content $ENV_FILE | Select-String "^SECRET_KEY=" | ForEach-Object { $_ -replace "SECRET_KEY=","" })
 if (-not $secretKey -or $secretKey -eq "change-this-secret" -or $secretKey.Length -lt 32) {
     Write-Step "  ⚠" "SECRET_KEY is weak or default — generating one" "" "Yellow"
-    $newKey = "istore-dev-" + ([System.Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(24)))
+    $rngBytes = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($rngBytes)
+    $newKey = "istore-dev-" + [System.Convert]::ToBase64String($rngBytes)
     (Get-Content $ENV_FILE) -replace "^SECRET_KEY=.*", "SECRET_KEY=$newKey" | Set-Content $ENV_FILE
     Write-Step "  ✓" "Generated new SECRET_KEY" "(saved to .env)" "Green"
 } else {
@@ -223,8 +238,9 @@ if ($SkipFrontend) {
 } else {
     Write-Step "  ▶" "Starting frontend..." "" "Cyan"
 
-    $frontendCmd = "Set-Location '$ROOT\frontend'; npm run dev -- --host 127.0.0.1 --port $FRONTEND_PORT --strictPort"
-    Start-Process powershell -ArgumentList "-NoExit", "-NoProfile", "-Command", $frontendCmd `
+    $frontendDir = Join-Path $ROOT "frontend"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "npm run dev -- --host 127.0.0.1 --port $FRONTEND_PORT --strictPort" `
+        -WorkingDirectory $frontendDir `
         -WindowStyle Normal
 
     $frontendOk = Wait-ForPort -Port $FRONTEND_PORT -Seconds 40 -Label "Frontend"
@@ -246,8 +262,8 @@ if (Test-Port $WHATSAPP_PORT) {
 } else {
     Write-Step "  ▶" "Starting WhatsApp service..." "" "Cyan"
 
-    $whatsappCmd = "Set-Location '$WHATSAPP_DIR'; node server.js"
-    Start-Process powershell -ArgumentList "-NoExit", "-NoProfile", "-Command", $whatsappCmd `
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "node server.js" `
+        -WorkingDirectory $WHATSAPP_DIR `
         -WindowStyle Normal
 
     $waOk = Wait-ForPort -Port $WHATSAPP_PORT -Seconds 20 -Label "WhatsApp Service"

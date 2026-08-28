@@ -522,7 +522,13 @@ export default function Login() {
             />
           ))}
 
-          <div className="exact-login-brand brand-float">{shopName}</div>
+          <div className="exact-login-brand brand-float flex items-center gap-2">
+            <span>{shopName}</span>
+            <span className="text-[10px] font-semibold tracking-wider text-slate-300 dark:text-slate-400 uppercase px-2 py-0.5 rounded-full bg-black/40 border border-white/10 backdrop-blur-sm flex items-center gap-1.5">
+              <img src={`${import.meta.env.BASE_URL}nexusis-icon.svg`} alt="NEXUSIS" className="w-3 h-3 object-contain dark:invert" />
+              by NEXUSIS
+            </span>
+          </div>
 
           <div className={`exact-login-copy ${fading ? "fade-out" : ""}`}>
             <h2>{slides[currentSlideIndex].title}</h2>
@@ -862,6 +868,17 @@ export default function Login() {
                 </div>
               </form>
             )}
+
+            {/* NEXUSIS Corporate Brand Anchor */}
+            <div className="mt-8 pt-4 border-t border-slate-200/50 dark:border-slate-800/60 flex flex-col items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
+              <img src={`${import.meta.env.BASE_URL}nexusis-lockup.svg`} alt="NEXUSIS" className="h-4 w-auto object-contain dark:invert" />
+              <p className="text-[9.5px] text-slate-400 dark:text-slate-500 text-center font-medium">
+                Network Engineering, X-Platform Utilities, Software, &amp; Interface Systems
+              </p>
+              <p className="text-[9px] text-slate-400 dark:text-slate-500">
+                &copy; {new Date().getFullYear()} NEXUSIS. All rights reserved.
+              </p>
+            </div>
           </div>
         </div>
       </section>

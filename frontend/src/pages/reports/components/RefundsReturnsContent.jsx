@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, isValidElement } from "react";
 import {
   BadgeAlert,
   BarChart3,
@@ -95,6 +95,19 @@ function toneForStatus(status) {
   return "indigo";
 }
 
+function safeCellRender(raw) {
+  if (raw === null || raw === undefined || raw === "") return "-";
+  if (isValidElement(raw)) return raw;
+  if (typeof raw === "object") {
+    try {
+      return JSON.stringify(raw);
+    } catch {
+      return String(raw);
+    }
+  }
+  return String(raw);
+}
+
 function MiniTable({ columns, rows, emptyLabel = "No records found." }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/20">
@@ -118,7 +131,7 @@ function MiniTable({ columns, rows, emptyLabel = "No records found." }) {
             <tr key={row.id || row.key || index}>
               {columns.map((col) => (
                 <td key={`${row.id || index}-${col.label}`}>
-                  {typeof col.value === "function" ? col.value(row, index) : row[col.value]}
+                  {safeCellRender(typeof col.value === "function" ? col.value(row, index) : row[col.value])}
                 </td>
               ))}
             </tr>

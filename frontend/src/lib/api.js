@@ -77,6 +77,11 @@ api.interceptors.response.use(
     }
 
     const reqUrl = String(config.url || '');
+    if (error.response?.status === 402 || error.response?.data?.error === 'LICENSE_REQUIRED') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('istore_license_locked', { detail: error.response?.data }));
+      }
+    }
     if (error.response?.status === 401 && !reqUrl.includes('/auth/login')) {
       clearAuthState();
       if (typeof window !== 'undefined') {

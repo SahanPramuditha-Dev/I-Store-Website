@@ -29,6 +29,11 @@ OTP_EXPIRATION_SECONDS = int(os.getenv("PORTAL_OTP_EXPIRATION_SECONDS", "300")) 
 # In-memory OTP cache: phone -> {hash, expires_at, attempts}
 _ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
 
+# Anti-Abuse Rate Limiting: phone -> list of request epoch timestamps
+_OTP_REQUEST_TIMESTAMPS: Dict[str, list] = {}
+MAX_OTP_REQUESTS_PER_WINDOW = 3
+RATE_LIMIT_WINDOW_SECONDS = 600  # 10 minutes
+
 
 def _normalize_phone(phone: str) -> str:
     """Normalizes phone number removing spaces, dashes, and country prefixes."""
@@ -99,18 +104,16 @@ def verify_customer_session_token(token_str: str) -> Tuple[bool, str, Optional[D
 
     # 2. Decode Payload
     try:
-        # Add padding back if necessary
-        padded_b64 = payload_b64 + "=" * (-len(payload_b64) % 4)
-        raw_json = base64.urlsafe_b64decode(padded_b64.encode("ascii")).decode("utf-8")
+        padding = "=" * ((4 - len(payload_b64) % 4) % 4)
+        raw_json = base64.urlsafe_b64decode((payload_b64 + padding).encode("ascii")).decode("utf-8")
         payload = json.loads(raw_json)
-    except Exception as e:
-        return False, f"Failed to decode session payload: {e}", None
+    except Exception:
+        return False, "Failed to decode session token payload", None
 
-    # 3. Expiry Check
-    exp = payload.get("exp", 0)
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    if now_ts > exp:
-        return False, "Customer session has expired", None
+    # 3. Expiration Check
+    now = datetime.now(timezone.utc).timestamp()
+    if payload.get("exp", 0) < now:
+        return False, "Session token has expired", None
 
     return True, "Session valid", payload
 
@@ -123,16 +126,29 @@ def request_customer_otp(
 ) -> Dict[str, Any]:
     """
     Generates a 6-digit verification code and dispatches via WhatsApp (or SMS hook).
-    Zero SMS cost when using WhatsApp.
+    Enforces strict anti-abuse rate-limiting (max 3 OTP requests per 10 minutes).
     """
     clean_phone = _normalize_phone(phone)
     if len(clean_phone) < 9:
         return {"success": False, "error": "Invalid phone number format."}
 
+    # Anti-Abuse Rate Limiting Check
+    now = datetime.now(timezone.utc)
+    now_ts = now.timestamp()
+    timestamps = [t for t in _OTP_REQUEST_TIMESTAMPS.get(clean_phone, []) if now_ts - t < RATE_LIMIT_WINDOW_SECONDS]
+    if len(timestamps) >= MAX_OTP_REQUESTS_PER_WINDOW:
+        wait_mins = max(1, int((RATE_LIMIT_WINDOW_SECONDS - (now_ts - timestamps[0])) / 60))
+        return {
+            "success": False,
+            "error": f"Rate limit exceeded. Maximum {MAX_OTP_REQUESTS_PER_WINDOW} verification codes per 10 minutes. Please try again in {wait_mins} minute(s)."
+        }
+
+    timestamps.append(now_ts)
+    _OTP_REQUEST_TIMESTAMPS[clean_phone] = timestamps
+
     # Generate 6-digit numeric OTP
     code = f"{secrets.randbelow(1000000):06d}"
     code_hash = _hash_otp(clean_phone, code)
-    now = datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=OTP_EXPIRATION_SECONDS)
 
     _ACTIVE_OTPS[clean_phone] = {

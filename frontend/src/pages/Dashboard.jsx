@@ -77,6 +77,7 @@ function formatTransactionDate(dateVal) {
 }
 
 function AnalyticsSection() {
+  const { hasCapability } = useCapabilities();
   const [isOpen, setIsOpen] = useState(true);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -86,13 +87,14 @@ function AnalyticsSection() {
     setLoading(true);
     setError(null);
     try {
-      const results = await Promise.all([
+      const promises = [
         api.get('/api/analytics/today-sales'),
         api.get('/api/analytics/low-stock'),
         api.get('/api/analytics/unpaid-balances'),
-        api.get('/api/analytics/delayed-repairs'),
+        hasCapability("repairs_management") ? api.get('/api/analytics/delayed-repairs') : Promise.resolve({ data: { count: 0, top_repairs: [] } }),
         api.get('/api/analytics/peak-hours')
-      ]);
+      ];
+      const results = await Promise.all(promises);
       setData({
         sales: results[0].data,
         lowStock: results[1].data,
@@ -175,26 +177,39 @@ function AnalyticsSection() {
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">{data?.unpaid?.total_customers || 0} Customers Pending</p>
               </div>
 
-              {/* Delayed Repairs */}
-              <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Delayed Repairs</p>
-                  {(data?.delayedRepairs?.count || 0) > 0 && (
-                    <span className="inline-block h-2 w-2 rounded-full bg-rose-500" />
-                  )}
+              {/* Delayed Repairs or Perishable Stock */}
+              {hasCapability("repairs_management") ? (
+                <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Delayed Repairs</p>
+                    {(data?.delayedRepairs?.count || 0) > 0 && (
+                      <span className="inline-block h-2 w-2 rounded-full bg-rose-500" />
+                    )}
+                  </div>
+                  <div className="my-1.5">
+                    <span className="text-lg font-extrabold text-slate-900 dark:text-white tabular-nums">{data?.delayedRepairs?.count || 0} <span className="text-xs font-semibold text-slate-500">Overdue</span></span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                    {(data?.delayedRepairs?.top_repairs || []).slice(0, 2).map((repair, i) => (
+                      <span key={i} className="truncate">• {repair.job_number} ({repair.days_late}d late)</span>
+                    ))}
+                    {(!data?.delayedRepairs?.top_repairs || data?.delayedRepairs?.top_repairs.length === 0) && (
+                      <span>No overdue repair jobs</span>
+                    )}
+                  </div>
                 </div>
-                <div className="my-1.5">
-                  <span className="text-lg font-extrabold text-slate-900 dark:text-white tabular-nums">{data?.delayedRepairs?.count || 0} <span className="text-xs font-semibold text-slate-500">Overdue</span></span>
+              ) : (
+                <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Perishable Stock</p>
+                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                  </div>
+                  <div className="my-1.5">
+                    <span className="text-lg font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">FEFO Active</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Batch &amp; Expiry tracking enabled</p>
                 </div>
-                <div className="flex flex-col gap-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                  {(data?.delayedRepairs?.top_repairs || []).slice(0, 2).map((repair, i) => (
-                    <span key={i} className="truncate">• {repair.job_number} ({repair.days_late}d late)</span>
-                  ))}
-                  {(!data?.delayedRepairs?.top_repairs || data?.delayedRepairs?.top_repairs.length === 0) && (
-                    <span>No overdue repair jobs</span>
-                  )}
-                </div>
-              </div>
+              )}
 
               {/* Peak Hours */}
               <div className="rounded-xl border border-slate-300/90 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
@@ -524,21 +539,23 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
             {/* Overdue Repairs */}
-            <div
-              onClick={() => navigate("/repairs")}
-              className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 group-hover:bg-rose-500/20 transition-colors">
-                  <Sparkles size={16} />
+            {hasCapability("repairs_management") && (
+              <div
+                onClick={() => navigate("/repairs")}
+                className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="grid h-8 w-8 place-items-center rounded-lg bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 group-hover:bg-rose-500/20 transition-colors">
+                    <Sparkles size={16} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Overdue Repairs</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Waiting &gt; 7 days</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Overdue Repairs</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Waiting &gt; 7 days</p>
-                </div>
+                <Badge tone="red" className="font-mono font-bold">{actionCenter.overdue_repairs || 0}</Badge>
               </div>
-              <Badge tone="red" className="font-mono font-bold">{actionCenter.overdue_repairs || 0}</Badge>
-            </div>
+            )}
 
             {/* Low & Out of Stock */}
             <div
@@ -832,77 +849,79 @@ export default function Dashboard() {
             )}
           </SectionCard>
 
-          <SectionCard
-            title="Repair Overview"
-            subtitle="Recent repair tickets and workflow"
-            className="dashboard-table-card xl:col-span-6 overflow-hidden"
-            right={
-              <Button variant="ghost" size="sm" onClick={() => navigate("/repairs")}>
-                View All
-                <ArrowRight size={14} className="ml-1" />
-              </Button>
-            }
-          >
-            <div className="w-full overflow-x-auto">
-              <Table className="table-base w-full min-w-[680px] whitespace-nowrap">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Customer</th>
-                    <th>Device</th>
-                    <th>Status</th>
-                    <th>Tech</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {repairs.length === 0 ? (
+          {hasCapability("repairs_management") && (
+            <SectionCard
+              title="Repair Overview"
+              subtitle="Recent repair tickets and workflow"
+              className="dashboard-table-card xl:col-span-6 overflow-hidden"
+              right={
+                <Button variant="ghost" size="sm" onClick={() => navigate("/repairs")}>
+                  View All
+                  <ArrowRight size={14} className="ml-1" />
+                </Button>
+              }
+            >
+              <div className="w-full overflow-x-auto">
+                <Table className="table-base w-full min-w-[680px] whitespace-nowrap">
+                  <thead>
                     <tr>
-                      <td colSpan={5} className="py-8 text-center text-sm text-slate-400">No repair tickets yet today.</td>
+                      <th>#</th>
+                      <th>Customer</th>
+                      <th>Device</th>
+                      <th>Status</th>
+                      <th>Tech</th>
                     </tr>
-                  ) : repairs.slice(0, 6).map((r) => (
-                    <tr key={r.id} className="cursor-pointer" onClick={() => navigate(`/repairs?id=${r.id}`)}>
-                      <td className="font-mono text-xs text-cyan-300">#R-{String(r.id).padStart(4, "0")}</td>
-                      <td className="font-bold text-slate-200">{r.customer}</td>
-                      <td className="text-xs text-slate-400">{r.device}</td>
-                      <td>
-                        <Badge tone={r.status === "Completed" ? "green" : r.status === "Pending" ? "amber" : "sky"}>{r.status}</Badge>
-                      </td>
-                      <td className="text-xs font-medium text-slate-400">{r.tech}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
-            {totalRepairStatuses > 0 && (
-              <div className="mt-3 border-t border-white/10 pt-3">
-                <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <span>Repair pipeline</span>
-                  <span>{totalRepairStatuses} open &amp; completed</span>
-                </div>
-                <div className="flex h-2 overflow-hidden rounded-full bg-slate-800/80">
-                  {activeRepairStatuses.map((status, index) => (
-                    <div
-                      key={status.name}
-                      title={`${status.name}: ${status.value}`}
-                      className="transition-all"
-                      style={{
-                        width: `${(Number(status.value) / totalRepairStatuses) * 100}%`,
-                        backgroundColor: ["#38bdf8", "#818cf8", "#f59e0b", "#22c55e", "#a855f7", "#fb7185"][index % 6],
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                  {activeRepairStatuses.map((status, index) => (
-                    <span key={status.name} className="inline-flex items-center gap-1.5 text-[10px] text-slate-400">
-                      <i className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ["#38bdf8", "#818cf8", "#f59e0b", "#22c55e", "#a855f7", "#fb7185"][index % 6] }} />
-                      {status.name} <b className="text-slate-200">{status.value}</b>
-                    </span>
-                  ))}
-                </div>
+                  </thead>
+                  <tbody>
+                    {repairs.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-sm text-slate-400">No repair tickets yet today.</td>
+                      </tr>
+                    ) : repairs.slice(0, 6).map((r) => (
+                      <tr key={r.id} className="cursor-pointer" onClick={() => navigate(`/repairs?id=${r.id}`)}>
+                        <td className="font-mono text-xs text-cyan-300">#R-{String(r.id).padStart(4, "0")}</td>
+                        <td className="font-bold text-slate-200">{r.customer}</td>
+                        <td className="text-xs text-slate-400">{r.device}</td>
+                        <td>
+                          <Badge tone={r.status === "Completed" ? "green" : r.status === "Pending" ? "amber" : "sky"}>{r.status}</Badge>
+                        </td>
+                        <td className="text-xs font-medium text-slate-400">{r.tech}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
               </div>
-            )}
-          </SectionCard>
+              {totalRepairStatuses > 0 && (
+                <div className="mt-3 border-t border-white/10 pt-3">
+                  <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <span>Repair pipeline</span>
+                    <span>{totalRepairStatuses} open &amp; completed</span>
+                  </div>
+                  <div className="flex h-2 overflow-hidden rounded-full bg-slate-800/80">
+                    {activeRepairStatuses.map((status, index) => (
+                      <div
+                        key={status.name}
+                        title={`${status.name}: ${status.value}`}
+                        className="transition-all"
+                        style={{
+                          width: `${(Number(status.value) / totalRepairStatuses) * 100}%`,
+                          backgroundColor: ["#38bdf8", "#818cf8", "#f59e0b", "#22c55e", "#a855f7", "#fb7185"][index % 6],
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {activeRepairStatuses.map((status, index) => (
+                      <span key={status.name} className="inline-flex items-center gap-1.5 text-[10px] text-slate-400">
+                        <i className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ["#38bdf8", "#818cf8", "#f59e0b", "#22c55e", "#a855f7", "#fb7185"][index % 6] }} />
+                        {status.name} <b className="text-slate-200">{status.value}</b>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+          )}
 
           <SectionCard
             title="Recent Transactions"

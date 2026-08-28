@@ -295,6 +295,7 @@ class InventoryItem(Base, BaseHybridModel):
     __tablename__ = "inventory_items"
     __table_args__ = (
         CheckConstraint("quantity >= 0", name="ck_inventory_items_quantity_non_negative"),
+        UniqueConstraint("organization_id", "sku", name="uq_inventory_org_sku"),
     )
     id = Column(Integer, primary_key=True)
     name = Column(String, index=True)
@@ -308,7 +309,7 @@ class InventoryItem(Base, BaseHybridModel):
     location = Column(String, nullable=True)  # shelf/bin
     image_url = Column(String, nullable=True)
     warranty_days = Column(Integer, default=0)
-    sku = Column(String, unique=True)
+    sku = Column(String, index=True)
     barcode = Column(String, nullable=True)
     quantity = Column(Float, default=0.0)
     damaged_quantity = Column(Float, default=0.0)
@@ -356,8 +357,11 @@ class InventorySerial(Base):
 
 class RepairTicket(Base, BaseHybridModel):
     __tablename__ = "repair_tickets"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "ticket_no", name="uq_repair_org_ticket"),
+    )
     id = Column(Integer, primary_key=True)
-    ticket_no = Column(String, unique=True, index=True)
+    ticket_no = Column(String, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"))
     device_model = Column(String)
     imei = Column(String, index=True)
@@ -435,8 +439,11 @@ class RepairEstimate(Base):
 
 class Sale(Base, BaseHybridModel):
     __tablename__ = "sales"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "invoice_no", name="uq_sale_org_invoice"),
+    )
     id = Column(Integer, primary_key=True)
-    invoice_no = Column(String, unique=True, index=True, nullable=True)
+    invoice_no = Column(String, index=True, nullable=True)
     invoice_type = Column(String, default="product_sale", index=True)  # product_sale | repair_invoice | reservation_invoice | exchange_invoice
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
     repair_ticket_id = Column(Integer, ForeignKey("repair_tickets.id"), nullable=True, index=True)
@@ -494,14 +501,15 @@ class SaleItem(Base, BaseHybridModel):
     warranty_record = relationship("WarrantyRecord", foreign_keys=[warranty_record_id])
 
 
-class ProductReservation(Base):
+class ProductReservation(Base, BaseHybridModel):
     __tablename__ = "product_reservations"
     __table_args__ = (
         CheckConstraint("quantity > 0", name="ck_product_reservations_quantity_positive"),
+        UniqueConstraint("organization_id", "reservation_number", name="uq_reservation_org_number"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    reservation_number = Column(String, unique=True, index=True)
+    reservation_number = Column(String, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=True, index=True)
     variant_id = Column(String, nullable=True, index=True)
@@ -530,11 +538,14 @@ class ProductReservation(Base):
     creator = relationship("User", foreign_keys=[created_by])
 
 
-class AdvancePayment(Base):
+class AdvancePayment(Base, BaseHybridModel):
     __tablename__ = "advance_payments"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "advance_number", name="uq_advance_org_number"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    advance_number = Column(String, unique=True, index=True)
+    advance_number = Column(String, index=True)
     advance_type = Column(String, default="other", index=True)  # repair | product_reservation | product_order | spare_part_order | other
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
     repair_ticket_id = Column(Integer, ForeignKey("repair_tickets.id"), nullable=True, index=True)
@@ -605,10 +616,13 @@ class InvoiceAuditEvent(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
-class ReturnRecord(Base):
+class ReturnRecord(Base, BaseHybridModel):
     __tablename__ = "return_records"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "return_code", name="uq_return_record_org_code"),
+    )
     id = Column(Integer, primary_key=True, index=True)
-    return_code = Column(String, unique=True, index=True)
+    return_code = Column(String, index=True)
     return_type = Column(String, default="Product Return", index=True)  # Product Return | Product Exchange | Refund | Warranty Replacement
     original_sale_id = Column(Integer, ForeignKey("sales.id"), index=True)
     original_sale_item_id = Column(Integer, ForeignKey("sale_items.id"), index=True)
@@ -665,16 +679,17 @@ class DamagedStockLog(Base):
     created_by = relationship("User")
 
 
-class Return(Base):
+class Return(Base, BaseHybridModel):
     __tablename__ = "returns"
     __table_args__ = (
         CheckConstraint("total_return_amount >= 0", name="ck_returns_total_return_amount_non_negative"),
         CheckConstraint("refund_amount >= 0", name="ck_returns_refund_amount_non_negative"),
         CheckConstraint("store_credit_amount >= 0", name="ck_returns_store_credit_amount_non_negative"),
+        UniqueConstraint("organization_id", "return_number", name="uq_return_org_number"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    return_number = Column(String, unique=True, index=True)
+    return_number = Column(String, index=True)
     original_invoice_id = Column(Integer, ForeignKey("sales.id"), nullable=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
     warranty_claim_id = Column(Integer, ForeignKey("warranty_claims.id"), nullable=True, index=True)
@@ -740,14 +755,15 @@ class ReturnItem(Base):
     damaged_records = relationship("DamagedStockRecord", back_populates="return_item", cascade="all, delete-orphan")
 
 
-class RefundPayment(Base):
+class RefundPayment(Base, BaseHybridModel):
     __tablename__ = "refund_payments"
     __table_args__ = (
         CheckConstraint("refund_amount >= 0", name="ck_refund_payments_refund_amount_non_negative"),
+        UniqueConstraint("organization_id", "refund_number", name="uq_refund_org_number"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    refund_number = Column(String, unique=True, index=True)
+    refund_number = Column(String, index=True)
     return_id = Column(Integer, ForeignKey("returns.id"), nullable=False, index=True)
     original_payment_id = Column(Integer, ForeignKey("invoice_payments.id"), nullable=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
@@ -767,15 +783,16 @@ class RefundPayment(Base):
     payer = relationship("User", foreign_keys=[paid_by])
 
 
-class StoreCredit(Base):
+class StoreCredit(Base, BaseHybridModel):
     __tablename__ = "store_credits"
     __table_args__ = (
         CheckConstraint("amount >= 0", name="ck_store_credits_amount_non_negative"),
         CheckConstraint("remaining_amount >= 0", name="ck_store_credits_remaining_non_negative"),
+        UniqueConstraint("organization_id", "credit_number", name="uq_credit_org_number"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    credit_number = Column(String, unique=True, index=True)
+    credit_number = Column(String, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
     return_id = Column(Integer, ForeignKey("returns.id"), nullable=True, index=True)
     amount = Column(Float, default=0)
@@ -790,11 +807,14 @@ class StoreCredit(Base):
     creator = relationship("User", foreign_keys=[created_by])
 
 
-class ExchangeRecord(Base):
+class ExchangeRecord(Base, BaseHybridModel):
     __tablename__ = "exchange_records"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "exchange_number", name="uq_exchange_org_number"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    exchange_number = Column(String, unique=True, index=True, nullable=True)
+    exchange_number = Column(String, index=True, nullable=True)
     return_id = Column(Integer, ForeignKey("returns.id"), nullable=False, index=True)
     old_invoice_item_id = Column(Integer, ForeignKey("sale_items.id"), nullable=False, index=True)
     old_product_id = Column(Integer, ForeignKey("inventory_items.id"), nullable=False, index=True)
@@ -878,9 +898,12 @@ class WarrantyCondition(Base):
 
 class WarrantyRecord(Base, BaseHybridModel):
     __tablename__ = "warranty_records"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "warranty_code", name="uq_warranty_org_code"),
+    )
     id = Column(Integer, primary_key=True, index=True)
-    warranty_code = Column(String, unique=True, index=True)
-    warranty_number = Column(String, nullable=True, unique=True, index=True)
+    warranty_code = Column(String, index=True)
+    warranty_number = Column(String, nullable=True, index=True)
     invoice_id = Column(Integer, ForeignKey("sales.id"), nullable=True, index=True)
     invoice_item_id = Column(Integer, ForeignKey("sale_items.id"), nullable=True, index=True)
     repair_ticket_id = Column(Integer, ForeignKey("repair_tickets.id"), nullable=True, index=True)
@@ -930,11 +953,14 @@ class WarrantyRecord(Base, BaseHybridModel):
     claims = relationship("WarrantyClaim", back_populates="warranty", cascade="all, delete-orphan")
 
 
-class WarrantyClaim(Base):
+class WarrantyClaim(Base, BaseHybridModel):
     __tablename__ = "warranty_claims"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "claim_code", name="uq_claim_org_code"),
+    )
     id = Column(Integer, primary_key=True, index=True)
-    claim_code = Column(String, unique=True, index=True)
-    claim_number = Column(String, unique=True, index=True, nullable=True)
+    claim_code = Column(String, index=True)
+    claim_number = Column(String, index=True, nullable=True)
     warranty_id = Column(Integer, ForeignKey("warranty_records.id"), index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
     claim_date = Column(DateTime, default=utcnow, index=True)
@@ -1047,7 +1073,7 @@ class RepairPartUsage(Base):
     item = relationship("InventoryItem")
 
 
-class Expense(Base):
+class Expense(Base, BaseHybridModel):
     __tablename__ = "expenses"
     __table_args__ = (
         CheckConstraint("amount >= 0", name="ck_expenses_amount_non_negative"),
@@ -1085,10 +1111,13 @@ class Expense(Base):
     created_by = relationship("User", foreign_keys=[created_by_user_id])
     approved_by = relationship("User", foreign_keys=[approved_by_user_id])
 
-class PurchaseOrder(Base):
+class PurchaseOrder(Base, BaseHybridModel):
     __tablename__ = "purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "po_number", name="uq_po_org_number"),
+    )
     id = Column(Integer, primary_key=True)
-    po_number = Column(String, unique=True, index=True)
+    po_number = Column(String, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"))
     status = Column(String, default="Draft") # Draft, Ordered, Received, Cancelled
     total_cost = Column(Float, default=0)
@@ -1109,10 +1138,13 @@ class PurchaseOrderItem(Base):
     po = relationship("PurchaseOrder", back_populates="items")
     item = relationship("InventoryItem")
 
-class GoodsReceivedNote(Base):
+class GoodsReceivedNote(Base, BaseHybridModel):
     __tablename__ = "goods_received_notes"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "grn_no", name="uq_grn_org_no"),
+    )
     id = Column(Integer, primary_key=True)
-    grn_no = Column(String, unique=True, index=True)
+    grn_no = Column(String, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"))
     po_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=True, index=True)
     invoice_no = Column(String, nullable=True)
@@ -1139,7 +1171,7 @@ class GoodsReceivedNoteItem(Base):
     grn = relationship("GoodsReceivedNote", back_populates="lines")
 
 
-class SupplierLedgerEntry(Base):
+class SupplierLedgerEntry(Base, BaseHybridModel):
     __tablename__ = "supplier_ledger_entries"
     id = Column(Integer, primary_key=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), index=True)
@@ -1155,7 +1187,7 @@ class SupplierLedgerEntry(Base):
     supplier = relationship("Supplier", back_populates="ledger_entries")
     created_by = relationship("User")
 
-class PriceAdjustmentLog(Base):
+class PriceAdjustmentLog(Base, BaseHybridModel):
     __tablename__ = "price_adjustment_logs"
     id = Column(Integer, primary_key=True)
     item_id = Column(Integer, ForeignKey("inventory_items.id"))
@@ -1167,7 +1199,7 @@ class PriceAdjustmentLog(Base):
     created_at = Column(DateTime, default=utcnow)
     item = relationship("InventoryItem")
 
-class ProductDiscount(Base):
+class ProductDiscount(Base, BaseHybridModel):
     __tablename__ = "product_discounts"
     id = Column(Integer, primary_key=True)
     item_id = Column(Integer, ForeignKey("inventory_items.id"))
@@ -1179,7 +1211,7 @@ class ProductDiscount(Base):
     note = Column(String, nullable=True)
     item = relationship("InventoryItem")
 
-class StockTakeSession(Base):
+class StockTakeSession(Base, BaseHybridModel):
     __tablename__ = "stock_take_sessions"
     id = Column(Integer, primary_key=True)
     name = Column(String, index=True)
@@ -1326,6 +1358,8 @@ def _prevent_accounting_ledger_delete(_mapper, _connection, _target):
 class CashReconciliation(Base):
     __tablename__ = "cash_reconciliations"
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True, index=True)
     recon_code = Column(String, unique=True, index=True)
     recon_date = Column(DateTime, default=utcnow, index=True)
     shift = Column(String, default="Full Day")  # Full Day | Morning | Evening
@@ -1334,6 +1368,9 @@ class CashReconciliation(Base):
     system_cash_total = Column(Float, default=0)
     counted_cash_total = Column(Float, default=0)
     closing_float = Column(Float, default=0)
+    cash_drops_total = Column(Float, default=0.0)
+    cash_ins_total = Column(Float, default=0.0)
+    cash_movements_json = Column(Text, nullable=True)
     cash_transactions_count = Column(Integer, default=0)
     denomination_json = Column(Text, nullable=True)
     difference = Column(Float, default=0)
@@ -1342,11 +1379,14 @@ class CashReconciliation(Base):
     verified_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     verified_at = Column(DateTime, nullable=True)
     resolution_notes = Column(Text, nullable=True)
+    z_report_dispatched = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utcnow, index=True)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     cashier = relationship("User", foreign_keys=[cashier_id])
     verified_by = relationship("User", foreign_keys=[verified_by_user_id])
+    organization = relationship("Organization", foreign_keys=[organization_id])
+    branch = relationship("Branch", foreign_keys=[branch_id])
 
 
 class FinancialDailyClosing(Base):
@@ -1442,10 +1482,13 @@ class FinancialAuditFlag(Base):
     resolved_by = relationship("User", foreign_keys=[resolved_by_user_id])
 
 
-class LabelTemplate(Base):
+class LabelTemplate(Base, BaseHybridModel):
     __tablename__ = "label_templates"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_label_template_org_name"),
+    )
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)
+    name = Column(String, index=True)
     label_scope = Column(String, index=True)  # Product | Repair Job | Spare Part | Asset
     width_mm = Column(Integer, default=50)
     height_mm = Column(Integer, default=30)
@@ -1460,10 +1503,13 @@ class LabelTemplate(Base):
     created_by = relationship("User")
 
 
-class LabelPrintJob(Base):
+class LabelPrintJob(Base, BaseHybridModel):
     __tablename__ = "label_print_jobs"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "job_code", name="uq_label_job_org_code"),
+    )
     id = Column(Integer, primary_key=True, index=True)
-    job_code = Column(String, unique=True, index=True)
+    job_code = Column(String, index=True)
     label_type = Column(String, index=True)  # Product | Repair Job | Spare Part | Asset
     entity_type = Column(String, index=True)  # inventory_item | repair_ticket | asset | customer
     entity_id = Column(Integer, nullable=True, index=True)
@@ -1492,10 +1538,13 @@ class LabelPrintJob(Base):
     template = relationship("LabelTemplate")
 
 
-class LabelAsset(Base):
+class LabelAsset(Base, BaseHybridModel):
     __tablename__ = "label_assets"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "asset_code", name="uq_label_asset_org_code"),
+    )
     id = Column(Integer, primary_key=True, index=True)
-    asset_code = Column(String, unique=True, index=True)
+    asset_code = Column(String, index=True)
     asset_name = Column(String, index=True)
     asset_type = Column(String, index=True)
     department = Column(String, nullable=True, index=True)
@@ -1740,14 +1789,17 @@ class AttributePreset(Base):
     attribute_ids = Column(Text, nullable=False)  # JSON string list
 
 
-class ProductVariant(Base):
+class ProductVariant(Base, BaseHybridModel):
     __tablename__ = "product_variants"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "sku", name="uq_variant_org_sku"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("master_products.id"), nullable=False)
     master_product_id = Column(Integer, ForeignKey("master_products.id"), nullable=True)
-    sku = Column(String, unique=True, index=True, nullable=False)
-    barcode = Column(String, unique=True, index=True, nullable=True)
+    sku = Column(String, index=True, nullable=False)
+    barcode = Column(String, index=True, nullable=True)
     display_name = Column(String, nullable=True, index=True)  # "iPhone 15 Pro - 256GB - Black"
     default_cost_price = Column(Float, default=0)
     default_selling_price = Column(Float, default=0)
