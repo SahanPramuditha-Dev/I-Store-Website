@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -24,7 +24,6 @@ from app.models import (
 )
 from pydantic import BaseModel
 from typing import Optional
-from fastapi import BackgroundTasks
 from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.schemas import (
     WarrantyClaimIn,
