@@ -9,7 +9,7 @@ alembic==1.14.1
 pytest==8.3.3
 httpx==0.28.1
 fpdf2==2.8.7
-apscheduler==3.10.4
+apscheduler==3.11.3
 pytz==2024.1
 cryptography==43.0.3
 slowapi==0.1.10
