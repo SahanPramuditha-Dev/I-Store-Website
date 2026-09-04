@@ -88,6 +88,18 @@ const ROUTE_CAPABILITY_MAP = {
   "/reports/technician-performance": "repairs_management",
 };
 
+const ROUTE_ENTITLEMENT_MAP = {
+  "/pos": "core_pos",
+  "/invoice": "core_pos",
+  "/inventory": "inventory",
+  "/purchase": "inventory",
+  "/barcodes": "inventory",
+  "/repairs": "repairs",
+  "/repair": "repairs",
+  "/r": "repairs",
+  "/whatsapp": "smart_sms",
+};
+
 function RouteFallback() {
   return <div className="h-dvh grid place-items-center text-slate-400">Loading workspace...</div>;
 }
@@ -95,7 +107,7 @@ function RouteFallback() {
 function Guard({ children }) {
   const location = useLocation();
   const token = getAuthValue("token");
-  const { hasCapability } = useCapabilities();
+  const { hasCapability, hasEntitlement } = useCapabilities();
 
   if (!token) {
     clearAuthState();
@@ -117,6 +129,13 @@ function Guard({ children }) {
     if (!hasCapability(requiredCapability) && location.pathname !== "/access-denied") {
       return <Navigate to="/access-denied" replace />;
     }
+  }
+
+  const entitlementEntry = Object.entries(ROUTE_ENTITLEMENT_MAP).find(([prefix]) =>
+    location.pathname === prefix || location.pathname.startsWith(prefix + "/")
+  );
+  if (entitlementEntry && !hasEntitlement(entitlementEntry[1])) {
+    return <Navigate to="/access-denied" replace />;
   }
 
   return children;

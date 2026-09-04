@@ -11,7 +11,8 @@ from app.core.license_guard import (
     canonicalize_bytes,
     verify_license_token,
     require_active_license,
-    load_public_key_from_b64
+    load_public_key_from_b64,
+    get_cached_license,
 )
 
 def _generate_ed25519_keypair():
@@ -141,3 +142,26 @@ def test_expired_token_past_grace_period():
     )
     assert is_valid is False
     assert "expired" in msg.lower()
+
+
+def test_legacy_electron_cache_is_unwrapped_and_migrated(tmp_path, monkeypatch):
+    priv, _pub, _pub_b64 = _generate_ed25519_keypair()
+    token = _sign_token({
+        "license_id": "LIC-CACHE-1",
+        "machine_fingerprint": "*",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+    }, priv)
+    cache_path = tmp_path / "license_cache.json"
+    cache_path.write_text(json.dumps({
+        "license_key": "E-STORE-CACHE-1",
+        "token": token,
+        "cached_at": datetime.now(timezone.utc).isoformat(),
+    }), encoding="utf-8")
+    monkeypatch.setenv("LICENSE_CACHE_FILE", str(cache_path))
+
+    cached = get_cached_license()
+
+    assert cached["payload"]["license_id"] == "LIC-CACHE-1"
+    assert cached["signature"] == token["signature"]
+    assert "token" not in cached
+    assert "token" not in json.loads(cache_path.read_text(encoding="utf-8"))

@@ -167,6 +167,8 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int] = Non
                     "tenant_code": payload.get("tenant_code"),
                     "industry_type": ind,
                     "configuration_version": payload.get("configuration_version", 1),
+                    "entitlements": payload.get("entitlements", []),
+                    "package_code": payload.get("package_code"),
                     "capabilities": eff_caps
                 }
     except Exception as ex:

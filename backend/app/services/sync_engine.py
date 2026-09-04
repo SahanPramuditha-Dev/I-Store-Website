@@ -1,12 +1,14 @@
 import json
 import logging
 import asyncio
+import os
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 import httpx
 
 from app.models import SyncOutbox
 from app.config import settings
+from app.core.license_guard import get_cached_license
 
 logger = logging.getLogger("istore.sync_engine")
 
@@ -65,39 +67,53 @@ class SyncEngine:
             db.commit()
             return {"processed": len(events), "succeeded": 0, "failed": 0, "reason": "offline_mode"}
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        cached = get_cached_license() or {}
+        license_key = cached.get("license_key") or (cached.get("payload") or {}).get("license_id")
+        fingerprint = cached.get("hardware_uuid") or (cached.get("payload") or {}).get("machine_fingerprint")
+        if not license_key or not fingerprint or fingerprint == "*":
             for event in events:
-                try:
-                    payload_dict = json.loads(event.payload) if isinstance(event.payload, str) else event.payload
-                    resp = await client.post(
-                        f"{self.cloud_api_url}/api/v1/sync/ingest",
-                        json={
-                            "event_id": event.id,
-                            "entity_type": event.entity_type,
-                            "entity_id": event.entity_id,
-                            "action": event.action,
-                            "payload": payload_dict,
-                            "device_id": settings.device_name,
-                        },
-                    )
-                    if resp.status_code == 200:
-                        event.status = "completed"
-                        succeeded += 1
-                    elif resp.status_code == 409:  # Conflict
-                        event.status = "conflict"
-                        event.last_error = f"Conflict: {resp.text}"
-                        failed += 1
-                    else:
-                        event.status = "failed"
-                        event.retry_count += 1
-                        event.last_error = f"HTTP {resp.status_code}: {resp.text}"
-                        failed += 1
-                except Exception as exc:
+                event.status = "pending"
+                event.last_error = "Cloud sync requires an activated device-bound license."
+            db.commit()
+            return {"processed": len(events), "succeeded": 0, "failed": 0, "reason": "license_not_bound"}
+
+        batch = {
+            "license_key": license_key,
+            "machine_fingerprint": fingerprint,
+            "events": [
+                {
+                    "uuid": str(event.id),
+                    "entity_type": event.entity_type,
+                    "entity_id": str(event.entity_id),
+                    "operation": str(event.action).upper(),
+                    "payload": json.loads(event.payload) if isinstance(event.payload, str) else event.payload,
+                    "created_at": event.created_at.isoformat() if event.created_at else None,
+                }
+                for event in events
+            ],
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(f"{self.cloud_api_url}/api/sync/ingest", json=batch)
+            if resp.status_code == 200:
+                for event in events:
+                    event.status = "synced"
+                    event.last_error = None
+                succeeded = len(events)
+            else:
+                error = f"HTTP {resp.status_code}: {resp.text}"
+                for event in events:
                     event.status = "failed"
                     event.retry_count += 1
-                    event.last_error = str(exc)
-                    failed += 1
-                db.commit()
+                    event.last_error = error
+                failed = len(events)
+        except Exception as exc:
+            for event in events:
+                event.status = "failed"
+                event.retry_count += 1
+                event.last_error = str(exc)
+            failed = len(events)
+        db.commit()
 
         return {"processed": len(events), "succeeded": succeeded, "failed": failed}
 

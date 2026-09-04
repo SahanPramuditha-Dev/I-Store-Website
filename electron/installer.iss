@@ -5,11 +5,11 @@
 ;  then run build-setup.bat to rebuild the installer.
 ; ============================================================
 
-#define MyAppName       "I-Store ERP"
-#define MyAppVersion     "1.1.100"
-#define MyAppPublisher  "I-Store Dev"
+#define MyAppName       "E Store"
+#define MyAppVersion     "1.1.102"
+#define MyAppPublisher  "E Store"
 #define MyAppURL        "https://github.com/SahanPramuditha-Dev/I-Store-Website"
-#define MyAppExeName    "I-Store ERP.exe"
+#define MyAppExeName    "E Store.exe"
 #define MyAppSourceDir  "..\dist-electron\win-unpacked"
 
 ; -- Setup Section -----------------------------------------------------------
@@ -38,7 +38,7 @@ CloseApplicationsFilter=IStoreBackend.exe
 
 
 OutputDir=..\dist-electron
-OutputBaseFilename=I-Store-ERP-Setup-{#MyAppVersion}
+OutputBaseFilename=E-Store-Setup-{#MyAppVersion}
 
 ; Compression -- lzma2/max balances size vs speed
 Compression=lzma2/max

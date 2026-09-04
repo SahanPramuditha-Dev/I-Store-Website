@@ -1,9 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
-title I-Store ERP - Release Builder
+title E Store - Release Builder
 echo.
 echo =============================================
-echo   I-Store ERP - Release Builder
+echo   E Store - Release Builder
 echo =============================================
 echo.
 set /p VERSION=Enter version number (e.g. 1.2.0): 
@@ -13,7 +13,7 @@ if "%VERSION%"=="" (
     exit /b 1
 )
 echo.
-echo Building I-Store ERP v%VERSION% ...
+echo Building E Store v%VERSION% ...
 echo ---------------------------------------------
 echo.
 
@@ -96,7 +96,7 @@ echo.
 echo Publishing release v%VERSION% to GitHub Releases...
 where gh >nul 2>nul
 if !errorlevel! == 0 (
-    call gh release create v%VERSION% "%DIST%\I-Store-ERP-Setup-%VERSION%.exe" "%DIST%\I-Store-ERP-Setup-%VERSION%.exe.blockmap" "%DIST%\latest.yml" --title "v%VERSION%" --notes "Release v%VERSION%"
+    call gh release create v%VERSION% "%DIST%\E-Store-Setup-%VERSION%.exe" "%DIST%\E-Store-Setup-%VERSION%.exe.blockmap" "%DIST%\latest.yml" --title "v%VERSION%" --notes "Release v%VERSION%"
     if !errorlevel! == 0 (
         echo     OK - GitHub Release v%VERSION% published automatically!
     ) else (

@@ -119,12 +119,14 @@ function getInitialCapabilityState() {
       return {
         industryType: ind || "MOBILE_RETAIL",
         capabilities: base,
+        entitlements: Array.isArray(payload.entitlements) ? payload.entitlements : [],
       };
     }
   } catch (_e) {}
   return {
     industryType: "MOBILE_RETAIL",
     capabilities: INDUSTRY_TEMPLATES["MOBILE_RETAIL"],
+    entitlements: [],
   };
 }
 
@@ -134,6 +136,7 @@ const CapabilityContext = createContext({
   industryType: initial.industryType,
   capabilities: initial.capabilities,
   hasCapability: () => true,
+  hasEntitlement: () => true,
   isLoading: false,
   refreshCapabilities: async () => {},
 });
@@ -141,6 +144,7 @@ const CapabilityContext = createContext({
 export function CapabilityProvider({ children }) {
   const [industryType, setIndustryType] = useState(() => getInitialCapabilityState().industryType);
   const [capabilities, setCapabilities] = useState(() => getInitialCapabilityState().capabilities);
+  const [entitlements, setEntitlements] = useState(() => getInitialCapabilityState().entitlements);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchCapabilities = useCallback(async () => {
@@ -151,12 +155,14 @@ export function CapabilityProvider({ children }) {
         const ind = (res.data.industry_type || "MOBILE_RETAIL").toUpperCase();
         setIndustryType(ind);
         setCapabilities(res.data.capabilities);
+        setEntitlements(Array.isArray(res.data.entitlements) ? res.data.entitlements : getInitialCapabilityState().entitlements);
       }
     } catch (e) {
       // Fallback gracefully to cached license or defaults
       const cached = getInitialCapabilityState();
       setIndustryType(cached.industryType);
       setCapabilities(cached.capabilities);
+      setEntitlements(cached.entitlements);
     } finally {
       setIsLoading(false);
     }
@@ -188,12 +194,19 @@ export function CapabilityProvider({ children }) {
     [capabilities]
   );
 
+  const hasEntitlement = useCallback(
+    (key) => entitlements.includes("all") || entitlements.includes(key),
+    [entitlements]
+  );
+
   return (
     <CapabilityContext.Provider
       value={{
         industryType,
         capabilities,
         hasCapability,
+        entitlements,
+        hasEntitlement,
         isLoading,
         refreshCapabilities: fetchCapabilities,
       }}

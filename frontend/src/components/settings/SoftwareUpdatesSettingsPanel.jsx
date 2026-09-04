@@ -3,7 +3,7 @@ import { RefreshCw, Download, CheckCircle2, ShieldCheck, Cpu, HardDrive, Sparkle
 import { Button, SectionCard, Badge } from "../UI";
 
 export default function SoftwareUpdatesSettingsPanel({ toast }) {
-  const [appVersion, setAppVersion] = useState("v1.1.100");
+  const [appVersion, setAppVersion] = useState("v1.1.102");
   const [checking, setChecking] = useState(false);
   const [updaterStatus, setUpdaterStatus] = useState("idle"); // 'idle' | 'checking' | 'available' | 'downloading' | 'ready-to-install' | 'up-to-date' | 'error' | 'blocked'
   const [progress, setProgress] = useState(0);
@@ -61,7 +61,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
           toast?.(`New version v${data.version || ''} is available for download!`, "info");
         } else if (data.status === "not-available") {
           setUpdaterStatus("up-to-date");
-          toast?.("You are using the latest version of iStore OS!", "success");
+          toast?.("You are using the latest version of E Store!", "success");
         } else if (data.status === "downloaded" || data.status === "ready-to-install") {
           setUpdaterStatus("ready-to-install");
           if (data.version) setLatestVersion(data.version);
@@ -126,7 +126,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
         setUpdaterStatus("idle");
       } else if (result?.upToDate) {
         setUpdaterStatus("up-to-date");
-        toast?.("You are using the latest version of iStore OS!", "success");
+        toast?.("You are using the latest version of E Store!", "success");
       } else if (result?.error) {
         setUpdaterStatus("error");
         setErrorMessage(result.error);
@@ -206,11 +206,11 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
               <span>Official Release Channel</span>
             </div>
             <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-3">
-              iStore OS Software Updates
+              E Store Software Updates
               <Badge tone="cyan" className="text-xs font-bold">{appVersion}</Badge>
             </h2>
             <p className="text-xs text-slate-400 max-w-xl">
-              Automatic update manager for iStore ERP. Checks for verified GitHub Releases, performs automated pre-update SQLite database backups, and applies seamless hot-reboots.
+              Automatic update manager for E Store. Checks for verified GitHub Releases, performs automated pre-update SQLite database backups, and applies seamless hot-reboots.
             </p>
           </div>
 
@@ -280,7 +280,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
                 {updaterStatus === "up-to-date" && (
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold">
                     <CheckCircle2 size={16} className="text-emerald-400" />
-                    <span>Your workstation is completely up to date with the latest iStore OS release!</span>
+                    <span>Your workstation is completely up to date with the latest E Store release!</span>
                   </div>
                 )}
 
@@ -361,7 +361,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
                       <span>Release Downloaded &amp; Verified!</span>
                     </div>
                     <p className="text-xs text-slate-300">
-                      A pre-update database backup has been saved to your local storage. Click below to restart iStore OS and finalize the installation.
+                      A pre-update database backup has been saved to your local storage. Click below to restart E Store and finalize the installation.
                     </p>
                     <Button size="sm" onClick={handleInstall} className="bg-emerald-600 hover:bg-emerald-500 font-bold">
                       Restart &amp; Install Now

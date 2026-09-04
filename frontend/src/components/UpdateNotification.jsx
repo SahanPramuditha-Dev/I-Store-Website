@@ -183,7 +183,7 @@ export default function UpdateNotification() {
             <p className="mt-0.5 text-[11px] text-slate-400 truncate">
               {status === "checking"
                 ? "Checking GitHub repository for desktop updates..."
-                : "You are running the latest version of iStore OS."}
+                : "You are running the latest version of E Store."}
             </p>
           </div>
           <button
@@ -257,7 +257,7 @@ export default function UpdateNotification() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400 font-medium">iStore OS Desktop Application</p>
+              <p className="text-xs text-slate-400 font-medium">E Store Desktop Application</p>
             </div>
           </div>
 

@@ -25,6 +25,7 @@ const path = require("path");
 const db   = require("./local-db");
 const syncBridge = require("./sync-bridge");
 const { initAutoUpdater } = require("./updater");
+const { ESTORE_PUBLIC_KEY_B64 } = require("./license-manager");
 
 const isDev = process.env.NODE_ENV === "development";
 let backendProcess = null;
@@ -172,6 +173,9 @@ function startBackend() {
     ALLOW_RUNTIME_SCHEMA_SYNC: "true",
     SQLITE_FILE: path.join(databaseDirectory, "istore.db"),
     BACKUP_FOLDER: backupsDirectory,
+    LICENSE_CACHE_FILE: path.join(dataDirectory, "license_cache.json"),
+    ESTORE_PUBLIC_KEY_B64,
+    ESTORE_LICENSE_SERVER_URL: process.env.ESTORE_LICENSE_SERVER_URL || "https://e-store-control-center-backend.vercel.app",
     // Do not set DATABASE_URL here. config.py derives it from SQLITE_FILE,
     // preserving SQLite's Windows path handling in one place.
   };
@@ -271,7 +275,7 @@ function createWindow() {
     height: 900,
     minWidth:  1024,
     minHeight: 720,
-    title: "I-Store ERP",
+    title: "E Store",
     webPreferences: {
       preload:            path.join(__dirname, "preload.js"),
       contextIsolation:   true,

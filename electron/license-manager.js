@@ -14,8 +14,10 @@ const path = require("path");
 const { net, app } = require("electron");
 
 const PRIMARY_LICENSE_SERVER = process.env.ESTORE_LICENSE_SERVER_URL || "https://e-store-control-center-backend.vercel.app/license";
-const LOCAL_BACKEND_FALLBACK = "http://127.0.0.1:8080/license";
-const OFFLINE_GRACE_PERIOD_HOURS = 72;
+const LOCAL_BACKEND_ACTIVATION_URL = "http://127.0.0.1:8000/saas/license/activate-key";
+// Root verification key published by the E Store control center. Key rotation
+// requires shipping a new trusted key (or a signed keyring) in an app update.
+const ESTORE_PUBLIC_KEY_B64 = process.env.ESTORE_PUBLIC_KEY_B64 || "psTliZ+/c7aE9zenGTHyvuxVuVJWDmTrUgA3ZfXXod4=";
 
 let _cachedLicense = null;
 
@@ -61,7 +63,7 @@ function loadCachedLicense() {
   if (fs.existsSync(storePath)) {
     try {
       const raw = fs.readFileSync(storePath, "utf8");
-      _cachedLicense = JSON.parse(raw);
+      _cachedLicense = normalizeCachedLicense(JSON.parse(raw));
     } catch (_e) {
       _cachedLicense = null;
     }
@@ -69,9 +71,58 @@ function loadCachedLicense() {
   return _cachedLicense;
 }
 
+function normalizeCachedLicense(data) {
+  if (!data || typeof data !== "object") return null;
+  // Compatibility with installers up to 1.1.101, which wrapped the signed
+  // token under `token` while the Python API expected it at the root.
+  if (data.token?.payload && data.token?.signature) {
+    return {
+      ...data.token,
+      license_key: data.license_key || data.token.payload.license_id,
+      cached_at: data.cached_at,
+      last_verified_at: data.last_verified_at,
+      hardware_uuid: data.hardware_uuid,
+      organization_name: data.organization_name || data.token.payload.organization_name || data.token.payload.tenant_code,
+      branch_name: data.branch_name || data.token.payload.branch_name || data.token.payload.shop_code,
+      device_code: data.device_code,
+    };
+  }
+  return data;
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function verifySignedToken(token, expectedFingerprint = getHardwareFingerprint()) {
+  if (!token?.payload || typeof token.signature !== "string") return { valid: false, error: "Malformed signed license token." };
+  try {
+    const rawKey = Buffer.from(ESTORE_PUBLIC_KEY_B64, "base64");
+    if (rawKey.length !== 32) throw new Error("public key must contain 32 bytes");
+    const spkiPrefix = Buffer.from("302a300506032b6570032100", "hex");
+    const publicKey = crypto.createPublicKey({ key: Buffer.concat([spkiPrefix, rawKey]), format: "der", type: "spki" });
+    const valid = crypto.verify(null, Buffer.from(canonicalize(token.payload), "utf8"), publicKey, Buffer.from(token.signature, "base64"));
+    if (!valid) return { valid: false, error: "License signature is invalid." };
+    const licensedFingerprint = token.payload.machine_fingerprint;
+    if (licensedFingerprint && licensedFingerprint !== "*" && licensedFingerprint.toLowerCase() !== expectedFingerprint.toLowerCase()) {
+      return { valid: false, error: "License belongs to a different device." };
+    }
+    return { valid: true, payload: token.payload };
+  } catch (error) {
+    return { valid: false, error: `License verification failed: ${error.message}` };
+  }
+}
+
 function saveCachedLicense(data) {
+  const normalized = normalizeCachedLicense(data);
+  if (!verifySignedToken(normalized).valid) throw new Error("Refusing to cache an unverified license token.");
   _cachedLicense = {
-    ...data,
+    ...normalized,
+    license_key: normalized.license_key || normalized.payload.license_id,
     cached_at: new Date().toISOString(),
     hardware_uuid: getHardwareFingerprint(),
   };
@@ -85,18 +136,23 @@ function saveCachedLicense(data) {
 }
 
 function isWithinOfflineGracePeriod(cached) {
-  if (!cached || !cached.cached_at) return false;
-  const cachedTime = new Date(cached.cached_at).getTime();
+  const verification = verifySignedToken(cached);
+  if (!verification.valid || !cached.cached_at) return false;
+  const cachedTime = new Date(cached.last_verified_at || cached.cached_at).getTime();
+  if (!Number.isFinite(cachedTime)) return false;
   const now = Date.now();
   const diffHours = (now - cachedTime) / (1000 * 60 * 60);
-  return diffHours <= OFFLINE_GRACE_PERIOD_HOURS;
+  const graceHours = Math.max(0, Number(verification.payload.grace_period_days ?? 3) * 24);
+  const expiresAt = verification.payload.expires_at ? new Date(verification.payload.expires_at).getTime() : Infinity;
+  const expiryGraceCutoff = Number.isFinite(expiresAt) ? expiresAt + (graceHours * 60 * 60 * 1000) : Infinity;
+  return now <= expiryGraceCutoff && diffHours >= 0 && diffHours <= graceHours;
 }
 
 async function verifyOrHeartbeatLicense() {
   const cached = loadCachedLicense();
   const hardwareUuid = getHardwareFingerprint();
 
-  if (!cached || !cached.license_key) {
+  if (!cached || !cached.license_key || !verifySignedToken(cached, hardwareUuid).valid) {
     return {
       status: "UNLICENSED",
       message: "POS terminal requires activation with an E-Store license key.",
@@ -119,17 +175,19 @@ async function verifyOrHeartbeatLicense() {
 
       if (response.ok) {
         const data = await response.json();
-        saveCachedLicense({
-          ...cached,
-          status: "ACTIVATED",
-          token: data.token,
+        const verification = verifySignedToken(data.token, hardwareUuid);
+        if (!verification.valid) throw new Error(verification.error);
+        const refreshed = saveCachedLicense({
+          ...data.token,
+          license_key: cached.license_key,
           last_verified_at: new Date().toISOString(),
         });
         return {
           status: "ACTIVATED",
-          organization_name: cached.organization_name || cached.tenant_code,
-          branch_name: cached.branch_name || cached.shop_code,
-          device_code: cached.device_code || "POS Terminal",
+          organization_name: refreshed.organization_name || refreshed.payload.tenant_code,
+          branch_name: refreshed.branch_name || refreshed.payload.shop_code,
+          device_code: refreshed.device_code || "POS Terminal",
+          payload: refreshed.payload,
           is_offline_fallback: false,
         };
       }
@@ -140,22 +198,25 @@ async function verifyOrHeartbeatLicense() {
 
   // Offline Grace Period
   if (isWithinOfflineGracePeriod(cached)) {
+    const graceHours = Math.max(0, Number(cached.payload.grace_period_days ?? 3) * 24);
+    const verifiedAt = new Date(cached.last_verified_at || cached.cached_at).getTime();
     return {
       status: "ACTIVATED",
       organization_name: cached.organization_name || cached.tenant_code,
       branch_name: cached.branch_name || cached.shop_code,
       device_code: cached.device_code || "POS Terminal",
+      payload: cached.payload,
       is_offline_fallback: true,
       offline_grace_remaining_hours: Math.max(
         0,
-        OFFLINE_GRACE_PERIOD_HOURS - ((Date.now() - new Date(cached.cached_at).getTime()) / (1000 * 60 * 60))
+        graceHours - ((Date.now() - verifiedAt) / (1000 * 60 * 60))
       ).toFixed(1),
     };
   }
 
   return {
     status: "EXPIRED_OFFLINE",
-    message: "Offline grace period of 72 hours has expired. Please connect to the internet to verify license.",
+    message: "The signed offline grace period has expired. Please connect to the internet to verify the license.",
   };
 }
 
@@ -179,7 +240,10 @@ async function activatePOSDevice(licenseKey) {
     const data = await response.json();
     if (response.ok && data.success) {
       const payload = data.token?.payload || {};
+      const verification = verifySignedToken(data.token, hardwareUuid);
+      if (!verification.valid) return { success: false, error: verification.error };
       saveCachedLicense({
+        ...data.token,
         license_key: trimmedKey,
         tenant_code: payload.tenant_code,
         organization_name: payload.tenant_code,
@@ -187,7 +251,6 @@ async function activatePOSDevice(licenseKey) {
         branch_name: payload.shop_code,
         package_code: payload.package_code,
         entitlements: payload.entitlements,
-        token: data.token,
         status: "ACTIVATED",
       });
 
@@ -206,35 +269,27 @@ async function activatePOSDevice(licenseKey) {
 
   // 2. Second attempt: Local ERP Backend (Port 8000)
   try {
-    const response = await net.fetch(`${LOCAL_BACKEND_FALLBACK}/devices/activate`, {
+    const response = await net.fetch(LOCAL_BACKEND_ACTIVATION_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         license_key: trimmedKey,
-        hardware_uuid: hardwareUuid,
-        app_version: app.getVersion() || "1.0.0",
-        os_info: `${os.type()} ${os.release()} (${os.arch()})`,
+        machine_fingerprint: hardwareUuid,
       }),
     });
 
     const data = await response.json();
     if (response.ok && data.success) {
-      const device = data.device || {};
-      saveCachedLicense({
-        license_key: trimmedKey,
-        device_uuid: device.uuid,
-        device_code: device.device_code,
-        organization_id: device.organization_id,
-        organization_name: device.organization_name,
-        branch_id: device.branch_id,
-        branch_name: device.branch_name,
-        status: "ACTIVATED",
-      });
+      const token = data.token || data.token_data;
+      const verification = verifySignedToken(token, hardwareUuid);
+      if (!verification.valid) return { success: false, error: verification.error };
+      const payload = verification.payload;
+      saveCachedLicense({ ...token, license_key: trimmedKey, last_verified_at: new Date().toISOString() });
 
       return {
         success: true,
         message: "Terminal activated successfully!",
-        device: device,
+        device: { organization_name: payload.organization_name || payload.tenant_code, branch_name: payload.branch_name || payload.shop_code },
       };
     }
     return { success: false, error: data.detail || data.error || "Activation key not found" };
@@ -248,4 +303,6 @@ module.exports = {
   verifyOrHeartbeatLicense,
   activatePOSDevice,
   loadCachedLicense,
+  verifySignedToken,
+  ESTORE_PUBLIC_KEY_B64,
 };

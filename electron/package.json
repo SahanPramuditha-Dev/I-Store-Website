@@ -1,7 +1,7 @@
 {
   "name": "istore-electron",
-  "version": "1.1.100",
-  "description": "I-Store ERP – Electron Desktop Host (Offline Engine)",
+  "version": "1.1.102",
+  "description": "E Store – Electron Desktop Business Platform",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.istore.erp",
-    "productName": "I-Store ERP",
+    "productName": "E Store",
     "directories": {
       "output": "../dist-electron"
     },
@@ -40,6 +40,7 @@
       "sync-bridge.js",
       "db-backup.js",
       "updater.js",
+      "license-manager.js",
       "app-update.yml",
       "node_modules/**/*",
       "frontend-dist/**/*"
@@ -66,7 +67,7 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "I-Store-ERP-Setup-${version}.${ext}",
+      "artifactName": "E-Store-Setup-${version}.${ext}",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
       "installerIcon": "../assets/icon.ico",

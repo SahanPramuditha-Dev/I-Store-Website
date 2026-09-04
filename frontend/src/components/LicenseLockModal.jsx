@@ -20,6 +20,9 @@ export default function LicenseLockModal() {
       try {
         const res = await window.istore.license.getStatus();
         if (res && res.status) {
+          if (res.payload) {
+            localStorage.setItem('istore_license_token', JSON.stringify({ payload: res.payload }));
+          }
           setLicenseState(res);
           return;
         }

@@ -63,6 +63,15 @@ EXEMPT_ROUTES = {
     "/api/saas/plans",
 }
 
+ENTITLEMENT_ROUTE_PREFIXES = {
+    "core_pos": ("/pos", "/invoices", "/payments", "/shifts"),
+    "inventory": ("/inventory", "/catalog", "/purchase", "/labels"),
+    "repairs": ("/repairs", "/warranty"),
+    "smart_sms": ("/api/whatsapp",),
+    "ai_assistant": ("/api/ai",),
+    "bi_analytics": ("/api/analytics",),
+}
+
 
 def canonicalize_json(data: Any) -> str:
     """Deterministically formats JSON dictionary for cryptographic verification."""
@@ -110,7 +119,23 @@ def get_cached_license() -> Optional[Dict[str, Any]]:
     if target_path.exists():
         try:
             with open(target_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                # Compatibility with Electron <= 1.1.101, which persisted the
+                # signed object under `token`. Keep only the signed structure
+                # plus harmless local metadata so both runtimes share one file.
+                if isinstance(data, dict) and isinstance(data.get("token"), dict):
+                    wrapped = data["token"]
+                    if wrapped.get("payload") and wrapped.get("signature"):
+                        normalized = {
+                            **wrapped,
+                            "license_key": data.get("license_key") or wrapped["payload"].get("license_id"),
+                            "cached_at": data.get("cached_at"),
+                            "last_verified_at": data.get("last_verified_at"),
+                            "hardware_uuid": data.get("hardware_uuid"),
+                        }
+                        save_cached_license(normalized)
+                        return normalized
+                return data
         except Exception as e:
             logger.warning(f"Failed to read license cache file ({target_path}): {e}")
     return None
@@ -279,6 +304,21 @@ async def require_active_license(request: Request) -> Dict[str, Any]:
                 "activation_url": "/saas/license/activate"
             }
         )
+
+    entitlements = set(payload.get("entitlements") or [])
+    if "all" not in entitlements:
+        for entitlement, prefixes in ENTITLEMENT_ROUTE_PREFIXES.items():
+            if any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes):
+                if entitlement not in entitlements:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail={
+                            "error": "ENTITLEMENT_REQUIRED",
+                            "message": f"The active E Store package does not include '{entitlement}'.",
+                            "required_entitlement": entitlement,
+                        },
+                    )
+                break
 
     # Attach license metadata to request state
     request.state.license_payload = payload
