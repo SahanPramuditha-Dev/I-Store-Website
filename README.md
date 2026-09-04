@@ -97,33 +97,9 @@ A production-grade, all-in-one ERP system tailored for electronics stores, mobil
 
 ## 🏗️ Architecture & Technology Stack
 
-```mermaid
-graph LR
-    subgraph Client Layer
-        A[React 18 + Vite SPA]
-        B[Electron Desktop Shell]
-    end
+![iStore ERP architecture overview](assets/architecture-overview.svg)
 
-    subgraph Backend Services
-        C[FastAPI REST Engine]
-        D[Node.js WhatsApp Microservice]
-        E[Google Gemini AI API]
-    end
-
-    subgraph Data & Storage
-        F[(SQLite / PostgreSQL)]
-        G[(Firebase / Cloudflare R2 Backups)]
-        H[(Supabase Cloud Sync)]
-    end
-
-    A -->|REST API| C
-    B --> A
-    C --> F
-    C -->|Internal IPC / HTTP| D
-    C -->|AI Analysis| E
-    C -->|Encrypted Snapshots| G
-    C -->|Public Portal Outbox| H
-```
+The system separates browser/desktop clients, FastAPI business services, local/cloud persistence, messaging/AI integrations, and operational outputs. This keeps POS-critical workflows usable locally while supporting cloud sync, backups, notifications, and customer-facing services.
 
 - **Frontend**: React 18, Vite, Lucide Icons, Custom Design System (Vanilla CSS).
 - **Backend API**: Python 3.10+, FastAPI, SQLAlchemy, Pydantic, Alembic, Uvicorn.
@@ -131,6 +107,8 @@ graph LR
 - **Microservices**: Node.js WhatsApp bot (`whatsapp-web.js` / Puppeteer).
 - **Databases**: SQLite (Desktop / Edge) & PostgreSQL (Cloud / Neon.tech).
 - **Cloud & AI**: Google Gemini 1.5, Firebase Storage / Cloudflare R2, Supabase Sync.
+
+For a deeper technical view, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
