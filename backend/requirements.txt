@@ -4,7 +4,7 @@ sqlalchemy==2.0.35
 pydantic==2.9.2
 python-jose==3.3.0
 passlib[bcrypt]==1.7.4
-python-multipart==0.0.12
+python-multipart==0.0.32
 alembic==1.14.1
 pytest==8.3.3
 httpx==0.28.1
