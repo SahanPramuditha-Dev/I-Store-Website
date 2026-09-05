@@ -56,6 +56,21 @@ function verify(token, machineFingerprint) {
 }
 
 async function main() {
+  if (process.argv[2] === "--verify-stdin") {
+    const chunks = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const machineFingerprint = fingerprint();
+    verify(data.token, machineFingerprint);
+    console.log(JSON.stringify({
+      success: true,
+      signature_valid: true,
+      machine_match: true,
+      package: data.token.payload.package_code,
+      key_id: data.token.key_id,
+    }));
+    return;
+  }
   const licenseKey = String(process.argv[2] || "").trim().toUpperCase();
   if (!licenseKey) throw new Error("Usage: node activate-production-license.js <license-key>");
   const machineFingerprint = fingerprint();
@@ -66,7 +81,7 @@ async function main() {
       license_key: licenseKey,
       machine_fingerprint: machineFingerprint,
       machine_name: `${os.hostname()} - Counter`,
-      app_version: "1.1.102",
+      app_version: "1.1.103",
     }),
   });
   const data = await response.json();
