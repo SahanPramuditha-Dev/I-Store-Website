@@ -27,6 +27,15 @@ function canonicalize(value) {
   return JSON.stringify(value);
 }
 
+function canonicalizeLegacyPython(value, parentKey = "") {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalizeLegacyPython(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalizeLegacyPython(value[key], key)}`).join(",")}}`;
+  }
+  if (parentKey === "storage_gb" && typeof value === "number" && Number.isInteger(value)) return `${value}.0`;
+  return JSON.stringify(value);
+}
+
 function verify(token, machineFingerprint) {
   if (!token?.payload || !token?.signature) throw new Error("Server returned no signed token");
   const prefix = Buffer.from("302a300506032b6570032100", "hex");
@@ -35,7 +44,10 @@ function verify(token, machineFingerprint) {
     format: "der",
     type: "spki",
   });
-  if (!crypto.verify(null, Buffer.from(canonicalize(token.payload)), publicKey, Buffer.from(token.signature, "base64"))) {
+  const signature = Buffer.from(token.signature, "base64");
+  const valid = crypto.verify(null, Buffer.from(canonicalize(token.payload)), publicKey, signature)
+    || crypto.verify(null, Buffer.from(canonicalizeLegacyPython(token.payload)), publicKey, signature);
+  if (!valid) {
     throw new Error("Production license signature is invalid");
   }
   if (token.payload.machine_fingerprint !== "*" && token.payload.machine_fingerprint.toLowerCase() !== machineFingerprint.toLowerCase()) {

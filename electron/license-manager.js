@@ -98,6 +98,15 @@ function canonicalize(value) {
   return JSON.stringify(value);
 }
 
+function canonicalizeLegacyPython(value, parentKey = "") {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalizeLegacyPython(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalizeLegacyPython(value[key], key)}`).join(",")}}`;
+  }
+  if (parentKey === "storage_gb" && typeof value === "number" && Number.isInteger(value)) return `${value}.0`;
+  return JSON.stringify(value);
+}
+
 function verifySignedToken(token, expectedFingerprint = getHardwareFingerprint()) {
   if (!token?.payload || typeof token.signature !== "string") return { valid: false, error: "Malformed signed license token." };
   try {
@@ -105,7 +114,9 @@ function verifySignedToken(token, expectedFingerprint = getHardwareFingerprint()
     if (rawKey.length !== 32) throw new Error("public key must contain 32 bytes");
     const spkiPrefix = Buffer.from("302a300506032b6570032100", "hex");
     const publicKey = crypto.createPublicKey({ key: Buffer.concat([spkiPrefix, rawKey]), format: "der", type: "spki" });
-    const valid = crypto.verify(null, Buffer.from(canonicalize(token.payload), "utf8"), publicKey, Buffer.from(token.signature, "base64"));
+    const signature = Buffer.from(token.signature, "base64");
+    const valid = crypto.verify(null, Buffer.from(canonicalize(token.payload), "utf8"), publicKey, signature)
+      || crypto.verify(null, Buffer.from(canonicalizeLegacyPython(token.payload), "utf8"), publicKey, signature);
     if (!valid) return { valid: false, error: "License signature is invalid." };
     const licensedFingerprint = token.payload.machine_fingerprint;
     if (licensedFingerprint && licensedFingerprint !== "*" && licensedFingerprint.toLowerCase() !== expectedFingerprint.toLowerCase()) {
