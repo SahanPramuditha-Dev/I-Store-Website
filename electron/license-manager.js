@@ -22,14 +22,11 @@ const ESTORE_PUBLIC_KEY_B64 = process.env.ESTORE_PUBLIC_KEY_B64 || "psTliZ+/c7aE
 let _cachedLicense = null;
 
 function resolveLicenseStorePath() {
-  try {
-    const dataRoot = path.join(app.getPath("localAppData"), "iStore");
-    fs.mkdirSync(dataRoot, { recursive: true });
-    return path.join(dataRoot, "license_cache.json");
-  } catch (_e) {
-    const fallback = path.join(app.getPath("userData"), "license_cache.json");
-    return fallback;
-  }
+  const dataRoot = process.platform === "win32" && process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, "iStore")
+    : path.join(app.getPath("userData"), "iStore");
+  fs.mkdirSync(dataRoot, { recursive: true });
+  return path.join(dataRoot, "license_cache.json");
 }
 
 /**

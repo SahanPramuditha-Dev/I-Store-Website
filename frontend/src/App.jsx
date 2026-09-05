@@ -107,12 +107,14 @@ function RouteFallback() {
 function Guard({ children }) {
   const location = useLocation();
   const token = getAuthValue("token");
-  const { hasCapability, hasEntitlement } = useCapabilities();
+  const { hasCapability, hasEntitlement, isLoading } = useCapabilities();
 
   if (!token) {
     clearAuthState();
     return <Navigate to="/login" replace />;
   }
+
+  if (isLoading) return <RouteFallback />;
 
   const permissions = loadPermissions();
   const allowed = location.pathname === "/access-denied" ? true : canAccessPath(location.pathname, permissions);

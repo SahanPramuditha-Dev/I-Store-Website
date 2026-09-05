@@ -149,7 +149,10 @@ export function CapabilityProvider({ children }) {
   const [capabilities, setCapabilities] = useState(() => getInitialCapabilityState().capabilities);
   const [entitlements, setEntitlements] = useState(() => getInitialCapabilityState().entitlements);
   const [featureFlags, setFeatureFlags] = useState(() => getInitialCapabilityState().featureFlags);
-  const [isLoading, setIsLoading] = useState(false);
+  // Keep protected routes in their loading state until the signed license
+  // capabilities have been resolved. Otherwise first-run navigation can be
+  // incorrectly redirected before the asynchronous capability request ends.
+  const [isLoading, setIsLoading] = useState(true);
 
   const fetchCapabilities = useCallback(async () => {
     try {

@@ -1035,7 +1035,7 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
           {window.istore?.autoLaunch && (
             <div className="pt-1">
               <Toggle
-                label="Launch I-Store ERP automatically when Windows starts"
+                label="Launch E Store automatically when Windows starts"
                 checked={data.developer_advanced.auto_launch_enabled ?? false}
                 onChange={async (v) => {
                   updatePath("developer_advanced.auto_launch_enabled", v);

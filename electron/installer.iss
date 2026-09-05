@@ -1,5 +1,5 @@
 ; ============================================================
-;  I-Store ERP -- Inno Setup Installer Script
+;  E Store -- Inno Setup Installer Script
 ;  Version: 1.0.0
 ;  To update the version, change MyAppVersion below,
 ;  then run build-setup.bat to rebuild the installer.
@@ -59,7 +59,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; -- Installation Tasks ------------------------------------------------------
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "startupicon"; Description: "Launch I-Store ERP at Windows startup"; GroupDescription: "Startup"; Flags: unchecked
+Name: "startupicon"; Description: "Launch E Store at Windows startup"; GroupDescription: "Startup"; Flags: unchecked
 
 ; -- Files to Install --------------------------------------------------------
 [Files]
@@ -122,10 +122,10 @@ end;
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
-  if IsProcessRunning('IStoreBackend.exe') or IsProcessRunning('I-Store ERP.exe') then
+  if IsProcessRunning('IStoreBackend.exe') or IsProcessRunning('E Store.exe') then
   begin
     TerminateProcessByName('IStoreBackend.exe');
-    TerminateProcessByName('I-Store ERP.exe');
+    TerminateProcessByName('E Store.exe');
   end;
 end;
 
@@ -134,12 +134,12 @@ begin
   Result := True;
   if IsProcessRunning('IStoreBackend.exe') then
   begin
-    if MsgBox('A running instance of I-Store ERP was detected and must be closed before continuing installation.' + #13#10#13#10 +
+    if MsgBox('A running instance of E Store was detected and must be closed before continuing installation.' + #13#10#13#10 +
       'Click Yes to terminate it automatically now, or No to cancel setup.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
     begin
       if not TerminateProcessByName('IStoreBackend.exe') then
       begin
-        MsgBox('Failed to terminate IStoreBackend.exe automatically. Please close I-Store ERP manually or end IStoreBackend.exe in Task Manager, and then rerun setup.', mbError, MB_OK);
+        MsgBox('Failed to terminate IStoreBackend.exe automatically. Please close E Store manually or end IStoreBackend.exe in Task Manager, and then rerun setup.', mbError, MB_OK);
         Result := False;
       end;
     end

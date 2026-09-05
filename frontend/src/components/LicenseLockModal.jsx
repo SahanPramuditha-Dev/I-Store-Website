@@ -22,6 +22,7 @@ export default function LicenseLockModal() {
         if (res && res.status) {
           if (res.payload) {
             localStorage.setItem('istore_license_token', JSON.stringify({ payload: res.payload }));
+            window.dispatchEvent(new CustomEvent('istore_license_updated', { detail: res.payload }));
           }
           setLicenseState(res);
           return;
@@ -46,6 +47,7 @@ export default function LicenseLockModal() {
         });
         if (data.payload) {
           localStorage.setItem('istore_license_token', JSON.stringify({ payload: data.payload }));
+          window.dispatchEvent(new CustomEvent('istore_license_updated', { detail: data.payload }));
         }
         return;
       } else if (data && data.active === false) {
