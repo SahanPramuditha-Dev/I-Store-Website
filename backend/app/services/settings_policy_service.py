@@ -212,7 +212,7 @@ def enforce_stock_adjustment_policy(
     db: Session,
     *,
     user: User | None,
-    quantity_change: int,
+    quantity_change: float,
     unit_cost: float,
 ) -> None:
     if not stock_adjustment_approval_required(db, quantity_change=quantity_change, unit_cost=unit_cost):
@@ -230,7 +230,7 @@ def enforce_stock_adjustment_policy(
 def stock_adjustment_approval_required(
     db: Session,
     *,
-    quantity_change: int,
+    quantity_change: float,
     unit_cost: float,
 ) -> bool:
     state = _read_state(db)
@@ -239,7 +239,7 @@ def stock_adjustment_approval_required(
     qty_threshold = int(inventory_rules.get("stock_adjustment_approval_threshold_qty", 25) or 25)
     value_threshold = float(inventory_rules.get("stock_adjustment_approval_threshold_value", 50000) or 50000)
 
-    qty_abs = abs(int(quantity_change or 0))
+    qty_abs = abs(float(quantity_change or 0))
     value_abs = abs(float(quantity_change or 0) * float(unit_cost or 0))
     needs_approval = (qty_threshold > 0 and qty_abs >= qty_threshold) or (
         value_threshold > 0 and value_abs >= value_threshold

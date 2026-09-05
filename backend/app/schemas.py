@@ -178,7 +178,7 @@ class SaleVoidIn(BaseModel):
 
 class StockAdjustIn(BaseModel):
     item_id: int
-    quantity_change: int
+    quantity_change: float
     note: str = ""
     approval_request_code: str | None = None
 

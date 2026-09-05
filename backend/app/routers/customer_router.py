@@ -201,8 +201,8 @@ def get_customer(request: Request, customer_id: int, db: Session = Depends(get_d
     return _serialize_customer(c, int(active_warranties or 0))
 
 @router.put('/{customer_id}', dependencies=[Depends(require_permission("customers.edit"))])
-def update_customer(customer_id: int, payload: CustomerIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    c = db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False).first()  # noqa: E712
+def update_customer(request: Request, customer_id: int, payload: CustomerIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    c = scope_query(db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False), Customer, request).first()  # noqa: E712
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
     old = _serialize_customer(c, 0)
@@ -231,8 +231,8 @@ def update_customer(customer_id: int, payload: CustomerIn, db: Session = Depends
     return _serialize_customer(c, int(active_warranties or 0))
 
 @router.delete('/{customer_id}', dependencies=[Depends(require_permission("customers.delete"))])
-def delete_customer(customer_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    c = db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False).first()  # noqa: E712
+def delete_customer(request: Request, customer_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    c = scope_query(db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False), Customer, request).first()  # noqa: E712
     if not c:
         raise HTTPException(status_code=404, detail="Customer not found")
     has_financial_history = (
@@ -262,8 +262,8 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db), current_use
 
 
 @router.post('/{customer_id}/restore', dependencies=[Depends(require_permission("customers.restore"))])
-def restore_customer(customer_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    c = db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == True).first()  # noqa: E712
+def restore_customer(request: Request, customer_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    c = scope_query(db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == True), Customer, request).first()  # noqa: E712
     if not c:
         raise HTTPException(status_code=404, detail="Deleted customer not found")
     c.is_deleted = False
@@ -283,8 +283,10 @@ def restore_customer(customer_id: int, db: Session = Depends(get_db), current_us
     return {"ok": True, "customer_id": c.id}
 
 @router.get('/{customer_id}/history', dependencies=[Depends(require_permission("customers.view_history"))])
-def customer_history(customer_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    customer = db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False).first()  # noqa: E712
+def customer_history(request: Request, customer_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    customer = scope_query(db.query(Customer).filter(Customer.id == customer_id, Customer.is_deleted == False), Customer, request).first()  # noqa: E712
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
     sales = db.query(Sale).filter(Sale.customer_id == customer_id).order_by(Sale.created_at.desc()).all()
     repairs = db.query(RepairTicket).filter(RepairTicket.customer_id == customer_id, RepairTicket.is_deleted == False).order_by(RepairTicket.created_at.desc()).all()  # noqa: E712
     advances = (

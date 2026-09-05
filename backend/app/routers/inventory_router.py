@@ -658,7 +658,7 @@ def adjust_stock(request: Request, payload: StockAdjustIn, db: Session = Depends
         raise HTTPException(status_code=400, detail="Stock level cannot be negative")
     if stock_adjustment_approval_required(
         db,
-        quantity_change=int(payload.quantity_change or 0),
+        quantity_change=float(payload.quantity_change or 0),
         unit_cost=float(item.cost_price or 0),
     ):
         consume_approval_request(
@@ -670,14 +670,14 @@ def adjust_stock(request: Request, payload: StockAdjustIn, db: Session = Depends
             target_id=item.id,
             user=current_user,
             permission="inventory.adjust_stock",
-            expected_payload={"quantity_change": int(payload.quantity_change or 0)},
+            expected_payload={"quantity_change": float(payload.quantity_change or 0)},
             reason=payload.note,
         )
     else:
         enforce_stock_adjustment_policy(
             db,
             user=current_user,
-            quantity_change=int(payload.quantity_change or 0),
+            quantity_change=float(payload.quantity_change or 0),
             unit_cost=float(item.cost_price or 0),
         )
     assert_accounting_period_open(db, when=utcnow(), action="adjust stock")
@@ -713,8 +713,8 @@ def adjust_stock(request: Request, payload: StockAdjustIn, db: Session = Depends
         db,
         module="inventory",
         entry_type="stock_adjustment",
-        direction="debit" if int(payload.quantity_change or 0) >= 0 else "credit",
-        amount=round(abs(int(payload.quantity_change or 0)) * float(item.cost_price or 0), 2),
+        direction="debit" if float(payload.quantity_change or 0) >= 0 else "credit",
+        amount=round(abs(float(payload.quantity_change or 0)) * float(item.cost_price or 0), 2),
         account_code="inventory_value",
         reference_type="stock_adjustment",
         reference_id=item.id,

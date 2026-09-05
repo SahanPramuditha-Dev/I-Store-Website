@@ -395,32 +395,58 @@ export default function Inventory() {
 
   const bulkRestock = async () => {
     if (!selectedProductRows.length) return toast("Select at least one product", "warning");
-    setData((prev = []) =>
-      prev.map((row) =>
-        selectedProductRows.includes(row.id)
-          ? { ...row, quantity: Math.max(Number(row.quantity || 0), Number(row.low_stock_threshold || LOW_STOCK_THRESHOLD) + 1) }
-          : row
-      )
-    );
-    toast(`Restocked ${selectedProductRows.length} products locally`, "success");
-    setSelectedProductRows([]);
+    const approved = await confirm("Bulk Restock", `Adjust ${selectedProductRows.length} selected product(s) to one unit above their minimum stock level?`);
+    if (!approved) return;
+    const selected = (data || []).filter((row) => selectedProductRows.includes(row.id));
+    const changes = selected.map((row) => ({
+      item_id: row.id,
+      quantity_change: Math.max(0, Math.ceil(Number(row.low_stock_threshold || LOW_STOCK_THRESHOLD) + 1 - Number(row.quantity || 0))),
+      note: "Bulk restock to minimum stock level",
+    })).filter((row) => row.quantity_change > 0);
+    if (!changes.length) return toast("Selected products are already above minimum stock", "info");
+    const results = await Promise.allSettled(changes.map((payload) => api.post("/inventory/adjust", payload)));
+    const completed = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.length - completed;
+    await fetchInventory();
+    if (completed) toast(`Restocked ${completed} product${completed === 1 ? "" : "s"}`, "success");
+    if (failed) toast(`${failed} adjustment${failed === 1 ? "" : "s"} require review or approval`, "warning");
+    if (!failed) setSelectedProductRows([]);
   };
 
   const bulkMarkOutOfStock = async () => {
     if (!selectedProductRows.length) return toast("Select at least one product", "warning");
-    setData((prev = []) => prev.map((row) => (selectedProductRows.includes(row.id) ? { ...row, quantity: 0 } : row)));
-    toast(`Marked ${selectedProductRows.length} products as out of stock`, "success");
-    setSelectedProductRows([]);
+    const approved = await confirm("Mark Products Out of Stock", `Set the recorded quantity of ${selectedProductRows.length} selected product(s) to zero? This creates audited stock adjustments.`);
+    if (!approved) return;
+    const selected = (data || []).filter((row) => selectedProductRows.includes(row.id) && Number(row.quantity || 0) > 0);
+    const results = await Promise.allSettled(selected.map((row) => api.post("/inventory/adjust", {
+      item_id: row.id,
+      quantity_change: -Number(row.quantity || 0),
+      note: "Bulk mark out of stock after physical verification",
+    })));
+    const completed = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.length - completed;
+    await fetchInventory();
+    if (completed) toast(`Marked ${completed} product${completed === 1 ? "" : "s"} out of stock`, "success");
+    if (failed) toast(`${failed} adjustment${failed === 1 ? "" : "s"} require review or approval`, "warning");
+    if (!failed) setSelectedProductRows([]);
   };
 
-  const assignSupplierBulk = (supplierId) => {
+  const assignSupplierBulk = async (supplierId) => {
     if (!supplierId) return;
     if (!selectedProductRows.length) return toast("Select at least one product", "warning");
-    setData((prev = []) =>
-      prev.map((row) => (selectedProductRows.includes(row.id) ? { ...row, supplier_id: Number(supplierId) } : row))
-    );
-    toast("Supplier assignment updated locally", "info");
-    setSelectedProductRows([]);
+    const selected = (data || []).filter((row) => selectedProductRows.includes(row.id));
+    const fields = ["master_product_id", "variant_id", "name", "category", "brand", "model", "storage", "color", "condition", "product_type", "location", "image_url", "warranty_days", "sku", "barcode", "quantity", "cost_price", "sale_price", "wholesale_price", "min_allowed_price", "max_discount_amount", "max_discount_percent", "low_stock_threshold", "shop_warranty_days", "supplier_warranty_days", "has_serials", "unit_of_measure", "is_weighted", "allow_decimal_qty", "batch_number", "expiry_date"];
+    const results = await Promise.allSettled(selected.map((row) => {
+      const payload = Object.fromEntries(fields.map((field) => [field, row[field]]));
+      payload.supplier_id = Number(supplierId);
+      return api.put(`/inventory/${row.id}`, payload);
+    }));
+    const completed = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.length - completed;
+    await fetchInventory();
+    if (completed) toast(`Supplier assigned to ${completed} product${completed === 1 ? "" : "s"}`, "success");
+    if (failed) toast(`Failed to update ${failed} product${failed === 1 ? "" : "s"}`, "error");
+    if (!failed) setSelectedProductRows([]);
   };
 
   const filtered = useMemo(() => {
