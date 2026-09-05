@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Settings2, Server, Printer, ScanLine, MessageSquare, Mail, PlugZap, ShieldCheck, Bug, KeyRound, Send, Bot, Sparkles, Eye, EyeOff, CheckCircle2, AlertCircle, CreditCard, Cloud, Landmark, RefreshCw } from "lucide-react";
 import { Input, Select, SectionCard, Badge, Button, Table } from "../../components/UI";
 import SettingsSectionShell from "./SettingsSectionShell";
 import WhatsAppSettingsCard from "./WhatsAppSettingsCard";
 import api from "../../lib/api";
+import { clearQueryCache } from "../../hooks/useCachedQuery";
+import { printHtmlDocument } from "../../lib/printBridge";
 
 const DEFAULTS = {
   system_information: {
@@ -32,14 +34,14 @@ const DEFAULTS = {
     provider: "",
     api_key: "",
     api_secret: "",
-    sender_id: "iStore",
+    sender_id: "E Store",
   },
   email_configuration: {
     smtp_server: "",
     smtp_port: 587,
     email_address: "",
     password: "",
-    sender_name: "iStore POS",
+    sender_name: "E Store POS",
   },
   ai_configuration: {
     enabled: true,
@@ -122,11 +124,11 @@ function Toggle({ label, checked, onChange, hint }) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", hint }) {
+function Field({ label, value, onChange, type = "text", hint, disabled = false }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</span>
-      <Input type={type} value={value || ""} onChange={(e) => onChange(type === "number" ? Number(e.target.value || 0) : e.target.value)} />
+      <Input type={type} value={value || ""} disabled={disabled} onChange={(e) => onChange?.(type === "number" ? Number(e.target.value || 0) : e.target.value)} />
       {hint && <span className="text-[10px] text-slate-500">{hint}</span>}
     </label>
   );
@@ -135,6 +137,30 @@ function Field({ label, value, onChange, type = "text", hint }) {
 export default function SystemApisSettingsPanel({ sectionValue, onSectionChange, onSaveSection, saving, toast, confirm }) {
   const [checkingForUpdate, setCheckingForUpdate] = useState(false);
   const [updaterStatus, setUpdaterStatus] = useState("idle");
+  const [systemHealth, setSystemHealth] = useState(null);
+  useEffect(() => {
+    let active = true;
+    api.get("/saas/telemetry/status")
+      .then(({ data }) => active && setSystemHealth(data))
+      .catch(() => active && setSystemHealth(null));
+    return () => { active = false; };
+  }, []);
+
+  const handleTestPrint = async () => {
+    try {
+      await printHtmlDocument(`
+        <main style="font-family:Arial,sans-serif;width:280px;padding:18px;text-align:center">
+          <h2 style="margin:0 0 8px">E Store</h2>
+          <p style="margin:0 0 16px">Printer test receipt</p>
+          <hr><p>${new Date().toLocaleString()}</p>
+          <strong>Printer connection is working.</strong>
+        </main>
+      `);
+      toast("Print dialog opened with a real test receipt.", "success");
+    } catch (error) {
+      toast(error.message || "Unable to open the print test", "error");
+    }
+  };
   const checkForUpdates = async () => {
     if (!window.istore?.updater) {
       toast("Updates are available only in the installed desktop app.", "info");
@@ -185,18 +211,14 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
       icon: Server,
       render: ({ data, updatePath }) => (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="Application version" value={data.system_information.application_version} onChange={(v) => updatePath("system_information.application_version", v)} />
+          <Field label="Application version" value={systemHealth?.metrics?.app_version || data.system_information.application_version} disabled />
           <Field label="Last updated" value={data.system_information.last_updated} onChange={(v) => updatePath("system_information.last_updated", v)} />
-          <Field label="Database size" value={data.system_information.database_size} onChange={(v) => updatePath("system_information.database_size", v)} />
+          <Field label="Database size" value={systemHealth ? `${systemHealth.metrics?.database_size_mb || 0} MB` : data.system_information.database_size} disabled />
           <Field label="Total records" type="number" value={data.system_information.total_records} onChange={(v) => updatePath("system_information.total_records", v)} />
-          <Field label="Uptime" value={data.system_information.uptime} onChange={(v) => updatePath("system_information.uptime", v)} />
+          <Field label="Uptime" value={systemHealth ? `${Math.floor(Number(systemHealth.metrics?.uptime_seconds || 0) / 3600)} hours` : data.system_information.uptime} disabled />
           <label className="flex flex-col gap-1.5">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Server status</span>
-            <Select value={data.system_information.server_status || "Online"} onChange={(e) => updatePath("system_information.server_status", e.target.value)}>
-              <option>Online</option>
-              <option>Maintenance</option>
-              <option>Offline</option>
-            </Select>
+            <Input value={systemHealth?.success ? "Online" : "Unavailable"} disabled />
           </label>
         </div>
       ),
@@ -213,7 +235,7 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
             <Field label="Label printer (product labels)" value={data.printer_configuration.label_printer_product_labels} onChange={(v) => updatePath("printer_configuration.label_printer_product_labels", v)} />
             <Field label="Paper size per printer" value={data.printer_configuration.paper_size_per_printer} onChange={(v) => updatePath("printer_configuration.paper_size_per_printer", v)} />
           </div>
-          <Button size="sm" variant="secondary" onClick={() => toast("Test print sent (simulation).", "info")}>
+          <Button size="sm" variant="secondary" onClick={handleTestPrint}>
             <Printer size={13} /> Print Test Receipt
           </Button>
         </div>
@@ -1003,7 +1025,10 @@ export default function SystemApisSettingsPanel({ sectionValue, onSectionChange,
                   <option>Info</option>
                   <option>Debug</option>
                 </Select>
-                <Button size="sm" variant="secondary" onClick={() => toast("Cache clear executed (simulation).", "warning")}>
+                <Button size="sm" variant="secondary" onClick={() => {
+                  clearQueryCache();
+                  toast("Application data cache cleared. Pages will reload fresh data.", "success");
+                }}>
                   Clear Cache
                 </Button>
               </div>

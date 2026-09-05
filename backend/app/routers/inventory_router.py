@@ -309,12 +309,17 @@ def update_inventory(request: Request, item_id: int, payload: InventoryIn, db: S
 
 @router.delete('/{item_id}', dependencies=[Depends(require_permission("inventory.delete_product"))])
 def delete_inventory(
+    request: Request,
     item_id: int,
     approval_request_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    item = db.query(InventoryItem).filter(InventoryItem.id == item_id, InventoryItem.is_deleted == False).first()  # noqa: E712
+    item = scope_query(
+        db.query(InventoryItem).filter(InventoryItem.id == item_id, InventoryItem.is_deleted == False),  # noqa: E712
+        InventoryItem,
+        request,
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     has_financial_history = (
@@ -346,20 +351,21 @@ def delete_inventory(
     return {"ok": True}
 
 @router.get('/suppliers', dependencies=[Depends(require_permission("suppliers.view"))])
-def suppliers(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(Supplier).filter(Supplier.is_deleted == False).all()  # noqa: E712
+def suppliers(request: Request, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return scope_query(db.query(Supplier).filter(Supplier.is_deleted == False), Supplier, request).all()  # noqa: E712
 
 @router.post('/suppliers', dependencies=[Depends(require_permission("suppliers.create"))])
-def create_supplier(payload: SupplierIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def create_supplier(request: Request, payload: SupplierIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
     s = Supplier(**payload.model_dump())
+    stamp_tenant(s, request)
     db.add(s)
     db.commit()
     db.refresh(s)
     return s
 
 @router.put('/suppliers/{supplier_id}', dependencies=[Depends(require_permission("suppliers.edit"))])
-def update_supplier(supplier_id: int, payload: SupplierIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    s = db.query(Supplier).filter(Supplier.id == supplier_id, Supplier.is_deleted == False).first()  # noqa: E712
+def update_supplier(request: Request, supplier_id: int, payload: SupplierIn, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    s = scope_query(db.query(Supplier).filter(Supplier.id == supplier_id, Supplier.is_deleted == False), Supplier, request).first()  # noqa: E712
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
     s.name = payload.name
@@ -375,12 +381,13 @@ def update_supplier(supplier_id: int, payload: SupplierIn, db: Session = Depends
 
 @router.delete('/suppliers/{supplier_id}', dependencies=[Depends(require_permission("suppliers.delete"))])
 def delete_supplier(
+    request: Request,
     supplier_id: int,
     approval_request_code: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    s = db.query(Supplier).filter(Supplier.id == supplier_id, Supplier.is_deleted == False).first()  # noqa: E712
+    s = scope_query(db.query(Supplier).filter(Supplier.id == supplier_id, Supplier.is_deleted == False), Supplier, request).first()  # noqa: E712
     if not s:
         raise HTTPException(status_code=404, detail="Supplier not found")
     has_financial_history = (
@@ -414,8 +421,8 @@ def delete_supplier(
 
 
 @router.get('/suppliers/{supplier_id}/account', dependencies=[Depends(require_permission("suppliers.view_ledger"))])
-def supplier_account(supplier_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+def supplier_account(request: Request, supplier_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    supplier = scope_query(db.query(Supplier).filter(Supplier.id == supplier_id), Supplier, request).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
 
@@ -535,12 +542,13 @@ def supplier_account(supplier_id: int, db: Session = Depends(get_db), _=Depends(
 
 @router.post('/suppliers/{supplier_id}/payments', dependencies=[Depends(require_permission("suppliers.view_ledger"))])
 def supplier_payment(
+    request: Request,
     supplier_id: int,
     payload: SupplierPaymentIn,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    supplier = scope_query(db.query(Supplier).filter(Supplier.id == supplier_id), Supplier, request).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     amount = float(payload.amount or 0)
@@ -555,6 +563,7 @@ def supplier_payment(
         note=(payload.note or "").strip() or "Supplier payment recorded",
         created_by_user_id=current_user.id if current_user else None,
     )
+    stamp_tenant(row, request)
     db.add(row)
     db.flush()
     record_ledger_entry(
@@ -595,12 +604,13 @@ def supplier_payment(
 
 @router.post('/suppliers/{supplier_id}/notes', dependencies=[Depends(require_permission("suppliers.edit"))])
 def supplier_note(
+    request: Request,
     supplier_id: int,
     payload: SupplierNoteIn,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    supplier = scope_query(db.query(Supplier).filter(Supplier.id == supplier_id), Supplier, request).first()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     note = (payload.note or "").strip()
@@ -615,6 +625,7 @@ def supplier_note(
         note=note,
         created_by_user_id=current_user.id if current_user else None,
     )
+    stamp_tenant(row, request)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -631,9 +642,9 @@ def supplier_note(
     }
 
 @router.post('/adjust', dependencies=[Depends(require_permission("inventory.adjust_stock"))])
-def adjust_stock(payload: StockAdjustIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def adjust_stock(request: Request, payload: StockAdjustIn, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     from app.services.activity_service import log_activity
-    item = db.query(InventoryItem).filter(InventoryItem.id == payload.item_id).first()
+    item = scope_query(db.query(InventoryItem).filter(InventoryItem.id == payload.item_id), InventoryItem, request).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     

@@ -285,7 +285,7 @@ const DEFAULT_SECTION_FORMS = {
     },
     sms_gateway: {
       provider: "",
-      sender_id: "iStore",
+      sender_id: "E Store",
     },
     ai_configuration: {
       enabled: true,
