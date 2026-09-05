@@ -34,6 +34,20 @@ from app.services.settings_policy_service import (
 router = APIRouter(tags=["invoices"])
 
 
+def _tenant_query(query, model, user):
+    organization_id = int(user.organization_id or 1)
+    if organization_id == 1:
+        return query.filter(sa.or_(model.organization_id == 1, model.organization_id.is_(None)))
+    return query.filter(model.organization_id == organization_id)
+
+
+def _invoice_or_404(db: Session, invoice_id: int, user) -> Sale:
+    row = _tenant_query(db.query(Sale), Sale, user).filter(Sale.id == int(invoice_id)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return row
+
+
 def _invoice_label(sale: Sale) -> str:
     return str(sale.invoice_no or f"INV-{sale.id:05d}")
 
@@ -232,9 +246,9 @@ def list_invoices(
     date_to: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = db.query(Sale)
+    query = _tenant_query(db.query(Sale), Sale, current_user)
     if customer_id:
         query = query.filter(Sale.customer_id == int(customer_id))
     if repair_ticket_id:
@@ -282,21 +296,20 @@ def list_invoices(
 
 
 @router.get("/invoices/number/{invoice_number}", dependencies=[Depends(require_permission("pos.view"))])
-def get_invoice_by_number(invoice_number: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_invoice_by_number(invoice_number: str, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     token = str(invoice_number or "").strip()
-    row = db.query(Sale).filter(Sale.invoice_no == token).first()
+    query = _tenant_query(db.query(Sale), Sale, current_user)
+    row = query.filter(Sale.invoice_no == token).first()
     if not row:
-        row = db.query(Sale).filter(Sale.invoice_no.ilike(token)).first()
+        row = query.filter(Sale.invoice_no.ilike(token)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return _invoice_detail(db, row)
 
 
 @router.get("/invoices/{id}", dependencies=[Depends(require_permission("pos.view"))])
-def get_invoice(id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    row = db.query(Sale).filter(Sale.id == int(id)).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+def get_invoice(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    row = _invoice_or_404(db, id, current_user)
     return _invoice_detail(db, row)
 
 
@@ -307,9 +320,7 @@ def void_invoice(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(Sale).filter(Sale.id == int(id)).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    row = _invoice_or_404(db, id, current_user)
     if bool(row.is_voided):
         raise HTTPException(status_code=400, detail="Invoice already voided")
     assert_accounting_period_open(db, when=row.created_at or utcnow(), action="void invoice")
@@ -338,7 +349,9 @@ def void_invoice(
     for sale_item in sale_items:
         if sale_item.item_id is None:
             continue
-        inv = db.query(InventoryItem).filter(InventoryItem.id == int(sale_item.item_id)).first()
+        inv = _tenant_query(db.query(InventoryItem), InventoryItem, current_user).filter(
+            InventoryItem.id == int(sale_item.item_id)
+        ).first()
         if inv:
             inv.quantity = int(inv.quantity or 0) + int(sale_item.quantity or 0)
             db.add(
@@ -394,9 +407,7 @@ def void_invoice(
 
 @router.post("/invoices/{id}/reprint", dependencies=[Depends(require_permission("pos.reprint"))])
 def reprint_invoice(id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    row = db.query(Sale).filter(Sale.id == int(id)).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    row = _invoice_or_404(db, id, current_user)
     db.add(
         InvoiceAuditEvent(
             invoice_id=row.id,
@@ -429,11 +440,9 @@ def reprint_invoice(id: int, db: Session = Depends(get_db), current_user=Depends
 def print_invoice_a4(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    row = db.query(Sale).filter(Sale.id == int(id)).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    row = _invoice_or_404(db, id, current_user)
     invoice = _invoice_detail(db, row)
     store = get_store_profile_print_data(db)
     return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=False, preview=False))
@@ -443,11 +452,9 @@ def print_invoice_a4(
 def print_invoice_thermal(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    row = db.query(Sale).filter(Sale.id == int(id)).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    row = _invoice_or_404(db, id, current_user)
     invoice = _invoice_detail(db, row)
     store = get_store_profile_print_data(db)
     return HTMLResponse(render_invoice_html_from_store(invoice, store, thermal=True, preview=False))
