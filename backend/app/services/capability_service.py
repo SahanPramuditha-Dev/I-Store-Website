@@ -137,6 +137,25 @@ ALL_CAPABILITY_KEYS = {
     "unit_conversions",
 }
 
+PACKAGE_LIMIT_DEFAULTS = {
+    "FREE": {"max_users": 2, "max_devices": 1, "max_stores": 1, "storage_gb": 2, "monthly_transactions_limit": 500},
+    "STARTER": {"max_users": 5, "max_devices": 2, "max_stores": 1, "storage_gb": 10, "monthly_transactions_limit": 5000},
+    "RETAIL": {"max_users": 5, "max_devices": 2, "max_stores": 1, "storage_gb": 10, "monthly_transactions_limit": 5000},
+    "BUSINESS": {"max_users": 15, "max_devices": 5, "max_stores": 3, "storage_gb": 50, "monthly_transactions_limit": 25000},
+    "BUSINESS_AI": {"max_users": 30, "max_devices": 10, "max_stores": 5, "storage_gb": 100, "monthly_transactions_limit": 50000},
+    "ENTERPRISE": {"max_users": 100, "max_devices": 50, "max_stores": 25, "storage_gb": 500, "monthly_transactions_limit": 250000},
+}
+
+
+def resolve_license_limits(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve signed quotas, using package-aware defaults only for legacy tokens."""
+    package_code = str(payload.get("package_code") or "STARTER").strip().upper()
+    defaults = PACKAGE_LIMIT_DEFAULTS.get(package_code, PACKAGE_LIMIT_DEFAULTS["STARTER"])
+    return {
+        key: payload.get(key) if payload.get(key) is not None else default
+        for key, default in defaults.items()
+    }
+
 
 def get_effective_capabilities(db: Session, organization_id: Optional[int] = None) -> Dict[str, Any]:
     """
@@ -170,13 +189,7 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int] = Non
                     "entitlements": payload.get("entitlements", []),
                     "package_code": payload.get("package_code"),
                     "feature_flags": payload.get("feature_flags", []),
-                    "limits": {
-                        "max_users": payload.get("max_users", 5),
-                        "max_devices": payload.get("max_devices", 1),
-                        "max_stores": payload.get("max_stores", 1),
-                        "storage_gb": payload.get("storage_gb", 10),
-                        "monthly_transactions_limit": payload.get("monthly_transactions_limit", 10000),
-                    },
+                    "limits": resolve_license_limits(payload),
                     "capabilities": eff_caps
                 }
     except Exception as ex:

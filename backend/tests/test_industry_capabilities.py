@@ -11,9 +11,18 @@ from app.services.capability_service import (
     has_capability,
     require_capability
 )
+from app.services.capability_service import resolve_license_limits
 
 import os
 TEST_DB_URL = "sqlite:///:memory:"
+
+
+def test_legacy_license_tokens_use_package_aware_limits():
+    assert resolve_license_limits({"package_code": "STARTER"})["max_users"] == 5
+    assert resolve_license_limits({"package_code": "BUSINESS"})["max_users"] == 15
+    assert resolve_license_limits({"package_code": "BUSINESS_AI"})["max_devices"] == 10
+    assert resolve_license_limits({"package_code": "ENTERPRISE"})["max_stores"] == 25
+    assert resolve_license_limits({"package_code": "ENTERPRISE", "max_users": 40})["max_users"] == 40
 
 @pytest.fixture(autouse=True)
 def clean_license_cache(monkeypatch):

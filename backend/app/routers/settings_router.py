@@ -34,6 +34,7 @@ from app.services.security_service import (
     validate_password_against_policy,
     validate_pin,
 )
+from app.services.capability_service import resolve_license_limits
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -1293,7 +1294,7 @@ def create_employee(payload: EmployeeIn, request: Request, db: Session = Depends
         raise HTTPException(status_code=400, detail="Username already exists")
 
     license_payload = getattr(request.state, "license_payload", {}) or {}
-    max_users = max(1, int(license_payload.get("max_users") or 5))
+    max_users = max(1, int(resolve_license_limits(license_payload)["max_users"]))
     active_users = db.query(User).filter(User.is_deleted == False, User.is_active == True)
     if getattr(current, "organization_id", None) is not None:
         active_users = active_users.filter(User.organization_id == current.organization_id)
