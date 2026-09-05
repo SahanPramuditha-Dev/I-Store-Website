@@ -207,8 +207,26 @@ def get_returned_qty_for_sale_item(db: Session, sale_item_id: int) -> int:
     return int(new_qty or 0) + int(legacy_qty or 0)
 
 
-def _base_return_query(db: Session):
-    return db.query(ReturnCase)
+def _base_return_query(db: Session, organization_id: int | None = None):
+    query = db.query(ReturnCase)
+    return _tenant_filter(query, ReturnCase, organization_id)
+
+
+def _tenant_filter(query, model, organization_id: int | None):
+    if organization_id is None:
+        return query
+    if int(organization_id) == 1:
+        return query.filter(or_(model.organization_id == 1, model.organization_id.is_(None)))
+    return query.filter(model.organization_id == int(organization_id))
+
+
+def _stamp_actor_tenant(entity: Any, actor: User | None) -> None:
+    if not actor:
+        return
+    if hasattr(entity, "organization_id"):
+        entity.organization_id = actor.organization_id
+    if hasattr(entity, "branch_id"):
+        entity.branch_id = actor.branch_id
 
 
 def list_return_cases(
@@ -223,8 +241,9 @@ def list_return_cases(
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 500,
+    organization_id: int | None = None,
 ) -> list[ReturnCase]:
-    query = _base_return_query(db)
+    query = _base_return_query(db, organization_id)
     if q:
         like = f"%{q.strip()}%"
         query = query.outerjoin(Customer, Customer.id == ReturnCase.customer_id).filter(
@@ -258,8 +277,8 @@ def list_return_cases(
     return query.order_by(ReturnCase.created_at.desc()).limit(max(1, min(2000, int(limit)))).all()
 
 
-def get_return_case_or_404(db: Session, return_id: int) -> ReturnCase:
-    row = _base_return_query(db).filter(ReturnCase.id == int(return_id)).first()
+def get_return_case_or_404(db: Session, return_id: int, organization_id: int | None = None) -> ReturnCase:
+    row = _base_return_query(db, organization_id).filter(ReturnCase.id == int(return_id)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Return case not found")
     return row
@@ -346,7 +365,7 @@ def _log_audit(
     )
 
 
-def lookup_invoice(db: Session, reference: str) -> dict[str, Any]:
+def lookup_invoice(db: Session, reference: str, organization_id: int | None = None) -> dict[str, Any]:
     token = str(reference or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="Invoice lookup query is required")
@@ -359,13 +378,13 @@ def lookup_invoice(db: Session, reference: str) -> dict[str, Any]:
         parsed_id = None
 
     if parsed_id:
-        sale = db.query(Sale).filter(Sale.id == int(parsed_id)).first()
+        sale = _tenant_filter(db.query(Sale), Sale, organization_id).filter(Sale.id == int(parsed_id)).first()
         if sale:
             _raise_if_sale_not_eligible_for_return(sale)
             candidates.append(sale)
 
     invoice_matches = (
-        db.query(Sale)
+        _tenant_filter(db.query(Sale), Sale, organization_id)
         .filter(
             Sale.is_return == False,  # noqa: E712
             Sale.is_voided == False,  # noqa: E712
@@ -381,7 +400,7 @@ def lookup_invoice(db: Session, reference: str) -> dict[str, Any]:
             candidates.append(row)
 
     customer_matches = (
-        db.query(Sale)
+        _tenant_filter(db.query(Sale), Sale, organization_id)
         .outerjoin(Customer, Customer.id == Sale.customer_id)
         .filter(
             Sale.is_return == False,  # noqa: E712
@@ -403,7 +422,7 @@ def lookup_invoice(db: Session, reference: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="No invoice found for this lookup")
 
     selected = candidates[0]
-    eligible = eligible_items_for_invoice(db, selected.id)
+    eligible = eligible_items_for_invoice(db, selected.id, organization_id)
     return {
         "selected_invoice": eligible,
         "matches": [
@@ -419,8 +438,8 @@ def lookup_invoice(db: Session, reference: str) -> dict[str, Any]:
     }
 
 
-def eligible_items_for_invoice(db: Session, invoice_id: int) -> dict[str, Any]:
-    sale = db.query(Sale).filter(Sale.id == int(invoice_id)).first()
+def eligible_items_for_invoice(db: Session, invoice_id: int, organization_id: int | None = None) -> dict[str, Any]:
+    sale = _tenant_filter(db.query(Sale), Sale, organization_id).filter(Sale.id == int(invoice_id)).first()
     _raise_if_sale_not_eligible_for_return(sale)
 
     customer = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
@@ -490,7 +509,7 @@ def eligible_items_for_invoice(db: Session, invoice_id: int) -> dict[str, Any]:
         )
 
     case_rows = (
-        db.query(ReturnCase)
+        _tenant_filter(db.query(ReturnCase), ReturnCase, organization_id)
         .filter(ReturnCase.original_invoice_id == sale.id)
         .order_by(ReturnCase.created_at.desc())
         .all()
@@ -544,7 +563,8 @@ def create_return_case(
 
     invoice = None
     if payload.original_invoice_id:
-        invoice = db.query(Sale).filter(Sale.id == int(payload.original_invoice_id)).first()
+        organization_id = actor.organization_id if actor else None
+        invoice = _tenant_filter(db.query(Sale), Sale, organization_id).filter(Sale.id == int(payload.original_invoice_id)).first()
         _raise_if_sale_not_eligible_for_return(invoice)
     else:
         allowed_without_invoice = bool(rules.get("allow_returns_without_invoice", False))
@@ -553,7 +573,8 @@ def create_return_case(
             raise HTTPException(status_code=403, detail="Returns without invoice are blocked by policy")
 
     customer_id = int(payload.customer_id) if payload.customer_id else (int(invoice.customer_id) if invoice and invoice.customer_id else None)
-    customer = db.query(Customer).filter(Customer.id == customer_id).first() if customer_id else None
+    organization_id = actor.organization_id if actor else None
+    customer = _tenant_filter(db.query(Customer), Customer, organization_id).filter(Customer.id == customer_id).first() if customer_id else None
 
     row = ReturnCase(
         return_number=next_number(db, "RET"),
@@ -571,6 +592,7 @@ def create_return_case(
         store_credit_amount=0,
         processed_by=actor.id if actor else None,
     )
+    _stamp_actor_tenant(row, actor)
     db.add(row)
     db.flush()
 
@@ -599,14 +621,18 @@ def create_return_case(
                     status_code=400,
                     detail=f"Returned quantity exceeds eligible quantity ({remaining_qty})",
                 )
-            product_id = int(sale_line.item_id or 0) if (not product_id) else product_id
+            # The sold line is authoritative; never allow a client supplied product
+            # identifier to attach another tenant's product to this return.
+            product_id = int(sale_line.item_id or 0)
             serial_id = serial_id or None
             unit_price = _safe_float(line.unit_price, _safe_float(sale_line.price, 0))
         else:
             if not product_id:
                 raise HTTPException(status_code=400, detail="product_id is required for no-invoice return item")
 
-        product = db.query(InventoryItem).filter(InventoryItem.id == int(product_id)).first()
+        product = _tenant_filter(db.query(InventoryItem), InventoryItem, organization_id).filter(
+            InventoryItem.id == int(product_id)
+        ).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Product not found: {product_id}")
 
@@ -1024,6 +1050,7 @@ def create_refund_payment(
         approved_by=(actor.id if (auto_approve and actor) else None),
         notes=payload.notes or reason,
     )
+    _stamp_actor_tenant(row, actor)
     db.add(row)
     db.flush()
 
@@ -1133,8 +1160,7 @@ def mark_refund_payment_paid(
         refund_amount = to_float(refund.refund_amount)
 
         if refund.refund_method == "store_credit":
-            db.add(
-                StoreCredit(
+            generated_credit = StoreCredit(
                     credit_number=next_number(db, "CRD"),
                     customer_id=refund.customer_id,
                     return_id=return_case.id,
@@ -1143,7 +1169,8 @@ def mark_refund_payment_paid(
                     status="active",
                     created_by=actor.id if actor else None,
                 )
-            )
+            _stamp_actor_tenant(generated_credit, actor)
+            db.add(generated_credit)
             return_case.store_credit_amount = to_float(money_add(return_case.store_credit_amount, refund_amount))
         else:
             if not return_case.original_invoice_id:
@@ -1253,6 +1280,7 @@ def issue_store_credit(
         expiry_date=expiry_date,
         created_by=actor.id if actor else None,
     )
+    _stamp_actor_tenant(row, actor)
     db.add(row)
     db.flush()
 
@@ -1282,9 +1310,13 @@ def issue_store_credit(
     return row
 
 
-def list_customer_store_credits(db: Session, customer_id: int) -> list[StoreCredit]:
+def list_customer_store_credits(
+    db: Session,
+    customer_id: int,
+    organization_id: int | None = None,
+) -> list[StoreCredit]:
     rows = (
-        db.query(StoreCredit)
+        _tenant_filter(db.query(StoreCredit), StoreCredit, organization_id)
         .filter(StoreCredit.customer_id == int(customer_id))
         .order_by(StoreCredit.created_at.desc())
         .all()
@@ -1322,7 +1354,8 @@ def use_store_credit(
 
     target_invoice = None
     if invoice_id:
-        target_invoice = db.query(Sale).filter(Sale.id == int(invoice_id)).first()
+        organization_id = actor.organization_id if actor else credit.organization_id
+        target_invoice = _tenant_filter(db.query(Sale), Sale, organization_id).filter(Sale.id == int(invoice_id)).first()
         if not target_invoice:
             raise HTTPException(status_code=404, detail="Invoice not found for store credit usage")
         same_customer = int(target_invoice.customer_id or 0) == int(credit.customer_id or 0)
@@ -1388,7 +1421,10 @@ def create_exchange(
     if not selected_item:
         selected_item = items[0]
 
-    new_product = db.query(InventoryItem).filter(InventoryItem.id == int(payload.new_product_id)).first()
+    organization_id = return_case.organization_id or (actor.organization_id if actor else None)
+    new_product = _tenant_filter(db.query(InventoryItem), InventoryItem, organization_id).filter(
+        InventoryItem.id == int(payload.new_product_id)
+    ).first()
     if not new_product:
         raise HTTPException(status_code=404, detail="Replacement product not found")
     new_qty = max(1, int(payload.new_quantity or 1))
@@ -1430,6 +1466,7 @@ def create_exchange(
         balance_to_refund=balance_to_refund,
         created_by=actor.id if actor else None,
     )
+    _stamp_actor_tenant(row, actor)
     db.add(row)
     db.flush()
 
@@ -1502,6 +1539,7 @@ def create_exchange_invoice(
         created_by=actor.id if actor else None,
         finalized_at=utcnow(),
     )
+    _stamp_actor_tenant(sale, actor)
     db.add(sale)
     db.flush()
 
@@ -1593,8 +1631,9 @@ def returns_summary_report(
     return_status: str | None = None,
     refund_method: str | None = None,
     limit: int = 5000,
+    organization_id: int | None = None,
 ) -> dict[str, Any]:
-    query = db.query(ReturnCase)
+    query = _tenant_filter(db.query(ReturnCase), ReturnCase, organization_id)
     if date_from:
         try:
             query = query.filter(ReturnCase.created_at >= datetime.fromisoformat(str(date_from)))
@@ -1634,7 +1673,7 @@ def returns_summary_report(
     bounded_limit = max(1, min(_to_i(limit) or 5000, 20000))
     rows = query.order_by(ReturnCase.created_at.desc()).limit(bounded_limit).all()
 
-    refunds_q = db.query(RefundPayment)
+    refunds_q = _tenant_filter(db.query(RefundPayment), RefundPayment, organization_id)
     if refund_method:
         refunds_q = refunds_q.filter(RefundPayment.refund_method == _normalize_refund_method(refund_method))
     if date_from:
@@ -1650,13 +1689,16 @@ def returns_summary_report(
     refunds = refunds_q.order_by(RefundPayment.created_at.desc()).limit(bounded_limit).all()
 
     exchanges = (
-        db.query(ExchangeRecord)
+        _tenant_filter(db.query(ExchangeRecord), ExchangeRecord, organization_id)
         .join(ReturnCase, ReturnCase.id == ExchangeRecord.return_id)
         .order_by(ExchangeRecord.created_at.desc())
         .limit(bounded_limit)
         .all()
     )
-    damaged = db.query(DamagedStockRecord).order_by(DamagedStockRecord.created_at.desc()).limit(bounded_limit).all()
+    damaged_q = db.query(DamagedStockRecord).join(ReturnItem, ReturnItem.id == DamagedStockRecord.return_item_id).join(ReturnCase, ReturnCase.id == ReturnItem.return_id)
+    if organization_id is not None:
+        damaged_q = _tenant_filter(damaged_q, ReturnCase, organization_id)
+    damaged = damaged_q.order_by(DamagedStockRecord.created_at.desc()).limit(bounded_limit).all()
 
     by_date: dict[str, dict[str, Any]] = {}
     for row in rows:

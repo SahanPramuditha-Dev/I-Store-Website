@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.auth import get_current_user, require_permission
 from app.database import get_db
@@ -66,6 +67,13 @@ from app.services.returns_management_service import (
 )
 
 router = APIRouter(tags=["returns"])
+
+
+def _tenant_query(query, model, user):
+    organization_id = int(user.organization_id or 1)
+    if organization_id == 1:
+        return query.filter(or_(model.organization_id == 1, model.organization_id.is_(None)))
+    return query.filter(model.organization_id == organization_id)
 
 LEGACY_RETURN_TYPE_MAP = {
     "product_return": "return",
@@ -196,7 +204,7 @@ def returns_report_summary(
     refund_method: str | None = Query(default=None),
     limit: int = Query(default=5000, ge=1, le=20000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     return returns_summary_report(
         db,
@@ -210,6 +218,7 @@ def returns_report_summary(
         return_status=status,
         refund_method=refund_method,
         limit=limit,
+        organization_id=current_user.organization_id,
     )
 
 
@@ -220,9 +229,9 @@ def returns_report_refunds(
     method: str | None = Query(default=None),
     limit: int = Query(default=5000, ge=1, le=20000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = db.query(RefundPayment)
+    query = _tenant_query(db.query(RefundPayment), RefundPayment, current_user)
     if method and not hasattr(method, 'default') and str(method).lower() != "all":
         query = query.filter(RefundPayment.refund_method == str(method).strip().lower())
     if date_from and not hasattr(date_from, 'default'):
@@ -249,9 +258,9 @@ def returns_report_exchanges(
     date_to: str | None = Query(default=None),
     limit: int = Query(default=5000, ge=1, le=20000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = db.query(ExchangeRecord)
+    query = _tenant_query(db.query(ExchangeRecord), ExchangeRecord, current_user)
     if date_from and not hasattr(date_from, 'default'):
         try:
             query = query.filter(ExchangeRecord.created_at >= datetime.fromisoformat(str(date_from)))
@@ -278,9 +287,14 @@ def returns_report_damaged_stock(
     date_to: str | None = Query(default=None),
     limit: int = Query(default=5000, ge=1, le=20000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = db.query(DamagedStockRecord)
+    query = (
+        db.query(DamagedStockRecord)
+        .join(ReturnItem, ReturnItem.id == DamagedStockRecord.return_item_id)
+        .join(ReturnCase, ReturnCase.id == ReturnItem.return_id)
+    )
+    query = _tenant_query(query, ReturnCase, current_user)
     if date_from and not hasattr(date_from, 'default'):
         try:
             query = query.filter(DamagedStockRecord.created_at >= datetime.fromisoformat(str(date_from)))
@@ -304,21 +318,21 @@ def returns_report_damaged_stock(
 def returns_lookup_invoice(
     invoice_number: str,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return lookup_invoice(db, invoice_number)
+    return lookup_invoice(db, invoice_number, current_user.organization_id)
 
 
 @router.get("/returns/invoice-lookup/{invoice_ref}", dependencies=[Depends(require_permission("returns.view"))])
 def returns_lookup_invoice_legacy(
     invoice_ref: str,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     token = str(invoice_ref or "").strip()
     if token.isdigit():
-        return eligible_items_for_invoice(db, int(token))
-    payload = lookup_invoice(db, token)
+        return eligible_items_for_invoice(db, int(token), current_user.organization_id)
+    payload = lookup_invoice(db, token, current_user.organization_id)
     return payload.get("selected_invoice") or {}
 
 
@@ -326,9 +340,9 @@ def returns_lookup_invoice_legacy(
 def returns_invoice_eligible_items(
     invoice_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    return eligible_items_for_invoice(db, invoice_id)
+    return eligible_items_for_invoice(db, invoice_id, current_user.organization_id)
 
 
 @router.get("/returns", dependencies=[Depends(require_permission("returns.view"))])
@@ -343,7 +357,7 @@ def list_returns(
     date_to: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     def _clean_s(v):
         return None if (v is None or hasattr(v, 'default')) else str(v).strip() or None
@@ -363,6 +377,7 @@ def list_returns(
         date_from=_clean_s(date_from),
         date_to=_clean_s(date_to),
         limit=_clean_i(limit) or 500,
+        organization_id=current_user.organization_id,
     )
     return [serialize_return_case(db, row, include_items=False) for row in rows]
 
@@ -443,9 +458,9 @@ def create_returns_legacy(
 def get_return(
     id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, id)
+    row = get_return_case_or_404(db, id, current_user.organization_id)
     return serialize_return_case(db, row, include_items=True)
 
 
@@ -454,9 +469,9 @@ def print_return_receipt(
     id: int,
     paper: str = Query(default="thermal_80"),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, id)
+    row = get_return_case_or_404(db, id, current_user.organization_id)
     payload = serialize_return_case(db, row, include_items=True)
     store = get_store_profile_print_data(db)
     return HTMLResponse(render_return_receipt_html(payload, store, thermal=str(paper).lower() != "a4"))
@@ -470,7 +485,7 @@ def inspect_return(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, id)
+    row = get_return_case_or_404(db, id, current_user.organization_id)
     inspect_return_case(
         db,
         return_case=row,
@@ -491,7 +506,7 @@ def approve_return(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, id)
+    row = get_return_case_or_404(db, id, current_user.organization_id)
     approve_return_case(
         db,
         return_case=row,
@@ -512,7 +527,7 @@ def reject_return(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, id)
+    row = get_return_case_or_404(db, id, current_user.organization_id)
     reject_return_case(
         db,
         return_case=row,
@@ -534,7 +549,7 @@ def close_return(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, id)
+    row = get_return_case_or_404(db, id, current_user.organization_id)
     close_return_case(
         db,
         return_case=row,
@@ -555,7 +570,7 @@ def cancel_return(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, id)
+    row = get_return_case_or_404(db, id, current_user.organization_id)
     cancel_return_case(
         db,
         return_case=row,
@@ -577,7 +592,7 @@ def create_refund(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, return_id)
+    row = get_return_case_or_404(db, return_id, current_user.organization_id)
     refund = create_refund_payment(
         db,
         return_case=row,
@@ -598,7 +613,7 @@ def approve_refund(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(RefundPayment).filter(RefundPayment.id == refund_id).first()
+    row = _tenant_query(db.query(RefundPayment), RefundPayment, current_user).filter(RefundPayment.id == refund_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Refund not found")
     approve_refund_payment(
@@ -622,7 +637,7 @@ def mark_refund_paid(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(RefundPayment).filter(RefundPayment.id == refund_id).first()
+    row = _tenant_query(db.query(RefundPayment), RefundPayment, current_user).filter(RefundPayment.id == refund_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Refund not found")
     mark_refund_payment_paid(
@@ -637,12 +652,12 @@ def mark_refund_paid(
     db.refresh(row)
     
     # WhatsApp Notification Trigger
-    customer = db.query(Customer).filter(Customer.id == row.customer_id).first()
+    customer = _tenant_query(db.query(Customer), Customer, current_user).filter(Customer.id == row.customer_id).first()
     if customer and (customer.whatsapp_number or customer.phone):
-        return_case = db.query(ReturnCase).filter(ReturnCase.id == row.return_id).first()
+        return_case = get_return_case_or_404(db, row.return_id, current_user.organization_id)
         invoice_label = "N/A"
         if return_case and return_case.original_invoice_id:
-            sale = db.query(Sale).filter(Sale.id == return_case.original_invoice_id).first()
+            sale = _tenant_query(db.query(Sale), Sale, current_user).filter(Sale.id == return_case.original_invoice_id).first()
             if sale:
                 invoice_label = str(sale.invoice_no or f"INV-{sale.id:05d}")
         
@@ -670,7 +685,7 @@ def cancel_refund(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(RefundPayment).filter(RefundPayment.id == refund_id).first()
+    row = _tenant_query(db.query(RefundPayment), RefundPayment, current_user).filter(RefundPayment.id == refund_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Refund not found")
     cancel_refund_payment(
@@ -694,7 +709,7 @@ def create_exchange_for_return(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, return_id)
+    row = get_return_case_or_404(db, return_id, current_user.organization_id)
     exchange = create_exchange(
         db,
         return_case=row,
@@ -715,7 +730,7 @@ def create_exchange_invoice_endpoint(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, return_id)
+    row = get_return_case_or_404(db, return_id, current_user.organization_id)
     sale = create_exchange_invoice(
         db,
         return_case=row,
@@ -744,7 +759,7 @@ def create_store_credit_for_return(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = get_return_case_or_404(db, return_id)
+    row = get_return_case_or_404(db, return_id, current_user.organization_id)
     credit = issue_store_credit(
         db,
         return_case=row,
@@ -763,9 +778,9 @@ def create_store_credit_for_return(
 def list_store_credits_by_customer(
     customer_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    rows = list_customer_store_credits(db, customer_id)
+    rows = list_customer_store_credits(db, customer_id, current_user.organization_id)
     db.commit()
     return [_serialize_store_credit(row) for row in rows]
 
@@ -778,7 +793,7 @@ def use_store_credit_endpoint(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(StoreCredit).filter(StoreCredit.id == id).first()
+    row = _tenant_query(db.query(StoreCredit), StoreCredit, current_user).filter(StoreCredit.id == id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Store credit not found")
     use_store_credit(
@@ -804,9 +819,14 @@ def list_damaged_stock(
     date_to: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    query = db.query(DamagedStockRecord)
+    query = (
+        db.query(DamagedStockRecord)
+        .join(ReturnItem, ReturnItem.id == DamagedStockRecord.return_item_id)
+        .join(ReturnCase, ReturnCase.id == ReturnItem.return_id)
+    )
+    query = _tenant_query(query, ReturnCase, current_user)
     if product_id:
         query = query.filter(DamagedStockRecord.product_id == int(product_id))
     if action and action.lower() != "all":
@@ -833,7 +853,17 @@ def update_damaged_stock(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    row = db.query(DamagedStockRecord).filter(DamagedStockRecord.id == id).first()
+    row = (
+        _tenant_query(
+            db.query(DamagedStockRecord)
+            .join(ReturnItem, ReturnItem.id == DamagedStockRecord.return_item_id)
+            .join(ReturnCase, ReturnCase.id == ReturnItem.return_id),
+            ReturnCase,
+            current_user,
+        )
+        .filter(DamagedStockRecord.id == id)
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Damaged stock record not found")
     update_damaged_stock_action(
