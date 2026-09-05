@@ -24,4 +24,8 @@ if __name__ == "__main__":
         host=os.getenv("ISTORE_API_HOST", "127.0.0.1"),
         port=int(os.getenv("ISTORE_API_PORT", "8000")),
         log_level=os.getenv("ISTORE_API_LOG_LEVEL", "info"),
+        # The optional httptools wheel is not reliable in frozen Python 3.14
+        # builds. h11 is fully supported by Uvicorn and avoids a listener that
+        # opens successfully but crashes on every incoming request.
+        http="h11",
     )

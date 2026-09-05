@@ -32,11 +32,13 @@ let backendProcess = null;
 let backendLogHandle = null;
 
 function resolveDataRoot() {
-  try {
-    return path.join(app.getPath("localAppData"), "iStore");
-  } catch (_err) {
-    return path.join(app.getPath("userData"), "iStore");
+  // Electron has no `localAppData` getPath key. On Windows, asking for it
+  // throws and previously sent every installation back to the legacy nested
+  // roaming directory. Use Windows' real LOCALAPPDATA location explicitly.
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+    return path.join(process.env.LOCALAPPDATA, "iStore");
   }
+  return path.join(app.getPath("userData"), "iStore");
 }
 
 function ensureDataRootMigration() {
@@ -59,6 +61,7 @@ function ensureDataRootMigration() {
     "logs",
     "backups",
     "istore-local.db",
+    "license_cache.json",
   ];
   const legacyPaths = [
     legacyUserData,

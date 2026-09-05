@@ -38,7 +38,7 @@ jobs:
 
       - name: Build Backend Executable (PyInstaller)
         run: |
-          pyinstaller --noconfirm --clean --onedir --name IStoreBackend --distpath "electron/backend-dist" --workpath "electron/build-backend" --specpath "electron/build-backend" --paths "backend" --hidden-import app.main --collect-all certifi --collect-all passlib --collect-submodules app --collect-data app "backend/desktop_server.py"
+          pyinstaller --noconfirm --clean --onedir --name IStoreBackend --distpath "electron/backend-dist" --workpath "electron/build-backend" --specpath "electron/build-backend" --paths "backend" --hidden-import app.main --hidden-import sync_schema --collect-all certifi --collect-all passlib --collect-submodules app --collect-data app "backend/desktop_server.py"
 
       - name: Install Frontend Dependencies & Build
         run: |

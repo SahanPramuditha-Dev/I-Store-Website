@@ -3,7 +3,7 @@ import { RefreshCw, Download, CheckCircle2, ShieldCheck, Cpu, HardDrive, Sparkle
 import { Button, SectionCard, Badge } from "../UI";
 
 export default function SoftwareUpdatesSettingsPanel({ toast }) {
-  const [appVersion, setAppVersion] = useState("v1.1.103");
+  const [appVersion, setAppVersion] = useState("v1.1.104");
   const [checking, setChecking] = useState(false);
   const [updaterStatus, setUpdaterStatus] = useState("idle"); // 'idle' | 'checking' | 'available' | 'downloading' | 'ready-to-install' | 'up-to-date' | 'error' | 'blocked'
   const [progress, setProgress] = useState(0);

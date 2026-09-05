@@ -81,7 +81,7 @@ async function main() {
       license_key: licenseKey,
       machine_fingerprint: machineFingerprint,
       machine_name: `${os.hostname()} - Counter`,
-      app_version: "1.1.103",
+      app_version: "1.1.104",
     }),
   });
   const data = await response.json();
