@@ -13,7 +13,16 @@ from app.core.license_guard import (
     require_active_license,
     load_public_key_from_b64,
     get_cached_license,
+    _required_capabilities_for_path,
 )
+
+
+def test_industry_specific_paths_require_signed_capabilities():
+    assert _required_capabilities_for_path("/inventory/batches/summary") == {"batch_tracking", "expiry_tracking"}
+    assert _required_capabilities_for_path("/inventory/serials/search") == {"serial_tracking", "imei_tracking"}
+    assert _required_capabilities_for_path("/inventory/42/serials") == {"serial_tracking", "imei_tracking"}
+    assert _required_capabilities_for_path("/catalog/products/7/save-variants") == {"variants_matrix", "size_color_variants"}
+    assert _required_capabilities_for_path("/inventory") == set()
 
 def _generate_ed25519_keypair():
     priv = ed25519.Ed25519PrivateKey.generate()

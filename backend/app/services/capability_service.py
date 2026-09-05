@@ -169,6 +169,14 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int] = Non
                     "configuration_version": payload.get("configuration_version", 1),
                     "entitlements": payload.get("entitlements", []),
                     "package_code": payload.get("package_code"),
+                    "feature_flags": payload.get("feature_flags", []),
+                    "limits": {
+                        "max_users": payload.get("max_users", 5),
+                        "max_devices": payload.get("max_devices", 1),
+                        "max_stores": payload.get("max_stores", 1),
+                        "storage_gb": payload.get("storage_gb", 10),
+                        "monthly_transactions_limit": payload.get("monthly_transactions_limit", 10000),
+                    },
                     "capabilities": eff_caps
                 }
     except Exception as ex:

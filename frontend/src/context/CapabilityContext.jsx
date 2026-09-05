@@ -120,6 +120,7 @@ function getInitialCapabilityState() {
         industryType: ind || "MOBILE_RETAIL",
         capabilities: base,
         entitlements: Array.isArray(payload.entitlements) ? payload.entitlements : [],
+        featureFlags: Array.isArray(payload.feature_flags) ? payload.feature_flags : [],
       };
     }
   } catch (_e) {}
@@ -127,6 +128,7 @@ function getInitialCapabilityState() {
     industryType: "MOBILE_RETAIL",
     capabilities: INDUSTRY_TEMPLATES["MOBILE_RETAIL"],
     entitlements: [],
+    featureFlags: [],
   };
 }
 
@@ -137,6 +139,7 @@ const CapabilityContext = createContext({
   capabilities: initial.capabilities,
   hasCapability: () => true,
   hasEntitlement: () => true,
+  hasFeatureFlag: () => false,
   isLoading: false,
   refreshCapabilities: async () => {},
 });
@@ -145,6 +148,7 @@ export function CapabilityProvider({ children }) {
   const [industryType, setIndustryType] = useState(() => getInitialCapabilityState().industryType);
   const [capabilities, setCapabilities] = useState(() => getInitialCapabilityState().capabilities);
   const [entitlements, setEntitlements] = useState(() => getInitialCapabilityState().entitlements);
+  const [featureFlags, setFeatureFlags] = useState(() => getInitialCapabilityState().featureFlags);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchCapabilities = useCallback(async () => {
@@ -156,6 +160,7 @@ export function CapabilityProvider({ children }) {
         setIndustryType(ind);
         setCapabilities(res.data.capabilities);
         setEntitlements(Array.isArray(res.data.entitlements) ? res.data.entitlements : getInitialCapabilityState().entitlements);
+        setFeatureFlags(Array.isArray(res.data.feature_flags) ? res.data.feature_flags : getInitialCapabilityState().featureFlags);
       }
     } catch (e) {
       // Fallback gracefully to cached license or defaults
@@ -163,6 +168,7 @@ export function CapabilityProvider({ children }) {
       setIndustryType(cached.industryType);
       setCapabilities(cached.capabilities);
       setEntitlements(cached.entitlements);
+      setFeatureFlags(cached.featureFlags);
     } finally {
       setIsLoading(false);
     }
@@ -199,6 +205,11 @@ export function CapabilityProvider({ children }) {
     [entitlements]
   );
 
+  const hasFeatureFlag = useCallback(
+    (key) => featureFlags.includes(key),
+    [featureFlags]
+  );
+
   return (
     <CapabilityContext.Provider
       value={{
@@ -207,6 +218,8 @@ export function CapabilityProvider({ children }) {
         hasCapability,
         entitlements,
         hasEntitlement,
+        featureFlags,
+        hasFeatureFlag,
         isLoading,
         refreshCapabilities: fetchCapabilities,
       }}

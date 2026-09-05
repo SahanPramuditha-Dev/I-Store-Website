@@ -1292,6 +1292,17 @@ def create_employee(payload: EmployeeIn, request: Request, db: Session = Depends
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
 
+    license_payload = getattr(request.state, "license_payload", {}) or {}
+    max_users = max(1, int(license_payload.get("max_users") or 5))
+    active_users = db.query(User).filter(User.is_deleted == False, User.is_active == True)
+    if getattr(current, "organization_id", None) is not None:
+        active_users = active_users.filter(User.organization_id == current.organization_id)
+    if active_users.count() >= max_users:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Package user limit reached ({max_users}). Existing users were not changed.",
+        )
+
     security = get_security_settings(db)
     issues = validate_password_against_policy(payload.password, security)
     if issues:

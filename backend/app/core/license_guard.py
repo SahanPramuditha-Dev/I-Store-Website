@@ -73,6 +73,19 @@ ENTITLEMENT_ROUTE_PREFIXES = {
 }
 
 
+def _required_capabilities_for_path(path: str) -> set[str]:
+    """Return acceptable signed capabilities for industry-specific API paths."""
+    if path.startswith("/inventory/batches"):
+        return {"batch_tracking", "expiry_tracking"}
+    if path.startswith("/inventory/serials") or "/serials" in path:
+        return {"serial_tracking", "imei_tracking"}
+    if path.startswith("/catalog/variants") or (
+        path.startswith("/catalog/products/") and ("generate-variants" in path or "save-variants" in path)
+    ):
+        return {"variants_matrix", "size_color_variants"}
+    return set()
+
+
 def canonicalize_json(data: Any) -> str:
     """Deterministically formats JSON dictionary for cryptographic verification."""
     return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -319,6 +332,18 @@ async def require_active_license(request: Request) -> Dict[str, Any]:
                         },
                     )
                 break
+
+    signed_capabilities = set(payload.get("capabilities") or [])
+    required_capabilities = _required_capabilities_for_path(path)
+    if required_capabilities and "all" not in signed_capabilities and not (required_capabilities & signed_capabilities):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "CAPABILITY_REQUIRED",
+                "message": "This workflow is not enabled for the licensed industry profile.",
+                "accepted_capabilities": sorted(required_capabilities),
+            },
+        )
 
     # Attach license metadata to request state
     request.state.license_payload = payload
