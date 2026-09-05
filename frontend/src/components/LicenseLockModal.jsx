@@ -172,6 +172,30 @@ export default function LicenseLockModal() {
     return null;
   }
 
+  // License verification is asynchronous on desktop startup. Never present the
+  // activation form until the installed cache and backend have both had a chance
+  // to report a definitive state.
+  if (licenseState.status === 'CHECKING') {
+    return (
+      <div
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950"
+        role="status"
+        aria-live="polite"
+        aria-label="Verifying terminal licence"
+      >
+        <div className="flex flex-col items-center gap-3 text-center text-slate-300">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-indigo-400/25 bg-indigo-500/10">
+            <RefreshCw className="h-5 w-5 animate-spin text-indigo-300" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-100">Starting E Store</p>
+            <p className="mt-1 text-xs text-slate-500">Verifying this terminal licence…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Warning Banner for Offline Grace Period
   if (licenseState.status === 'ACTIVATED' && licenseState.is_offline_fallback) {
     return (
