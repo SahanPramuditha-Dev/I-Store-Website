@@ -1218,21 +1218,21 @@ export default function POS() {
           payload,
           created_at: new Date().toISOString(),
           terminal_id: "POS-01",
-          total: Number(total.toFixed(2)),
-          items: cartItems.map(i => ({ ...i }))
+          total: Number(grandTotal.toFixed(2)),
+          items: cart.map((item) => ({ ...item }))
         };
         await offlineStorage.saveOfflineSale(offlineRecord);
         const mockOfflineSale = {
           id: `OFF-${Date.now()}`,
           invoice_no: offlineInvNo,
-          total: Number(total.toFixed(2)),
+          total: Number(grandTotal.toFixed(2)),
           subtotal: Number(subtotal.toFixed(2)),
           payment_method: paymentMethod,
-          items: cartItems.map(i => ({
+          items: cart.map(i => ({
             item_name: i.name,
             quantity: i.quantity,
-            unit_price: i.sale_price,
-            total: i.sale_price * i.quantity
+            unit_price: i.price,
+            total: i.price * i.quantity
           })),
           created_at: new Date().toISOString(),
           is_offline: true

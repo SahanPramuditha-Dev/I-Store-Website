@@ -431,19 +431,21 @@ def collect_system_telemetry(db: Session) -> Dict[str, Any]:
     import shutil
     import platform
     import socket
+    import time
+    from app.config import settings
     from app.models import Sale, SyncOutbox, User
 
     # Disk stats
-    total_b, used_b, free_b = shutil.disk_usage(os.path.abspath("."))
+    database_path = os.path.abspath(settings.sqlite_file)
+    storage_path = os.path.dirname(database_path) or os.path.abspath(".")
+    _, _, free_b = shutil.disk_usage(storage_path)
     disk_free_gb = round(free_b / (1024 ** 3), 2)
     
     # DB Size
     db_size_mb = 0.0
     try:
-        for f in ["istore.db", "istore_v2.db", "app.db", "data.db"]:
-            if os.path.exists(f):
-                db_size_mb = round(os.path.getsize(f) / (1024 ** 2), 2)
-                break
+        if os.path.exists(database_path):
+            db_size_mb = round(os.path.getsize(database_path) / (1024 ** 2), 2)
     except Exception:
         db_size_mb = 0.0
 
@@ -477,6 +479,17 @@ def collect_system_telemetry(db: Session) -> Dict[str, Any]:
     except Exception:
         host_ip = "127.0.0.1"
 
+    cpu_percent = 0.0
+    memory_percent = 0.0
+    uptime_seconds = 0
+    try:
+        import psutil
+        cpu_percent = round(float(psutil.cpu_percent(interval=None)), 1)
+        memory_percent = round(float(psutil.virtual_memory().percent), 1)
+        uptime_seconds = max(0, int(time.time() - psutil.boot_time()))
+    except Exception:
+        pass
+
     return {
         "hostname": hostname,
         "platform": f"{platform.system()} {platform.release()}",
@@ -486,9 +499,10 @@ def collect_system_telemetry(db: Session) -> Dict[str, Any]:
         "pending_outbox_events": pending_sync_count,
         "active_users_count": active_users,
         "last_sale_at": last_sale_str,
-        "cpu_percent": 12.5,
-        "memory_percent": 45.2,
-        "app_version": "v2.6.0-enterprise",
+        "cpu_percent": cpu_percent,
+        "memory_percent": memory_percent,
+        "uptime_seconds": uptime_seconds,
+        "app_version": os.getenv("ISTORE_APP_VERSION", "1.1.104"),
         "collected_at": utcnow().isoformat()
     }
 

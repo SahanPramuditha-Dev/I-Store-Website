@@ -1,29 +1,31 @@
 from datetime import datetime, date, timedelta
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 
 from app.database import get_db
 from app.models import Sale, InventoryItem, Customer, RepairTicket, InventoryLedger
 from app.auth import get_current_user, require_permission
+from app.core.tenant_guard import scope_query
 
 router = APIRouter(prefix="/api/analytics", tags=["AI Analytics & Reporting"])
 
 
 @router.get("/today-sales", response_model=Dict[str, Any], dependencies=[Depends(require_permission("reports.view"))])
 def get_today_sales_analytics(
+    request: Request,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
     """AI Query Endpoint: What were today's sales?"""
     today_start = datetime.combine(date.today(), datetime.min.time())
-    sales_query = db.query(
+    sales_query = scope_query(db.query(
         func.coalesce(func.sum(Sale.total), 0.0).label("total_sales"),
         func.count(Sale.id).label("total_orders"),
         func.coalesce(func.sum(Sale.tax_amount), 0.0).label("total_tax"),
         func.coalesce(func.sum(Sale.discount_amount), 0.0).label("total_discounts"),
-    ).filter(Sale.created_at >= today_start, Sale.is_voided == False).first()
+    ).filter(Sale.created_at >= today_start, Sale.is_voided == False), Sale, request).first()
 
     return {
         "date": date.today().isoformat(),
@@ -36,6 +38,7 @@ def get_today_sales_analytics(
 
 @router.get("/low-stock", response_model=List[Dict[str, Any]], dependencies=[Depends(require_permission("inventory.view"))])
 def get_low_stock_analytics(
+    request: Request,
     threshold: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
@@ -45,7 +48,7 @@ def get_low_stock_analytics(
         InventoryItem.is_deleted == False,
         InventoryItem.quantity <= func.coalesce(threshold, InventoryItem.low_stock_threshold),
     )
-    items = query.all()
+    items = scope_query(query, InventoryItem, request).all()
     return [
         {
             "id": item.id,
@@ -62,11 +65,12 @@ def get_low_stock_analytics(
 
 @router.get("/unpaid-balances", response_model=List[Dict[str, Any]], dependencies=[Depends(require_permission("customers.view"))])
 def get_unpaid_customer_balances(
+    request: Request,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
     """AI Query Endpoint: Which customers have unpaid balances?"""
-    rows = (
+    rows = scope_query(
         db.query(
             Sale.customer_id,
             func.coalesce(func.sum(Sale.balance_due), 0.0).label("total_unpaid_balance"),
@@ -77,19 +81,21 @@ def get_unpaid_customer_balances(
             Sale.balance_due > 0,
             Sale.customer_id.isnot(None),
         )
-        .group_by(Sale.customer_id)
-        .all()
-    )
+        .group_by(Sale.customer_id),
+        Sale,
+        request,
+    ).all()
 
     if not rows:
         return []
 
     customer_ids = [int(r.customer_id) for r in rows if r.customer_id]
-    customers = (
+    customers = scope_query(
         db.query(Customer.id, Customer.name, Customer.phone)
-        .filter(Customer.id.in_(customer_ids))
-        .all()
-    )
+        .filter(Customer.id.in_(customer_ids)),
+        Customer,
+        request,
+    ).all()
     cust_map = {c.id: c for c in customers}
 
     return [
@@ -106,12 +112,13 @@ def get_unpaid_customer_balances(
 
 @router.get("/delayed-repairs", response_model=List[Dict[str, Any]], dependencies=[Depends(require_permission("repairs.view"))])
 def get_delayed_repairs_analytics(
+    request: Request,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
     """AI Query Endpoint: Which repairs are delayed?"""
     now = datetime.utcnow()
-    repairs = (
+    repairs = scope_query(
         db.query(
             RepairTicket.id,
             RepairTicket.ticket_no,
@@ -125,9 +132,10 @@ def get_delayed_repairs_analytics(
             RepairTicket.status.notin_(["completed", "delivered", "cancelled"]),
             RepairTicket.estimated_completion.isnot(None),
             RepairTicket.estimated_completion < now,
-        )
-        .all()
-    )
+        ),
+        RepairTicket,
+        request,
+    ).all()
 
     return [
         {
@@ -145,17 +153,19 @@ def get_delayed_repairs_analytics(
 
 @router.get("/peak-hours", response_model=List[Dict[str, Any]], dependencies=[Depends(require_permission("reports.view"))])
 def get_peak_hours_analytics(
+    request: Request,
     days: int = Query(default=30, ge=1, le=365),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
     """BI Endpoint: Distribution of sales and revenue by hour of the day."""
     start_date = datetime.utcnow() - timedelta(days=days)
-    sales = (
+    sales = scope_query(
         db.query(Sale.created_at, Sale.total)
-        .filter(Sale.created_at >= start_date, Sale.is_voided == False)  # noqa: E712
-        .all()
-    )
+        .filter(Sale.created_at >= start_date, Sale.is_voided == False),  # noqa: E712
+        Sale,
+        request,
+    ).all()
 
     hourly_data = {h: {"hour": h, "sales_count": 0, "total_revenue": 0.0} for h in range(24)}
     for created_at, total in sales:

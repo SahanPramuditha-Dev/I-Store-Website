@@ -58,7 +58,8 @@ def setup_database():
     Base.metadata.drop_all(bind=engine)
 
 
-def test_collect_system_telemetry():
+def test_collect_system_telemetry(monkeypatch):
+    monkeypatch.setenv("ISTORE_APP_VERSION", "1.1.104")
     db = TestingSessionLocal()
     metrics = collect_system_telemetry(db)
 
@@ -67,7 +68,10 @@ def test_collect_system_telemetry():
     assert metrics["disk_free_gb"] > 0
     assert "pending_outbox_events" in metrics
     assert metrics["pending_outbox_events"] == 1
-    assert metrics["app_version"] == "v2.6.0-enterprise"
+    assert metrics["app_version"] == "1.1.104"
+    assert 0 <= metrics["cpu_percent"] <= 100
+    assert 0 <= metrics["memory_percent"] <= 100
+    assert metrics["uptime_seconds"] >= 0
     assert "platform" in metrics
     db.close()
 

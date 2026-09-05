@@ -804,10 +804,16 @@ def get_terminal_telemetry_status(
     Returns live hardware, database, and telemetry health metrics for this POS terminal.
     """
     from app.services.saas_service import collect_system_telemetry
+    cached = get_cached_license()
+    license_active = False
+    license_message = "No activated license"
+    if cached:
+        license_active, license_message, _ = verify_license_token(cached)
     return {
         "success": True,
         "metrics": collect_system_telemetry(db),
-        "license_active": True
+        "license_active": license_active,
+        "license_message": license_message,
     }
 
 
@@ -822,5 +828,4 @@ def trigger_terminal_heartbeat(
     from app.services.saas_service import send_terminal_heartbeat
     res = send_terminal_heartbeat(db)
     return res
-
 

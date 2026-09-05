@@ -94,14 +94,46 @@ function AnalyticsSection() {
         hasCapability("repairs_management") ? api.get('/api/analytics/delayed-repairs') : Promise.resolve({ data: { count: 0, top_repairs: [] } }),
         api.get('/api/analytics/peak-hours')
       ];
-      const results = await Promise.all(promises);
+      const results = await Promise.allSettled(promises);
+      const valueAt = (index, fallback) => results[index]?.status === "fulfilled"
+        ? results[index].value?.data
+        : fallback;
+      const lowStockRows = Array.isArray(valueAt(1, [])) ? valueAt(1, []) : [];
+      const unpaidRows = Array.isArray(valueAt(2, [])) ? valueAt(2, []) : [];
+      const delayedRows = Array.isArray(valueAt(3, [])) ? valueAt(3, []) : [];
+      const peakRows = Array.isArray(valueAt(4, [])) ? valueAt(4, []) : [];
       setData({
-        sales: results[0].data,
-        lowStock: results[1].data,
-        unpaid: results[2].data,
-        delayedRepairs: results[3].data,
-        peakHours: results[4].data
+        sales: valueAt(0, {}),
+        lowStock: {
+          count: lowStockRows.length,
+          top_items: lowStockRows.map((item) => ({ ...item, stock: item.current_stock })),
+        },
+        unpaid: {
+          total_amount: unpaidRows.reduce((sum, row) => sum + Number(row.total_unpaid_balance || 0), 0),
+          total_customers: unpaidRows.length,
+        },
+        delayedRepairs: {
+          count: delayedRows.length,
+          top_repairs: delayedRows.map((row) => ({
+            ...row,
+            job_number: row.ticket_no,
+            days_late: Math.max(1, Math.ceil(Number(row.delay_hours || 0) / 24)),
+          })),
+        },
+        peakHours: {
+          top_hours: peakRows
+            .filter((row) => Number(row.sales_count || 0) > 0)
+            .sort((a, b) => Number(b.sales_count || 0) - Number(a.sales_count || 0))
+            .slice(0, 2)
+            .map((row) => ({
+              hour: `${String(row.hour).padStart(2, "0")}:00`,
+              count: row.sales_count,
+            })),
+        },
       });
+      if (results.every((result) => result.status === "rejected")) {
+        setError("Business intelligence is unavailable for this account.");
+      }
     } catch (err) {
       setError("Failed to fetch analytics.");
     } finally {
@@ -312,6 +344,8 @@ export default function Dashboard() {
     }
   };
   const { data, loading, error } = useFetch(`/dashboard?range=${salesRange}`);
+  const { data: terminalHealth, error: terminalHealthError } = useFetch("/saas/telemetry/status", { staleTime: 30_000 });
+  const { data: backupHealth, error: backupHealthError } = useFetch("/backup/scheduler/status", { staleTime: 60_000 });
   const role = localStorage.getItem("login_role") || "admin";
   const username = localStorage.getItem("username") || "Admin";
 
@@ -336,21 +370,25 @@ export default function Dashboard() {
   const recentSalesValue = tx.reduce((total, sale) => total + Number(sale.total || 0), 0);
 
   const { pendingCount, isOnline } = useSyncStatus();
+  const apiHealthy = Boolean(terminalHealth?.success) && !terminalHealthError;
+  const databaseHealthy = apiHealthy && Number(terminalHealth?.metrics?.disk_free_gb || 0) > 0;
+  const backupEnabled = Boolean(backupHealth?.enabled);
+  const backupUnavailable = Boolean(backupHealthError);
 
   const health = [
     {
       label: "Database Connected",
-      tone: isOnline ? "green" : "rose",
+      tone: databaseHealthy ? "green" : "rose",
       icon: <Database size={13} />,
-      meta: isOnline ? "Live" : "Offline Mode",
-      accent: isOnline ? "text-emerald-300" : "text-rose-300",
+      meta: databaseHealthy ? `${terminalHealth.metrics.database_size_mb} MB` : "Unavailable",
+      accent: databaseHealthy ? "text-emerald-300" : "text-rose-300",
     },
     {
       label: "Backup Enabled",
-      tone: "sky",
+      tone: backupEnabled ? "sky" : "amber",
       icon: <HardDriveDownload size={13} />,
-      meta: "23:59 UTC",
-      accent: "text-cyan-300",
+      meta: backupUnavailable ? "No access" : backupEnabled ? (backupHealth?.schedule || "Enabled") : "Disabled",
+      accent: backupEnabled ? "text-cyan-300" : "text-amber-300",
     },
     {
       label: "Offline Ready",
@@ -361,10 +399,10 @@ export default function Dashboard() {
     },
     {
       label: "API Healthy",
-      tone: isOnline ? "amber" : "rose",
+      tone: apiHealthy ? "green" : "rose",
       icon: <Server size={13} />,
-      meta: isOnline ? "<50ms" : "Offline",
-      accent: isOnline ? "text-amber-300" : "text-rose-300",
+      meta: apiHealthy ? `v${terminalHealth?.metrics?.app_version || "-"}` : "Offline",
+      accent: apiHealthy ? "text-emerald-300" : "text-rose-300",
     },
   ];
 

@@ -168,6 +168,7 @@ function startBackend() {
     // Explicitly set the data root so the backend EXE always uses the correct
     // user data directory regardless of how LOCALAPPDATA or userData resolves.
     ISTORE_DATA_ROOT: dataDirectory,
+    ISTORE_APP_VERSION: app.getVersion(),
     // Schema migration and recovery are deliberately disabled during normal
     // desktop startup.  Running them while SQLite/WAL files are still being
     // opened can select a legacy database and leave the API unusable.
