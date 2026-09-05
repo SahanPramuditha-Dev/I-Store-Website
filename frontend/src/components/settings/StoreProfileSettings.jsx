@@ -362,6 +362,7 @@ export default function StoreProfileSettings({
   toast,
   confirm,
   prompt,
+  operationalBranches = [],
 }) {
   const [collapsed, setCollapsed] = useState(() => Object.fromEntries(SECTION_LIST.map((row) => [row.id, false])));
   const [activeSection, setActiveSection] = useState("identity");
@@ -679,7 +680,13 @@ export default function StoreProfileSettings({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         <KpiCard title="Profile Completion" value={`${completionPct}%`} tone={completionPct >= 85 ? "green" : completionPct >= 65 ? "amber" : "red"} icon={<CheckCircle2 size={16} />} />
         <KpiCard title="Validation Issues" value={String(allErrors.length)} tone={allErrors.length ? "red" : "green"} icon={<AlertTriangle size={16} />} />
-        <KpiCard title="Branches" value={String((profile.branches || []).length)} tone="sky" icon={<Building2 size={16} />} />
+        <KpiCard
+          title="Operational Branches"
+          value={String(operationalBranches.length || (profile.branches || []).length)}
+          hint={`${(profile.branches || []).length} print profile(s) configured`}
+          tone="sky"
+          icon={<Building2 size={16} />}
+        />
         <KpiCard title="Approval Status" value={profile.approval_workflow.status || "Unknown"} tone={profile.approval_workflow.status === "Approved" ? "green" : "amber"} icon={<UserCheck size={16} />} />
         <KpiCard title="Last Updated By" value={profile.meta.last_updated_by || "-"} tone="indigo" />
         <KpiCard title="Last Updated At" value={profile.meta.last_updated_at ? formatDateTime(profile.meta.last_updated_at) : "-"} tone="violet" />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Bell,
@@ -21,18 +21,19 @@ import {
 import api from "../lib/api";
 import { useFeedback } from "../components/FeedbackProvider";
 import { AppTableEmptyRow, AppTableHead, AppTableShell, Badge, Button, Input, Loading, SectionCard, Select, Table } from "../components/UI";
-import InvoiceJobLabelCustomizer from "../components/settings/InvoiceJobLabelCustomizer";
-import StoreProfileSettings from "../components/settings/StoreProfileSettings";
-import AccessControlSettingsPanel from "../components/settings/AccessControlSettingsPanel";
-import BusinessOpsSettings from "../components/settings/BusinessOpsSettings";
-import FinancialSettingsPanel from "../components/settings/FinancialSettingsPanel";
-import RepairSettingsPanel from "../components/settings/RepairSettingsPanel";
-import NotificationsSettingsPanel from "../components/settings/NotificationsSettingsPanel";
-import AppearanceSettingsPanel from "../components/settings/AppearanceSettingsPanel";
-import CustomerPortalSettingsPanel from "../components/settings/CustomerPortalSettingsPanel";
-import SystemApisSettingsPanel from "../components/settings/SystemApisSettingsPanel";
-import SoftwareUpdatesSettingsPanel from "../components/settings/SoftwareUpdatesSettingsPanel";
 import AppModal from "../components/layout/AppModal";
+
+const InvoiceJobLabelCustomizer = lazy(() => import("../components/settings/InvoiceJobLabelCustomizer"));
+const StoreProfileSettings = lazy(() => import("../components/settings/StoreProfileSettings"));
+const AccessControlSettingsPanel = lazy(() => import("../components/settings/AccessControlSettingsPanel"));
+const BusinessOpsSettings = lazy(() => import("../components/settings/BusinessOpsSettings"));
+const FinancialSettingsPanel = lazy(() => import("../components/settings/FinancialSettingsPanel"));
+const RepairSettingsPanel = lazy(() => import("../components/settings/RepairSettingsPanel"));
+const NotificationsSettingsPanel = lazy(() => import("../components/settings/NotificationsSettingsPanel"));
+const AppearanceSettingsPanel = lazy(() => import("../components/settings/AppearanceSettingsPanel"));
+const CustomerPortalSettingsPanel = lazy(() => import("../components/settings/CustomerPortalSettingsPanel"));
+const SystemApisSettingsPanel = lazy(() => import("../components/settings/SystemApisSettingsPanel"));
+const SoftwareUpdatesSettingsPanel = lazy(() => import("../components/settings/SoftwareUpdatesSettingsPanel"));
 
 const TABS = [
   { id: "store_profile", label: "Store Profile", group: "Core", icon: Store },
@@ -572,6 +573,7 @@ export default function Settings() {
   const [state, setState] = useState(() => buildClientFallbackState());
   const [legacyMode, setLegacyMode] = useState(false);
   const [employees, setEmployees] = useState([]);
+  const [operationalBranches, setOperationalBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState({});
   const [employeeForm, setEmployeeForm] = useState(EMPTY_EMPLOYEE_FORM);
@@ -587,6 +589,9 @@ export default function Settings() {
     setLoading(true);
     let staffRows = [];
     let lastBackup = null;
+    api.get("/settings/tenant/context")
+      .then((res) => setOperationalBranches(Array.isArray(res?.data?.available_branches) ? res.data.available_branches : []))
+      .catch(() => setOperationalBranches([]));
     try {
       const employeesRes = await api.get("/settings/employees");
       staffRows = employeesRes.data || [];
@@ -946,6 +951,7 @@ export default function Settings() {
       toast={toast}
       confirm={confirm}
       prompt={prompt}
+      operationalBranches={operationalBranches}
     />
   );
 
@@ -1094,6 +1100,7 @@ export default function Settings() {
 
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
         <div className="min-h-0 pr-1">
+        <Suspense fallback={<Loading text={`Loading ${activeTabMeta.label}...`} />}>
         {activeTab === "access_control"
           ? renderAccessControlPanel()
           : activeTab === "store_profile"
@@ -1117,6 +1124,7 @@ export default function Settings() {
           : activeTab === "software_updates"
           ? <SoftwareUpdatesSettingsPanel toast={toast} />
           : renderGenericSection(activeTab)}
+        </Suspense>
         </div>
       </div>
 

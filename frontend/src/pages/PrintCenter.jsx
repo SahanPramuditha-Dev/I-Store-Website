@@ -665,7 +665,7 @@ export default function PrintCenter() {
       {error ? <ErrorState text={error} /> : null}
 
       <FilterToolbar
-        right={<SensitiveActionIndicators items={["print", "permission", "audit"]} />}
+        right={<SensitiveActionIndicators items={["print", "audit"]} />}
       >
         <Select
           size="sm"
