@@ -522,7 +522,7 @@ export default function PermissionManagement() {
         right={<SensitiveActionIndicators items={["owner", "approval", "audit"]} />}
       />
 
-      <div className="grid grid-cols-2 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {summaryKpis.map((kpi) => (
           <KpiCard key={kpi.title} title={kpi.title} value={kpi.value} tone={kpi.tone} />
         ))}

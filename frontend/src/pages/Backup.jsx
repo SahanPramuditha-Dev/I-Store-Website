@@ -578,7 +578,7 @@ export default function Backup() {
         right={<div className="flex flex-wrap items-center gap-2"><SensitiveActionIndicators items={["approval", "owner", "audit"]} /><Badge tone={pendingRestoreRequests.length ? "amber" : "green"}>{pendingRestoreRequests.length} pending restore request(s)</Badge></div>}
       />
 
-      <div className="grid grid-cols-2 gap-2 shrink-0 lg:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         <KpiCard tone="sky" title="Local Snapshots" value={String(stats.total)} icon={<Database size={17} />} />
         <KpiCard tone="amber" title="Auto Scheduled" value={String(stats.auto)} icon={<RotateCcw size={17} />} />
         <KpiCard tone="violet" title="Manual Snapshots" value={String(stats.manual)} icon={<HardDrive size={17} />} />

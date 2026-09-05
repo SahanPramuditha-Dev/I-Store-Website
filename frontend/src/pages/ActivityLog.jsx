@@ -567,7 +567,7 @@ export default function ActivityLog() {
           </div>
         </SectionCard>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <KpiCard title="Today's Activities" value={Number(summary.todays_activities || 0).toLocaleString()} icon={<CalendarRange size={17} />} />
           <KpiCard title="Failed Login Attempts" value={Number(summary.failed_login_attempts || 0).toLocaleString()} icon={<ShieldAlert size={17} />} tone="red" />
           <KpiCard title="Stock Changes" value={Number(summary.stock_changes || 0).toLocaleString()} icon={<RefreshCw size={17} />} tone="amber" />

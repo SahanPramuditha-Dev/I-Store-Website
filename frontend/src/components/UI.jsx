@@ -129,7 +129,12 @@ export function KpiCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] text-slate-500 dark:text-slate-300/75 uppercase tracking-[.18em]">{title}</p>
-          <p className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-white truncate">{value}</p>
+          <p
+            className="mt-2 min-w-0 break-words text-xl font-extrabold leading-tight text-slate-900 dark:text-white xl:text-2xl"
+            title={typeof value === "string" || typeof value === "number" ? String(value) : undefined}
+          >
+            {value}
+          </p>
           {hint && <p className="mt-2 text-xs text-slate-500 dark:text-slate-300/70">{hint}</p>}
         </div>
         {icon && (

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -70,15 +70,24 @@ def _parse_dt(value: str | None, end_exclusive: bool = False) -> datetime | None
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid datetime: {value}") from exc
     if end_exclusive and "T" not in str(value):
-        return parsed + timedelta(days=1)
-    return parsed
+        parsed = parsed + timedelta(days=1)
+    return _comparison_dt(parsed)
+
+
+def _comparison_dt(value: datetime | None) -> datetime | None:
+    """Normalize timestamps for safe comparison with SQLite's naive UTC values."""
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 def _coerce_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(str(value))
+        return _comparison_dt(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
     except Exception:
         return None
 

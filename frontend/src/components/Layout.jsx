@@ -40,7 +40,7 @@ import {
   ChevronDown,
   Check,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetch } from "../hooks/useFetch";
 import { useCachedQuery } from "../hooks/useCachedQuery";
 import { canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions, NAV_PERMISSION_MAP } from "../lib/rbac";
@@ -170,6 +170,7 @@ function sanitizeMessage(msg) {
 
 export default function Layout() {
   const location = useLocation();
+  const workspaceRef = useRef(null);
   const n = useNavigate();
   const [dark, setDark] = useState(() => (localStorage.getItem("theme") ?? "dark") === "dark");
   const [collapsed, setCollapsed] = useState(false);
@@ -307,6 +308,10 @@ export default function Layout() {
   );
   const notificationsAllowed = canOpenPath("/notifications");
   const settingsAllowed = canOpenPath("/settings");
+
+  useEffect(() => {
+    workspaceRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname]);
   const activeTenantName = localStorage.getItem("istore_active_tenant");
   const shopName = tenantContext?.organization?.name || (activeTenantName && activeTenantName !== "undefined" ? activeTenantName : null) || identity?.shopName || "E-Store";
   const softwareName = identity?.softwareName || "E-Store";
@@ -1009,7 +1014,7 @@ export default function Layout() {
             />
           ) : null}
 
-          <div className="app-workspace-host min-h-0 min-w-0 flex-1 w-full max-w-none overflow-x-auto overflow-y-auto custom-scrollbar px-3 sm:px-4 pb-3 sm:pb-4 pt-2 sm:pt-2.5">
+          <div ref={workspaceRef} className="app-workspace-host min-h-0 min-w-0 flex-1 w-full max-w-none overflow-x-hidden overflow-y-auto custom-scrollbar px-3 sm:px-4 pb-3 sm:pb-4 pt-2 sm:pt-2.5">
             <Outlet />
           </div>
         </main>

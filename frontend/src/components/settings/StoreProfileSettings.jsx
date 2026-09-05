@@ -676,7 +676,7 @@ export default function StoreProfileSettings({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         <KpiCard title="Profile Completion" value={`${completionPct}%`} tone={completionPct >= 85 ? "green" : completionPct >= 65 ? "amber" : "red"} icon={<CheckCircle2 size={16} />} />
         <KpiCard title="Validation Issues" value={String(allErrors.length)} tone={allErrors.length ? "red" : "green"} icon={<AlertTriangle size={16} />} />
         <KpiCard title="Branches" value={String((profile.branches || []).length)} tone="sky" icon={<Building2 size={16} />} />

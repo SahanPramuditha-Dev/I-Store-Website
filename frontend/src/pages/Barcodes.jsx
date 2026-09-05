@@ -1524,7 +1524,7 @@ export default function Barcodes() {
         <div className="xl:col-span-8 min-h-0 overflow-auto custom-scrollbar pr-1 space-y-3">
           {activeTab === "dashboard" && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                 <KpiCard title="Labels Printed Today" value={String(dashboard?.kpis?.labels_printed_today || 0)} icon={<Printer size={16} />} />
                 <KpiCard title="Printed This Month" value={String(dashboard?.kpis?.labels_printed_month || 0)} icon={<Tags size={16} />} tone="indigo" />
                 <KpiCard title="Products Without Labels" value={String(dashboard?.kpis?.products_without_labels || 0)} icon={<Package size={16} />} tone="amber" />
@@ -2273,7 +2273,7 @@ export default function Barcodes() {
 
           {activeTab === "history" && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                 <KpiCard title="Printed This Month" value={String(historyState?.kpis?.total_labels_printed_month || 0)} icon={<Printer size={16} />} />
                 <KpiCard title="Reprints This Month" value={String(historyState?.kpis?.total_reprints_month || 0)} icon={<Copy size={16} />} tone="amber" />
                 <KpiCard title="Print Jobs Today" value={String(historyState?.kpis?.print_jobs_today || 0)} icon={<ClipboardList size={16} />} tone="sky" />
