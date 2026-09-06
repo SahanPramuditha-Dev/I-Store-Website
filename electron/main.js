@@ -25,13 +25,14 @@ const path = require("path");
 const db   = require("./local-db");
 const syncBridge = require("./sync-bridge");
 const { initAutoUpdater } = require("./updater");
-const { ESTORE_PUBLIC_KEY_B64 } = require("./license-manager");
+const { ESTORE_PUBLIC_KEY_B64, loadCachedLicense } = require("./license-manager");
+const { getLicensedTenantCode, resolveTenantDataRoot } = require("./tenant-data-root");
 
 const isDev = process.env.NODE_ENV === "development";
 let backendProcess = null;
 let backendLogHandle = null;
 
-function resolveDataRoot() {
+function resolveBaseDataRoot() {
   // Electron has no `localAppData` getPath key. On Windows, asking for it
   // throws and previously sent every installation back to the legacy nested
   // roaming directory. Use Windows' real LOCALAPPDATA location explicitly.
@@ -39,6 +40,21 @@ function resolveDataRoot() {
     return path.join(process.env.LOCALAPPDATA, "iStore");
   }
   return path.join(app.getPath("userData"), "iStore");
+}
+
+function resolveDataRoot() {
+  return resolveTenantDataRoot(resolveBaseDataRoot(), loadCachedLicense());
+}
+
+function getLicensedTenantMetadata() {
+  const cached = loadCachedLicense();
+  const payload = cached?.payload || {};
+  return {
+    tenantCode: getLicensedTenantCode(cached),
+    shopCode: String(payload.shop_code || "").trim().toUpperCase(),
+    industryCode: String(payload.industry_code || "").trim().toUpperCase(),
+    packageCode: String(payload.package_code || "").trim().toUpperCase(),
+  };
 }
 
 function ensureDataRootMigration() {
@@ -49,6 +65,18 @@ function ensureDataRootMigration() {
   try {
     fs.mkdirSync(targetUserData, { recursive: true });
   } catch (_err) {
+    return;
+  }
+
+  // A licensed tenant always receives a fresh, isolated data root. Never copy
+  // an unbound legacy database into it: that can expose a previous store's
+  // users and transactions after a new license is activated on the device.
+  const tenantCode = getLicensedTenantCode(loadCachedLicense());
+  if (tenantCode) {
+    const marker = path.join(targetUserData, "tenant.json");
+    if (!fs.existsSync(marker)) {
+      fs.writeFileSync(marker, JSON.stringify({ tenant_code: tenantCode, created_at: new Date().toISOString() }, null, 2), "utf-8");
+    }
     return;
   }
 
@@ -177,8 +205,14 @@ function startBackend() {
     ALLOW_RUNTIME_SCHEMA_SYNC: "true",
     SQLITE_FILE: path.join(databaseDirectory, "istore.db"),
     BACKUP_FOLDER: backupsDirectory,
-    LICENSE_CACHE_FILE: path.join(dataDirectory, "license_cache.json"),
+    // The device-bound license is shared by the application, while business
+    // data below is isolated per licensed tenant.
+    LICENSE_CACHE_FILE: path.join(resolveBaseDataRoot(), "license_cache.json"),
     ESTORE_PUBLIC_KEY_B64,
+    ISTORE_TENANT_CODE: getLicensedTenantMetadata().tenantCode,
+    ISTORE_SHOP_CODE: getLicensedTenantMetadata().shopCode,
+    ISTORE_INDUSTRY_CODE: getLicensedTenantMetadata().industryCode,
+    ISTORE_PACKAGE_CODE: getLicensedTenantMetadata().packageCode,
     ESTORE_LICENSE_SERVER_URL: process.env.ESTORE_LICENSE_SERVER_URL || "https://e-store-control-center-backend.vercel.app",
     // Do not set DATABASE_URL here. config.py derives it from SQLITE_FILE,
     // preserving SQLite's Windows path handling in one place.
@@ -293,7 +327,16 @@ function createWindow() {
   });
 
   // Register IPC handlers
-  syncBridge.register();
+  syncBridge.register({
+    onLicenseActivated: () => {
+      setTimeout(() => {
+        stopBackend();
+        db.close();
+        app.relaunch();
+        app.exit(0);
+      }, 750);
+    },
+  });
 
   // Schedule periodic background sync (every 2 minutes)
   syncBridge.schedulePeriodicSync(win, 2 * 60 * 1000);

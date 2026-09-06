@@ -578,7 +578,7 @@ export default function Login() {
               </span>
               <button
                 type="button"
-                onClick={() => window.istore?.updater?.check?.()}
+                onClick={() => window.istore?.updater?.checkForUpdates?.()}
                 className="exact-login-system-pill cursor-pointer hover:opacity-80 transition"
                 title="Click to check for software updates"
               >

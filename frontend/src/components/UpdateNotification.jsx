@@ -111,7 +111,12 @@ export default function UpdateNotification() {
     try {
       setStatus("downloading");
       setProgress(0);
-      await window.istore.updater.downloadUpdate();
+      const result = await window.istore.updater.downloadUpdate();
+      if (result?.blocked) {
+        handleStateUpdate({ status: "blocked", ...result });
+      } else if (result?.ok === false || result?.error) {
+        throw new Error(result.error || "Failed to start download.");
+      }
     } catch (err) {
       console.error("Failed to trigger update download:", err);
       setStatus("error");
@@ -121,9 +126,16 @@ export default function UpdateNotification() {
 
   const handleInstallNow = async () => {
     try {
-      await window.istore.updater.installUpdate();
+      const result = await window.istore.updater.installUpdate();
+      if (result?.blocked) {
+        handleStateUpdate({ status: "blocked", ...result });
+      } else if (result?.error) {
+        throw new Error(result.error);
+      }
     } catch (err) {
       console.error("Failed to trigger update installation:", err);
+      setStatus("error");
+      setErrorMessage(err?.message || "Failed to install the downloaded update.");
     }
   };
 
@@ -131,9 +143,12 @@ export default function UpdateNotification() {
     try {
       setDismissed(false);
       setStatus("checking");
-      await window.istore.updater.checkForUpdates();
+      const result = await window.istore.updater.checkForUpdates();
+      if (result?.error) throw new Error(result.error);
     } catch (err) {
       console.error("Failed manual update check:", err);
+      setStatus("error");
+      setErrorMessage(err?.message || "Failed to check for updates.");
     }
   };
 

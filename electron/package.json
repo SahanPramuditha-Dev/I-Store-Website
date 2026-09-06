@@ -1,6 +1,6 @@
 {
   "name": "istore-electron",
-  "version": "1.1.105",
+  "version": "1.1.106",
   "description": "E Store – Electron Desktop Business Platform",
   "main": "main.js",
   "private": true,
@@ -13,7 +13,9 @@
     "release": "electron-builder --win nsis --publish always",
     "release:ci": "electron-builder --win nsis --publish always",
     "setup:electron": "node scripts/extract-electron.js",
-    "test:rollback": "node scripts/test-update-rollback.js"
+    "test:rollback": "node scripts/test-update-rollback.js",
+    "test:updater": "node test-update-version.js",
+    "test:tenant-root": "node test-tenant-data-root.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -40,6 +42,8 @@
       "sync-bridge.js",
       "db-backup.js",
       "updater.js",
+      "update-version.js",
+      "tenant-data-root.js",
       "license-manager.js",
       "app-update.yml",
       "node_modules/**/*",

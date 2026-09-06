@@ -8,7 +8,7 @@ from sqlalchemy import or_
 
 from app.auth import get_current_user, require_permission
 from app.database import get_db
-from app.models import DamagedStockRecord, ExchangeRecord, RefundPayment, StoreCredit, Return as ReturnCase, Sale, Customer
+from app.models import DamagedStockRecord, ExchangeRecord, RefundPayment, ReturnItem, StoreCredit, Return as ReturnCase, Sale, Customer
 from app.utils.whatsapp_helper import log_and_send_whatsapp
 from app.services.print_rendering_service import get_store_profile_print_data, render_return_receipt_html
 from app.schemas import (

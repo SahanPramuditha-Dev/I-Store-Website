@@ -124,8 +124,13 @@ export default function LicenseLockModal() {
       if (window.istore?.license?.activate) {
         const res = await window.istore.license.activate(key);
         if (res.success) {
-          setFeedback({ type: 'success', message: 'Terminal activated successfully with Ed25519 cloud signature!' });
-          setTimeout(() => checkLicense(), 800);
+          setFeedback({
+            type: 'success',
+            message: res.restarting
+              ? 'Terminal activated. Restarting E Store with the licensed tenant database…'
+              : 'Terminal activated successfully with Ed25519 cloud signature!'
+          });
+          if (!res.restarting) setTimeout(() => checkLicense(), 800);
           return;
         } else {
           setFeedback({ type: 'error', message: res.error || 'Activation failed' });

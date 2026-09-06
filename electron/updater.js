@@ -13,11 +13,8 @@ const db = require("./local-db");
 const { createBackup } = require("./db-backup");
 const fs = require("fs");
 const path = require("path");
+const { isNewerVersion } = require("./update-version");
 
-// GitHub's provider discovery can return the repository RSS feed on some
-// release configurations.  Electron-updater expects YAML metadata, so use
-// GitHub's stable release-asset URL instead.
-const UPDATE_METADATA_URL = "https://github.com/SahanPramuditha-Dev/I-Store-Website/releases/latest/download";
 // Only enable release checks after the release pipeline has published a
 // matching latest.yml and blockmap.  This keeps a missing/broken GitHub
 // release from disrupting normal desktop use.
@@ -39,6 +36,15 @@ let currentUpdaterState = {
   count: null,
   route: null,
 };
+
+function _isMissingReleaseMetadata(message) {
+  const msg = String(message || "");
+  return msg.includes("404") || msg.includes("latest.yml") || msg.includes("ERR_NON_2XX_3XX_RESPONSE");
+}
+
+function _releaseChannelError() {
+  return "The E Store release channel is not published correctly (latest.yml or installer assets are missing).";
+}
 
 // ── Snooze helpers ──────────────────────────────────────────────────────────
 function _getSnoozePrefsPath() {
@@ -157,16 +163,8 @@ function initAutoUpdater(win, options = {}) {
     console.log("[updater] Updater note:", msg);
     _logEvent("update_note", { message: msg });
 
-    if (
-      msg.includes("404") ||
-      msg.includes("latest.yml") ||
-      msg.includes("app-update.yml") ||
-      msg.includes("ENOENT") ||
-      msg.includes("Cannot find") ||
-      msg.includes("ERR_NON_2XX_3XX_RESPONSE") ||
-      msg.includes("dev update config")
-    ) {
-      _updateState({ status: "not-available", error: null });
+    if (_isMissingReleaseMetadata(msg)) {
+      _updateState({ status: "error", error: _releaseChannelError() });
       return;
     }
 
@@ -207,27 +205,22 @@ function initAutoUpdater(win, options = {}) {
         return { ok: true, upToDate: true };
       }
 
-      if (res.updateInfo) {
+      if (isNewerVersion(res.updateInfo.version, app.getVersion())) {
         _updateState({ status: "available", version: res.updateInfo.version, releaseNotes: res.updateInfo.releaseNotes, error: null });
+        return { ok: true, updateAvailable: true, updateInfo: res.updateInfo };
       }
 
-      return { ok: true, updateInfo: res.updateInfo };
+      _updateState({ status: "not-available", version: res.updateInfo.version, error: null });
+      return { ok: true, upToDate: true, updateInfo: res.updateInfo };
     } catch (err) {
       const msg = String(err?.message || "");
       console.log("[updater] Check error:", msg);
       _logEvent("check_error", { message: msg });
       
-      // If 404 / latest.yml missing on GitHub or dev config, treat gracefully as up-to-date
-      if (
-        msg.includes("404") ||
-        msg.includes("latest.yml") ||
-        msg.includes("app-update.yml") ||
-        msg.includes("ENOENT") ||
-        msg.includes("ERR_NON_2XX_3XX_RESPONSE") ||
-        msg.includes("dev update config")
-      ) {
-        _updateState({ status: "not-available", error: null });
-        return { ok: true, upToDate: true };
+      if (_isMissingReleaseMetadata(msg)) {
+        const error = _releaseChannelError();
+        _updateState({ status: "error", error });
+        return { ok: false, error };
       }
       
       _updateState({ status: "error", error: msg });
@@ -245,11 +238,12 @@ function initAutoUpdater(win, options = {}) {
     try {
       _logEvent("download_requested");
       _updateState({ status: "downloading", error: null });
-      return await autoUpdater.downloadUpdate();
+      const files = await autoUpdater.downloadUpdate();
+      return { ok: true, files };
     } catch (err) {
       _logEvent("download_failed", { error: err.message });
       _updateState({ status: "error", error: err.message });
-      return { error: err.message };
+      return { ok: false, error: err.message };
     }
   });
 

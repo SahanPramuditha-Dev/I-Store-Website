@@ -59,7 +59,7 @@ let _authToken = null;    // set via db:auth:token channel (see preload)
  * register() – Register all IPC handlers.
  * Call this once from main.js after the local-db has been opened.
  */
-function register() {
+function register(options = {}) {
   // ── Read handlers ────────────────────────────────────────────────────────
   ipcMain.handle("db:select",      (_e, table, where, params) => db.selectAll(table, where, params));
   ipcMain.handle("db:selectOne",   (_e, table, uuid)           => db.selectOne(table, uuid));
@@ -90,7 +90,12 @@ function register() {
   });
 
   ipcMain.handle("license:activate", async (_e, key) => {
-    return licenseManager.activatePOSDevice(key);
+    const result = await licenseManager.activatePOSDevice(key);
+    if (result?.success && typeof options.onLicenseActivated === "function") {
+      options.onLicenseActivated(result);
+      return { ...result, restarting: true };
+    }
+    return result;
   });
 
   // ── Sync: push outbox to server ──────────────────────────────────────────

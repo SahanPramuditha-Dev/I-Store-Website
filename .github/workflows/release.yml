@@ -30,6 +30,18 @@ jobs:
           cache: 'pip'
           cache-dependency-path: backend/requirements.txt
 
+      - name: Validate release version and updater tests
+        shell: pwsh
+        run: |
+          $tagVersion = "${{ github.ref_name }}".TrimStart("v")
+          $electronVersion = (Get-Content electron/package.json | ConvertFrom-Json).version
+          $frontendVersion = (Get-Content frontend/package.json | ConvertFrom-Json).version
+          if ($tagVersion -ne $electronVersion -or $tagVersion -ne $frontendVersion) {
+            throw "Release tag v$tagVersion must match Electron ($electronVersion) and frontend ($frontendVersion)."
+          }
+          node electron/test-update-version.js
+          node electron/test-tenant-data-root.js
+
       - name: Install Backend Dependencies & PyInstaller
         run: |
           python -m pip install --upgrade pip
@@ -39,6 +51,36 @@ jobs:
       - name: Build Backend Executable (PyInstaller)
         run: |
           pyinstaller --noconfirm --clean --onedir --name IStoreBackend --distpath "electron/backend-dist" --workpath "electron/build-backend" --specpath "electron/build-backend" --paths "backend" --hidden-import app.main --hidden-import sync_schema --collect-all certifi --collect-all passlib --collect-submodules app --collect-data app "backend/desktop_server.py"
+
+      - name: Verify packaged backend and reject embedded business data
+        shell: pwsh
+        run: |
+          $bundle = Resolve-Path "electron/backend-dist/IStoreBackend/IStoreBackend.exe"
+          $forbidden = Get-ChildItem "electron/backend-dist/IStoreBackend" -Recurse -File | Where-Object {
+            $_.Name -in @("istore.db", "license_cache.json")
+          }
+          if ($forbidden) { throw "Packaged backend contains business or license data: $($forbidden.FullName -join ', ')" }
+          $testRoot = Join-Path $env:RUNNER_TEMP "estore-release-smoke"
+          New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+          $env:ISTORE_DATA_ROOT = $testRoot
+          $env:SQLITE_FILE = Join-Path $testRoot "database/istore.db"
+          $env:LICENSE_CACHE_FILE = Join-Path $testRoot "license_cache.json"
+          $process = Start-Process -FilePath $bundle -WorkingDirectory (Split-Path $bundle) -WindowStyle Hidden -PassThru
+          try {
+            $healthy = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              Start-Sleep -Milliseconds 500
+              try {
+                if ((Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/health -TimeoutSec 2).StatusCode -eq 200) {
+                  $healthy = $true
+                  break
+                }
+              } catch {}
+            }
+            if (-not $healthy) { throw "Packaged backend failed its health check." }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
 
       - name: Install Frontend Dependencies & Build
         run: |
@@ -62,3 +104,14 @@ jobs:
         run: |
           cd electron
           npm run release:ci
+
+      - name: Verify updater release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $assets = gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name'
+          $required = @("E-Store-Setup-${{ github.ref_name }}.exe".Replace("v", ""), "E-Store-Setup-${{ github.ref_name }}.exe.blockmap".Replace("v", ""), "latest.yml")
+          foreach ($name in $required) {
+            if ($assets -notcontains $name) { throw "Release asset missing: $name" }
+          }

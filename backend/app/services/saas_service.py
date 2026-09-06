@@ -7,6 +7,7 @@ Includes automated default seeder and full lifecycle management routines.
 
 import uuid
 import secrets
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
@@ -55,41 +56,63 @@ def ensure_default_saas_structure(db: Session):
             db.add(default_plan)
             db.flush()
 
-        # 2. Ensure Default Organization
-        default_org = db.query(Organization).filter(Organization.slug == "default-store").first()
+        tenant_code = str(os.getenv("ISTORE_TENANT_CODE") or "").strip().upper()
+        shop_code = str(os.getenv("ISTORE_SHOP_CODE") or "").strip().upper()
+        industry_code = str(os.getenv("ISTORE_INDUSTRY_CODE") or "MOBILE_RETAIL").strip().upper()
+        tenant_names = {
+            "SUPERMAR": "supermarket test",
+            "FRESHGR": "FreshLand Supermarket & Grocers",
+            "IPOINT": "I Point Electronics",
+            "APEXMOB": "Apex Mobile Retail & Repairs",
+            "VOGUEF": "Vogue Avenue Fashion & Apparel",
+        }
+        tenant_name = tenant_names.get(tenant_code, tenant_code or "E-Store Main Organization")
+        target_slug = tenant_code.lower() if tenant_code else "default-store"
+
+        # 2. Ensure the local organization reflects the signed tenant identity.
+        default_org = db.query(Organization).filter(Organization.id == 1).first()
         if not default_org:
             default_org = Organization(
-                slug="default-store",
-                name="E-Store Main Organization",
-                legal_name="E-Store Enterprise",
+                slug=target_slug,
+                name=tenant_name,
+                legal_name=tenant_name,
                 contact_email="admin@e-store.local",
                 country="LK",
                 currency="LKR",
                 timezone="Asia/Colombo",
                 status="active",
+                industry_type=industry_code,
                 current_plan_id=default_plan.id,
                 trial_ends_at=utcnow() + timedelta(days=3650),
                 is_active=True
             )
             db.add(default_org)
             db.flush()
+        elif tenant_code and default_org.slug == "default-store" and default_org.name == "E-Store Main Organization":
+            default_org.slug = target_slug
+            default_org.name = tenant_name
+            default_org.legal_name = tenant_name
+            default_org.industry_type = industry_code
 
         # 3. Ensure Default Branch
         default_branch = db.query(Branch).filter(
             Branch.organization_id == default_org.id,
-            Branch.code == "MAIN-01"
+            Branch.id == 1
         ).first()
         if not default_branch:
             default_branch = Branch(
                 organization_id=default_org.id,
-                code="MAIN-01",
-                name="Main Headquarters",
+                code=shop_code or "MAIN-01",
+                name=shop_code or "Main Headquarters",
                 address="Colombo, Sri Lanka",
                 is_warehouse=False,
                 is_active=True
             )
             db.add(default_branch)
             db.flush()
+        elif tenant_code and default_branch.code == "MAIN-01" and default_branch.name == "Main Headquarters":
+            default_branch.code = shop_code or "MAIN-01"
+            default_branch.name = shop_code or "Main Headquarters"
 
         # 4. Ensure Active Subscription
         active_sub = db.query(Subscription).filter(Subscription.organization_id == default_org.id).first()

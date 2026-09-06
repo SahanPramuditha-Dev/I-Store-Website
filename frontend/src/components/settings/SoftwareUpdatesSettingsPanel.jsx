@@ -147,19 +147,40 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
     if (!window.istore?.updater) return;
     try {
       setUpdaterStatus("downloading");
-      await window.istore.updater.downloadUpdate();
+      const result = await window.istore.updater.downloadUpdate();
+      if (result?.blocked) {
+        setUpdaterStatus("blocked");
+        setBlockedReason(result.reason === "pending-outbox"
+          ? `${result.count ?? "Some"} offline changes are still syncing.`
+          : "A critical operation is in progress.");
+      } else if (result?.ok === false || result?.error) {
+        throw new Error(result.error || "Download failed");
+      }
     } catch (err) {
-      toast?.("Download failed", "error");
+      const message = err?.message || "Download failed";
+      toast?.(`Download failed: ${message}`, "error");
       setUpdaterStatus("error");
+      setErrorMessage(message);
     }
   };
 
   const handleInstall = async () => {
     if (!window.istore?.updater) return;
     try {
-      await window.istore.updater.installUpdate();
+      const result = await window.istore.updater.installUpdate();
+      if (result?.blocked) {
+        setUpdaterStatus("blocked");
+        setBlockedReason(result.reason === "pending-outbox"
+          ? `${result.count ?? "Some"} offline changes are still syncing.`
+          : "A critical operation is in progress.");
+      } else if (result?.error) {
+        throw new Error(result.error);
+      }
     } catch (err) {
-      toast?.("Installation trigger failed", "error");
+      const message = err?.message || "Installation trigger failed";
+      setUpdaterStatus("error");
+      setErrorMessage(message);
+      toast?.(`Installation failed: ${message}`, "error");
     }
   };
 
