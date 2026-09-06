@@ -1,6 +1,6 @@
 {
   "name": "istore-electron",
-  "version": "1.1.104",
+  "version": "1.1.105",
   "description": "E Store – Electron Desktop Business Platform",
   "main": "main.js",
   "private": true,
