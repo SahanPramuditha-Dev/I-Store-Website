@@ -3422,6 +3422,43 @@ html:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0
   transition: all 0.2s ease;
 }
 
+/* Empty-data mode: do not present an empty business as a broken spreadsheet. */
+.app-table-viewport:has(.app-empty-state) {
+  flex: 0 0 auto;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.app-table-viewport:has(.app-empty-state) table {
+  display: block;
+  min-width: 0 !important;
+  width: 100%;
+}
+
+.app-table-viewport:has(.app-empty-state) thead {
+  display: none;
+}
+
+.app-table-viewport:has(.app-empty-state) tbody,
+.app-table-viewport:has(.app-empty-state) tr,
+.app-table-viewport:has(.app-empty-state) td {
+  display: block;
+  width: 100%;
+}
+
+.app-table-viewport:has(.app-empty-state) td {
+  padding: 12px !important;
+  border: 0 !important;
+}
+
+.app-table-viewport:has(.app-empty-state) .app-empty-state {
+  min-height: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
 /* App-wide professional surface system */
 .app-page-container {
   padding-inline: 1px;
@@ -3479,6 +3516,16 @@ html:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0
   background:
     radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.09), transparent 48%),
     rgba(2, 6, 23, 0.24);
+}
+
+/* New-business screens should stay useful and compact before the first record. */
+.app-section-card:has(.app-table-viewport .app-empty-state) {
+  min-height: 0 !important;
+}
+
+.app-section-card:has(.app-table-viewport .app-empty-state) > .min-h-0,
+.app-section-card:has(.app-table-viewport .app-empty-state) > .flex-1 {
+  flex: 0 0 auto !important;
 }
 
 .dashboard-table-card:has(.dashboard-empty-copy) {

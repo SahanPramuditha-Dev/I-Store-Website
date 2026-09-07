@@ -141,7 +141,7 @@ export default function AdvancePayments() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className={cx("grid min-h-0 flex-1 grid-cols-1 gap-3", filtered.length > 0 ? "xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]" : "grid-cols-1")}>
         <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60 shadow-sm">
           <div className="grid shrink-0 grid-cols-1 gap-2 border-b border-slate-200 dark:border-white/10 p-3 md:grid-cols-[minmax(220px,1fr)_160px_170px_160px]">
             <label className="relative">
@@ -218,7 +218,7 @@ export default function AdvancePayments() {
           </AppTableShell>
         </section>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950/70 shadow-sm">
+        {filtered.length > 0 ? <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950/70 shadow-sm">
           {selected ? (
             <>
               <div className="border-b border-slate-200 dark:border-white/10 p-4">
@@ -277,7 +277,7 @@ export default function AdvancePayments() {
           ) : (
             <EmptyState title="No advance selected" text="Select a receipt to view remaining balance and print/refund actions." className="m-4" />
           )}
-        </aside>
+        </aside> : null}
       </div>
 
       <AppModal open={!!action} onClose={() => !busy && setAction(null)} title={action?.kind === "refund" ? "Refund Advance" : "Cancel Advance"}>

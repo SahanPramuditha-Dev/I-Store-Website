@@ -216,7 +216,7 @@ export default function PurchaseOrders() {
         right={<SensitiveActionIndicators items={["approval", { type: "period", label: "Period Aware" }, "audit"]} />}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-900/60 shadow-2xl backdrop-blur-md">
+      <div className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-900/60 shadow-xl backdrop-blur-md ${(pos || []).length > 0 ? "flex-1" : "shrink-0"}`}>
         <div className="shrink-0 border-b border-white/5 bg-black/20 p-4">
           <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
             <History size={14} /> PO / GRN Pipeline

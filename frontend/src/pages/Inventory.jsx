@@ -766,7 +766,7 @@ export default function Inventory() {
                 >
                   Export PDF
                 </button>
-                <button onClick={fetchAIRestockPlan} className="px-3 h-9 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-gradient-to-r dark:from-purple-600/30 dark:to-indigo-600/30 border border-purple-200 dark:border-purple-500/40 text-purple-700 dark:text-purple-200 text-[11px] font-bold transition flex items-center gap-1.5 shadow-sm">
+                {filtered.length > 0 ? <><button onClick={fetchAIRestockPlan} className="px-3 h-9 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-gradient-to-r dark:from-purple-600/30 dark:to-indigo-600/30 border border-purple-200 dark:border-purple-500/40 text-purple-700 dark:text-purple-200 text-[11px] font-bold transition flex items-center gap-1.5 shadow-sm">
                   <Sparkles size={14} className="text-purple-600 dark:text-purple-300 animate-pulse" />
                   AI Restock Plan
                 </button>
@@ -776,6 +776,7 @@ export default function Inventory() {
                   <option value="">Assign Supplier (bulk)</option>
                   {suppliers.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
                 </Select>
+                </> : null}
                 <div className="h-7 w-[1px] bg-slate-200 dark:bg-white/10 mx-1 hidden lg:block" />
                 <div className="flex items-center p-1 bg-slate-100 dark:bg-[#0f172a] rounded-xl border border-slate-200 dark:border-white/5">
                   <button onClick={() => setViewMode("list")} className={`p-1.5 rounded-lg transition-all ${viewMode === "list" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white"}`}><List size={17} /></button>
@@ -783,7 +784,7 @@ export default function Inventory() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+            {filtered.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
               <span>Showing {gridRows.length} of {inventoryData?.total || 0} products</span>
               {viewMode === "grid" ? (
                 <div className="inline-flex items-center gap-2">
@@ -799,7 +800,7 @@ export default function Inventory() {
               ) : (
                 <span className="text-slate-500">Sortable columns | Sticky header</span>
               )}
-            </div>
+            </div> : null}
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">

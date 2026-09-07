@@ -608,7 +608,7 @@ export default function Customers() {
           </AppTableShell>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-slate-400">
+        {filteredCustomers.length > 0 ? <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-white/10 px-4 py-3 text-xs text-slate-400">
           <div>
             Showing <span className="font-bold text-slate-200">{tableRangeStart}</span>-<span className="font-bold text-slate-200">{tableRangeEnd}</span> of <span className="font-bold text-slate-200">{filteredCustomers.length}</span>
           </div>
@@ -644,7 +644,7 @@ export default function Customers() {
               Next
             </button>
           </div>
-        </div>
+        </div> : null}
 
         <Menu
           anchorEl={columnsMenuAnchor}

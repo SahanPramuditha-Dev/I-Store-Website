@@ -3,7 +3,7 @@ import { CheckCircle2, Filter, Plus, ReceiptText, Search, Trash2, Wallet, XCircl
 import { useFetch } from "../hooks/useFetch";
 import api from "../lib/api";
 import { runWithApproval } from "../lib/approvalFlow";
-import { Badge, Button, KpiCard, PageHeader, SectionCard, Select, SensitiveActionIndicators, Table, WorkstationNotice } from "../components/UI";
+import { Badge, Button, EmptyState, KpiCard, PageHeader, SectionCard, Select, SensitiveActionIndicators, Table, WorkstationNotice } from "../components/UI";
 import AppModal from "../components/layout/AppModal";
 import { useFeedback } from "../components/FeedbackProvider";
 
@@ -206,7 +206,13 @@ export default function Expenses() {
       </div>
 
       <SectionCard title="Expense Register" subtitle="Operational expense records and approval status">
-        <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/20">
+        {filteredRows.length === 0 ? (
+          <EmptyState
+            title="No expenses recorded"
+            text="Add the first operating expense when rent, utilities, salaries, or supplier costs occur."
+            action={<Button size="sm" onClick={() => setShowForm(true)}><Plus size={14} /> Add Expense</Button>}
+          />
+        ) : <div className="overflow-x-auto rounded-xl border border-white/10 bg-black/20">
           <Table>
             <thead>
               <tr>
@@ -222,11 +228,6 @@ export default function Expenses() {
               </tr>
             </thead>
             <tbody>
-              {filteredRows.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="py-8 text-slate-400">No expense records found.</td>
-                </tr>
-              )}
               {filteredRows.map((row) => (
                 <tr key={row.id}>
                   <td>{row.expense_date ? new Date(row.expense_date).toLocaleDateString("en-CA") : "-"}</td>
@@ -259,7 +260,7 @@ export default function Expenses() {
               ))}
             </tbody>
           </Table>
-        </div>
+        </div>}
       </SectionCard>
 
       <AppModal
