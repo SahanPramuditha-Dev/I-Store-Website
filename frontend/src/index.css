@@ -3410,7 +3410,7 @@ html:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 110px;
+  min-height: 132px;
   border: 1.5px dashed var(--border-subtle, #cbd5e1);
   border-radius: 14px;
   padding: 20px 16px;
@@ -3420,6 +3420,119 @@ html:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0
   text-align: center;
   background: var(--surface-ground, rgba(248, 250, 252, 0.75));
   transition: all 0.2s ease;
+}
+
+/* App-wide professional surface system */
+.app-page-container {
+  padding-inline: 1px;
+  scrollbar-gutter: stable;
+}
+
+.app-page-header {
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 12px 30px rgba(2, 6, 23, 0.2);
+}
+
+.app-page-header::after {
+  content: "";
+  position: absolute;
+  inset: auto -8% -48px 36%;
+  height: 86px;
+  pointer-events: none;
+  background: radial-gradient(ellipse, rgba(99, 102, 241, 0.16), transparent 68%);
+}
+
+.app-page-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.app-section-card {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.app-section-card:hover {
+  border-color: rgba(129, 140, 248, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045), 0 16px 36px rgba(2, 8, 23, 0.26);
+}
+
+.app-kpi-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-kpi-card::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  bottom: -42px;
+  width: 108px;
+  height: 108px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(129, 140, 248, 0.1), transparent 68%);
+  pointer-events: none;
+}
+
+.app-empty-state,
+.dashboard-empty-copy {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.09), transparent 48%),
+    rgba(2, 6, 23, 0.24);
+}
+
+.dashboard-table-card:has(.dashboard-empty-copy) {
+  min-height: 224px;
+}
+
+.dashboard-chart-card:has(.dashboard-empty-copy),
+.dashboard-table-card:has(.dashboard-empty-copy) {
+  align-self: start;
+}
+
+html:not(.dark) .app-page-header {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 12px 28px rgba(79, 70, 229, 0.07);
+}
+
+html:not(.dark) .app-section-card:hover {
+  border-color: #a5b4fc !important;
+  box-shadow: 0 8px 24px rgba(15,23,42,.08) !important;
+}
+
+html:not(.dark) .app-empty-state,
+html:not(.dark) .dashboard-empty-copy {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.07), transparent 48%),
+    #f8fafc !important;
+}
+
+@media (max-width: 1279px) {
+  .app-page-header {
+    padding: 14px;
+  }
+
+  .dashboard-chart-card {
+    min-height: 300px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-page-header {
+    align-items: flex-start;
+  }
+
+  .app-page-header > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .app-section-card {
+    border-radius: 14px;
+  }
+
+  .dashboard-empty-copy {
+    min-height: 118px;
+  }
 }
 
 html:not(.dark) .dashboard-empty-copy {

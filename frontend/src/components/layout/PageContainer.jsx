@@ -6,7 +6,7 @@ export default function PageContainer({
 }) {
   return (
     <div
-      className={`min-h-0 min-w-0 w-full max-w-none ${scroll ? "overflow-auto" : "overflow-hidden"} ${padded ? "px-1 pb-2" : ""} ${className}`}
+      className={`app-page-container min-h-0 min-w-0 w-full max-w-none ${scroll ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden"} ${padded ? "px-1 pb-2" : ""} ${className}`}
     >
       {children}
     </div>

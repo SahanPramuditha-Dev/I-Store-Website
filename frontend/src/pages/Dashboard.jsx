@@ -33,7 +33,7 @@ import { useSyncStatus } from "../hooks/useSyncStatus";
 import { X, RefreshCw, AlertTriangle, Sparkle } from "lucide-react";
 import api from "../lib/api";
 
-function ChartEmptyState({ message, title = "No Transaction Data Yet" }) {
+function ChartEmptyState({ message, title = "No Transaction Data Yet", actionLabel = "Open POS", onAction }) {
   return (
     <div className="flex h-full min-h-[190px] flex-col items-center justify-center gap-2.5 rounded-2xl border border-dashed border-slate-300 dark:border-white/10 bg-slate-50/70 dark:bg-slate-950/20 px-6 py-8 text-center transition-all">
       <div className="grid h-12 w-12 place-items-center rounded-2xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900/80 text-indigo-600 dark:text-indigo-400 shadow-sm">
@@ -43,6 +43,11 @@ function ChartEmptyState({ message, title = "No Transaction Data Yet" }) {
         <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{title}</p>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-[280px]">{message}</p>
       </div>
+      {onAction ? (
+        <Button variant="secondary" size="sm" onClick={onAction} className="mt-1">
+          {actionLabel}<ArrowRight size={13} />
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -737,7 +742,7 @@ export default function Dashboard() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <ChartEmptyState message="Sales will appear here once invoices are completed." />
+                <ChartEmptyState message="Sales will appear here once invoices are completed." onAction={() => navigate("/pos")} />
               )}
             </div>
           </SectionCard>
@@ -883,6 +888,7 @@ export default function Dashboard() {
               <ChartEmptyState
                 title="No Category Breakdown"
                 message="Category performance and distribution will render once sales invoices are logged."
+                onAction={() => navigate("/pos")}
               />
             )}
           </SectionCard>
@@ -899,7 +905,14 @@ export default function Dashboard() {
                 </Button>
               }
             >
-              <div className="w-full overflow-x-auto">
+              {repairs.length === 0 ? (
+                <div className="dashboard-empty-copy">
+                  <Wrench size={20} aria-hidden="true" />
+                  <span className="font-bold text-slate-700 dark:text-slate-200">No repair tickets today</span>
+                  <span className="text-[11px] text-slate-500">New repair jobs will appear here as they are created.</span>
+                  <Button variant="secondary" size="sm" onClick={() => navigate("/repairs")}>Create Repair <ArrowRight size={13} /></Button>
+                </div>
+              ) : <div className="w-full overflow-x-auto">
                 <Table className="table-base w-full min-w-[680px] whitespace-nowrap">
                   <thead>
                     <tr>
@@ -911,11 +924,7 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {repairs.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-sm text-slate-400">No repair tickets yet today.</td>
-                      </tr>
-                    ) : repairs.slice(0, 6).map((r) => (
+                    {repairs.slice(0, 6).map((r) => (
                       <tr key={r.id} className="cursor-pointer" onClick={() => navigate(`/repairs?id=${r.id}`)}>
                         <td className="font-mono text-xs text-cyan-300">#R-{String(r.id).padStart(4, "0")}</td>
                         <td className="font-bold text-slate-200">{r.customer}</td>
@@ -928,7 +937,7 @@ export default function Dashboard() {
                     ))}
                   </tbody>
                 </Table>
-              </div>
+              </div>}
               {totalRepairStatuses > 0 && (
                 <div className="mt-3 border-t border-white/10 pt-3">
                   <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -972,7 +981,14 @@ export default function Dashboard() {
               </Button>
             }
           >
-            <div className="w-full overflow-x-auto">
+            {tx.length === 0 ? (
+              <div className="dashboard-empty-copy">
+                <Receipt size={20} aria-hidden="true" />
+                <span className="font-bold text-slate-700 dark:text-slate-200">No recent transactions</span>
+                <span className="text-[11px] text-slate-500">Complete the first sale to populate revenue and payment insights.</span>
+                <Button variant="secondary" size="sm" onClick={() => navigate("/pos")}>Create Sale <ArrowRight size={13} /></Button>
+              </div>
+            ) : <div className="w-full overflow-x-auto">
               <Table className="table-base w-full min-w-[680px] whitespace-nowrap">
                 <thead>
                   <tr>
@@ -985,11 +1001,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tx.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-sm text-slate-400">No recent transactions found.</td>
-                    </tr>
-                  ) : tx.slice(0, 6).map((t, idx) => (
+                  {tx.slice(0, 6).map((t, idx) => (
                     <tr key={t.id || idx}>
                       <td className="font-mono text-xs text-slate-400">{t.invoice_no || `INV-${String(idx + 1).padStart(4, "0")}`}</td>
                       <td className="font-bold text-slate-200">
@@ -1134,7 +1146,7 @@ export default function Dashboard() {
                   ))}
                 </tbody>
               </Table>
-            </div>
+            </div>}
           </SectionCard>
 
           <SectionCard title="Recent Payments" subtitle="Settlement stream" className="dashboard-table-card xl:col-span-4">

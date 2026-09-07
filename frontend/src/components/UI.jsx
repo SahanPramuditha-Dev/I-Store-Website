@@ -28,7 +28,7 @@ export function PageHeader({
   return (
     <header
       className={cx(
-        "dashboard-hero flex min-w-0 shrink-0 flex-wrap items-end justify-between gap-3 rounded-xl border p-3.5",
+        "app-page-header dashboard-hero flex min-w-0 shrink-0 flex-wrap items-end justify-between gap-3 rounded-2xl border p-4 xl:p-5",
         sticky ? "sticky top-0 z-20 rounded-2xl border border-slate-200 bg-white/95 dark:border-white/10 dark:bg-slate-950/85 p-3 backdrop-blur-xl shadow-sm" : "",
         className,
       )}
@@ -125,7 +125,7 @@ export function KpiCard({
     : "kpi kpi-sky";
 
   return (
-    <div className={`${toneClass} ${className}`}>
+    <div className={`app-kpi-card ${toneClass} ${className}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] text-slate-500 dark:text-slate-300/75 uppercase tracking-[.18em]">{title}</p>
@@ -161,11 +161,11 @@ export function SectionCard({
   role,
 }) {
   const paddingClass = noPadding ? "" : compact ? "p-3" : "p-4 xl:p-5";
-  return <section className={cx("panel min-w-0 overflow-hidden", paddingClass, className)} role={role}>
+  return <section className={cx("app-section-card panel min-w-0 overflow-hidden", paddingClass, className)} role={role}>
     {(title || right) && <div className={cx("mb-3 flex min-w-0 items-start justify-between gap-3", headerClassName)}>
       {title ? (
         <div className="min-w-0">
-          <h3 className={cx("truncate font-bold text-slate-900 dark:text-white", compact ? "text-sm" : "text-base xl:text-lg")}>{title}</h3>
+          <h3 className={cx("font-bold leading-tight text-slate-900 dark:text-white", compact ? "text-sm" : "text-base xl:text-lg")}>{title}</h3>
           {subtitle && <p className="text-xs text-slate-500 mt-1">{subtitle}</p>}
         </div>
       ) : <span />}
@@ -1197,7 +1197,7 @@ export function EmptyState({
   icon = null,
 }) {
   return (
-    <div className={cx("rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 dark:border-white/10 dark:bg-slate-950/20 px-6 text-center transition-all", compact ? "py-6" : "py-10", className)}>
+    <div className={cx("app-empty-state rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 dark:border-white/10 dark:bg-slate-950/20 px-6 text-center transition-all", compact ? "py-5" : "py-8", className)}>
       <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl border border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 shadow-sm">
         {icon || <Boxes size={22} className="text-slate-500 dark:text-slate-400" />}
       </div>
