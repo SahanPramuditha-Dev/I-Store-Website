@@ -45,6 +45,7 @@ export default function UpdateNotification() {
     // Listen to real-time updater events
     const unsubStatus = window.istore.updater.onStatus((data) => {
       console.log("[UpdateNotification] Status event:", data);
+      if (data?.source === "background" && (data?.status === "checking" || data?.status === "not-available" || data?.status === "error")) return;
       setDismissed(false); // Re-open banner on new status event
       handleStateUpdate(data);
     });
@@ -213,10 +214,11 @@ export default function UpdateNotification() {
     );
   }
 
-  // Render a rich glassmorphic center modal dialog for active update states
+  // Updates must never block operational screens. Even important states stay
+  // in a dismissible side panel until the user explicitly chooses to install.
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950/95 p-6 text-slate-100 shadow-2xl shadow-indigo-950/80 backdrop-blur-2xl transition-all">
+    <div className="pointer-events-none fixed right-4 top-4 z-[99999] flex w-[min(420px,calc(100vw-2rem))] justify-end animate-in fade-in slide-in-from-top-4 duration-200">
+      <div className="pointer-events-auto relative max-h-[calc(100vh-2rem)] w-full overflow-y-auto rounded-3xl border border-white/15 bg-gradient-to-b from-slate-900/98 via-slate-900/96 to-slate-950/98 p-5 text-slate-100 shadow-2xl shadow-indigo-950/70 backdrop-blur-2xl transition-all">
         
         {/* Glow ambient decoration */}
         <div className="pointer-events-none absolute -top-24 -left-24 h-48 w-48 rounded-full bg-indigo-500/20 blur-3xl" />

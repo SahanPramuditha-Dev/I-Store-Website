@@ -50,7 +50,6 @@ import { useStoreProfile } from "../hooks/useStoreProfile";
 import { useCapabilities } from "../context/CapabilityContext";
 import { Button, WorkstationNotice } from "./UI";
 import AIAssistant from "./ai/AIAssistant";
-import UpdateNotification from "./UpdateNotification";
 
 const navGroups = [
   {
@@ -1018,7 +1017,6 @@ export default function Layout() {
             <Outlet />
           </div>
         </main>
-        <UpdateNotification />
         <AIAssistant />
       </div>
     </div>

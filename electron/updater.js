@@ -23,6 +23,7 @@ const UPDATE_CHECKS_ENABLED = process.env.ISTORE_ENABLE_AUTO_UPDATES !== "false"
 let _mainWindow = null;
 let initialized = false;
 let checkInProgress = false;
+let activeCheckSource = "manual";
 let operationsState = { active: false, reason: null, route: null };
 let stopBackendFn = null;
 let lastUpdateInfo = null;
@@ -89,6 +90,33 @@ function _clearSnoozeIfExpired() {
   }
 }
 
+const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+function _automaticCheckIsDue() {
+  const prefs = _readSnoozePrefs();
+  const lastCheckAt = Number(prefs.lastAutomaticCheckAt || 0);
+  return !lastCheckAt || Date.now() - lastCheckAt >= AUTO_CHECK_INTERVAL_MS;
+}
+
+function _markAutomaticCheck() {
+  const prefs = _readSnoozePrefs();
+  prefs.lastAutomaticCheckAt = Date.now();
+  _writeSnoozePrefs(prefs);
+}
+
+async function _runUpdateCheck(source = "manual") {
+  if (checkInProgress) return { checking: true };
+  checkInProgress = true;
+  activeCheckSource = source;
+  if (source === "background") _markAutomaticCheck();
+  try {
+    return await autoUpdater.checkForUpdates();
+  } finally {
+    checkInProgress = false;
+    activeCheckSource = "manual";
+  }
+}
+
 function _updateState(state) {
   currentUpdaterState = {
     ...currentUpdaterState,
@@ -133,8 +161,10 @@ function initAutoUpdater(win, options = {}) {
   // ── Event Handlers ────────────────────────────────────────────────────────
   autoUpdater.on("checking-for-update", () => {
     console.log("[updater] Checking for update...");
-    _logEvent("checking_for_update");
-    _updateState({ status: "checking", error: null, reason: null, count: null });
+    _logEvent("checking_for_update", { source: activeCheckSource });
+    if (activeCheckSource === "manual") {
+      _updateState({ status: "checking", source: "manual", error: null, reason: null, count: null });
+    }
   });
 
   autoUpdater.on("update-available", (info) => {
@@ -148,6 +178,7 @@ function initAutoUpdater(win, options = {}) {
       error: null,
       reason: null,
       count: null,
+      source: activeCheckSource,
     });
   });
 
@@ -155,13 +186,19 @@ function initAutoUpdater(win, options = {}) {
     console.log("[updater] App is up to date.");
     lastUpdateInfo = null;
     _logEvent("update_not_available");
-    _updateState({ status: "not-available", error: null, reason: null, count: null });
+    if (activeCheckSource === "manual") {
+      _updateState({ status: "not-available", source: "manual", error: null, reason: null, count: null });
+    } else {
+      currentUpdaterState = { ...currentUpdaterState, status: "idle", source: "background", error: null };
+    }
   });
 
   autoUpdater.on("error", (err) => {
     const msg = String(err?.message || "");
     console.log("[updater] Updater note:", msg);
     _logEvent("update_note", { message: msg });
+
+    if (activeCheckSource === "background") return;
 
     if (_isMissingReleaseMetadata(msg)) {
       _updateState({ status: "error", error: _releaseChannelError() });
@@ -194,9 +231,8 @@ function initAutoUpdater(win, options = {}) {
     if (!UPDATE_CHECKS_ENABLED) return { skipped: true, reason: "release-metadata-unavailable" };
     if (checkInProgress) return { checking: true };
     try {
-      checkInProgress = true;
       _logEvent("manual_check_requested");
-      const res = await autoUpdater.checkForUpdates();
+      const res = await _runUpdateCheck("manual");
       
       // When checkForUpdates returns null/undefined or res.updateInfo is missing,
       // it means electron-updater determined the app is up to date (or unpacked mode).
@@ -225,8 +261,6 @@ function initAutoUpdater(win, options = {}) {
       
       _updateState({ status: "error", error: msg });
       return { ok: false, error: msg };
-    } finally {
-      checkInProgress = false;
     }
   });
 
@@ -335,19 +369,19 @@ function initAutoUpdater(win, options = {}) {
       _writeSnoozePrefs(prefs);
     }
 
-    // Initial check 5 seconds after launch
+    // Startup checks are delayed and persisted across restarts. Reopening or
+    // refreshing the renderer must never create another check or UI blocker.
     setTimeout(() => {
-      if (!_isSnoozed()) {
-        autoUpdater.checkForUpdates().catch((err) => {
+      if (!_isSnoozed() && _automaticCheckIsDue()) {
+        _runUpdateCheck("background").catch((err) => {
           _logEvent("background_check_failed", { error: err.message });
         });
       } else {
-        _logEvent("background_check_snoozed");
+        _logEvent("background_check_skipped", { reason: _isSnoozed() ? "snoozed" : "cooldown" });
       }
-    }, 5_000);
+    }, 45_000);
 
     // Periodic check every 6 hours
-    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
     _periodicCheckInterval = setInterval(() => {
       if (_isSnoozed()) {
         _logEvent("periodic_check_snoozed");
@@ -355,10 +389,11 @@ function initAutoUpdater(win, options = {}) {
       }
       _clearSnoozeIfExpired();
       _logEvent("periodic_check_started");
-      autoUpdater.checkForUpdates().catch((err) => {
+      if (!_automaticCheckIsDue()) return;
+      _runUpdateCheck("background").catch((err) => {
         _logEvent("periodic_check_failed", { error: err.message });
       });
-    }, SIX_HOURS_MS);
+    }, AUTO_CHECK_INTERVAL_MS);
 
     app.on("before-quit", () => {
       if (_periodicCheckInterval) {
