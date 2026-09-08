@@ -16,7 +16,8 @@ from app.routers.shifts_router import (
     get_current_shift,
     OpenShiftIn,
     CashMovementIn,
-    CloseShiftIn
+    CloseShiftIn,
+    calculate_active_shift_sales,
 )
 
 
@@ -180,5 +181,35 @@ def test_full_shift_lifecycle_x_and_z_reports():
     assert recon_rec.status == "Closed"
     assert recon_rec.counted_cash_total == 7500.0
     assert recon_rec.cash_drops_total == 15000.0
+    db.close()
 
+
+def test_mixed_tender_counts_only_cash_component_in_drawer():
+    db = TestingSessionLocal()
+    req = _create_mock_request(201, 2011)
+    sale = Sale(
+        invoice_no="INV-MIXED-001", organization_id=201, branch_id=2011,
+        created_by=10, payment_method="Mixed", cash_amount=2000.0,
+        card_amount=3000.0, total=5000.0, subtotal=5000.0,
+        paid=True, is_voided=False, created_at=datetime.utcnow(),
+    )
+    db.add(sale)
+    db.commit()
+
+    totals = calculate_active_shift_sales(db, 10, datetime(2000, 1, 1), req)
+    assert totals["cash_sales"] == 2000.0
+    assert totals["card_sales"] == 3000.0
+    assert totals["cash_transactions_count"] == 1
+    db.close()
+
+
+def test_cash_out_cannot_exceed_expected_drawer_balance():
+    db = TestingSessionLocal()
+    req = _create_mock_request(201, 2011)
+    cashier = MockUser(id=10, organization_id=201, branch_id=2011)
+    open_register_shift(OpenShiftIn(opening_float=5000), req, db, cashier)
+
+    with pytest.raises(Exception) as exc:
+        record_shift_cash_movement(CashMovementIn(movement_type="drop", amount=5001, reason="Safe drop"), req, db, cashier)
+    assert "exceeds the expected drawer balance" in str(exc.value.detail)
     db.close()

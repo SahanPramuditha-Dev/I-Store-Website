@@ -20,6 +20,7 @@ from app.core.tenant_guard import scope_query, stamp_tenant
 from app.models import CashReconciliation, Sale, User, AppSetting
 from app.utils.time import utcnow, format_iso_utc
 from app.utils.whatsapp_helper import resolve_store_variables, normalize_sri_lankan_phone, log_and_send_whatsapp
+from app.services.domain_audit_service import record_domain_audit
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 logger = logging.getLogger("istore.shifts")
@@ -85,11 +86,22 @@ def calculate_active_shift_sales(db: Session, cashier_id: Optional[int], start_t
         discounts_total += float(s.discount_amount or 0)
         tax_total += float(s.tax_amount or 0)
 
-        if "cash" in method:
-            cash_sales += float(s.cash_amount or tot)
+        cash_component = float(s.cash_amount or 0)
+        card_component = float(s.card_amount or 0)
+        is_split = "multiple" in method or "mixed" in method or (cash_component > 0 and card_component > 0)
+
+        if is_split:
+            # Split tenders must use their recorded components. Falling back to
+            # the invoice total here previously overstated the physical drawer.
+            cash_sales += cash_component
+            card_sales += card_component
+            if cash_component > 0:
+                cash_tx_count += 1
+        elif "cash" in method:
+            cash_sales += cash_component if cash_component > 0 else tot
             cash_tx_count += 1
         elif "card" in method:
-            card_sales += float(s.card_amount or tot)
+            card_sales += card_component if card_component > 0 else tot
         elif "bank" in method or "transfer" in method:
             bank_sales += tot
         elif "store_credit" in method or "storecredit" in method:
@@ -181,7 +193,7 @@ def get_current_shift(
     }
 
 
-@router.post("/open")
+@router.post("/open", dependencies=[Depends(require_permission("pos.checkout"))])
 def open_register_shift(
     payload: OpenShiftIn,
     request: Request,
@@ -222,6 +234,12 @@ def open_register_shift(
     )
     stamp_tenant(new_shift, request)
     db.add(new_shift)
+    record_domain_audit(
+        db, module="pos", action="shift_opened", target_type="cash_reconciliation",
+        target_id=None, user=current_user, new_value={"recon_code": recon_code, "opening_float": float(payload.opening_float or 0), "shift": payload.shift_name},
+        reason=payload.notes or "Register shift opened", permission="pos.checkout",
+        ip_address=request.client.host if request.client else None, device_name=request.headers.get("user-agent"),
+    )
     db.commit()
     db.refresh(new_shift)
 
@@ -233,7 +251,7 @@ def open_register_shift(
     }
 
 
-@router.post("/cash-movement")
+@router.post("/cash-movement", dependencies=[Depends(require_permission("pos.checkout"))])
 def record_shift_cash_movement(
     payload: CashMovementIn,
     request: Request,
@@ -256,6 +274,12 @@ def record_shift_cash_movement(
 
     is_drop = m_type in ["drop", "cash_drop"]
     amount = float(payload.amount)
+
+    if is_drop:
+        sales_metrics = calculate_active_shift_sales(db, shift.cashier_id, shift.created_at, request)
+        available_cash = float(shift.opening_float or 0) + sales_metrics["cash_sales"] + float(shift.cash_ins_total or 0) - float(shift.cash_drops_total or 0)
+        if amount > available_cash:
+            raise HTTPException(status_code=400, detail=f"Cash out exceeds the expected drawer balance of LKR {available_cash:,.2f}.")
 
     # Parse existing movements
     movements = []
@@ -282,6 +306,12 @@ def record_shift_cash_movement(
     else:
         shift.cash_ins_total = float(shift.cash_ins_total or 0.0) + amount
 
+    record_domain_audit(
+        db, module="pos", action="cash_out" if is_drop else "cash_in", target_type="cash_reconciliation",
+        target_id=shift.id, user=current_user, new_value=movement_entry, reason=payload.reason,
+        permission="pos.checkout", ip_address=request.client.host if request.client else None,
+        device_name=request.headers.get("user-agent"),
+    )
     db.commit()
 
     return {
@@ -293,7 +323,7 @@ def record_shift_cash_movement(
     }
 
 
-@router.get("/x-report")
+@router.get("/x-report", dependencies=[Depends(require_permission("financial_audit.view"))])
 def get_interim_x_report(
     request: Request,
     db: Session = Depends(get_db),
@@ -332,8 +362,8 @@ def get_interim_x_report(
     }
 
 
-@router.post("/close")
-@router.post("/z-report")
+@router.post("/close", dependencies=[Depends(require_permission("pos.checkout"))])
+@router.post("/z-report", dependencies=[Depends(require_permission("pos.checkout"))])
 def close_register_shift(
     payload: CloseShiftIn,
     background_tasks: BackgroundTasks,
@@ -360,6 +390,8 @@ def close_register_shift(
     expected_total = float(shift.opening_float or 0) + system_cash + cash_ins - cash_drops
     counted_total = float(payload.counted_cash_total or 0)
     difference = counted_total - expected_total
+    if abs(difference) >= 1.0 and not str(payload.notes or "").strip():
+        raise HTTPException(status_code=400, detail="A closing note is required when the drawer has an overage or shortage.")
 
     # Determine status
     if abs(difference) < 1.0:
@@ -432,6 +464,14 @@ def close_register_shift(
         except Exception as we:
             logger.warning(f"Failed to queue EOD Z-Report WhatsApp message: {we}")
 
+    record_domain_audit(
+        db, module="pos", action="shift_closed", target_type="cash_reconciliation",
+        target_id=shift.id, user=current_user,
+        old_value={"status": "Open", "expected_drawer_cash": expected_total},
+        new_value={"status": "Closed", "counted_cash": counted_total, "difference": difference, "closing_float": float(payload.closing_float or 0)},
+        reason=payload.notes or "Register shift balanced and closed", permission="pos.checkout",
+        ip_address=request.client.host if request.client else None, device_name=request.headers.get("user-agent"),
+    )
     db.commit()
 
     return {
@@ -482,4 +522,3 @@ def get_shift_history(
             "notes": s.notes
         })
     return results
-

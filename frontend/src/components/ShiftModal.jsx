@@ -17,6 +17,10 @@ const DENOMINATIONS = [
   { label: "Rs. 100", value: 100 },
   { label: "Rs. 50", value: 50 },
   { label: "Rs. 20", value: 20 },
+  { label: "Rs. 10", value: 10 },
+  { label: "Rs. 5", value: 5 },
+  { label: "Rs. 2", value: 2 },
+  { label: "Rs. 1", value: 1 },
 ];
 
 export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
@@ -42,8 +46,13 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
     100: 0,
     50: 0,
     20: 0,
+    10: 0,
+    5: 0,
+    2: 0,
+    1: 0,
   });
   const [directCounted, setDirectCounted] = useState("");
+  const [closingFloat, setClosingFloat] = useState("0");
   const [useDenominations, setUseDenominations] = useState(true);
   const [closeNotes, setCloseNotes] = useState("");
   const [sendWhatsApp, setSendWhatsApp] = useState(true);
@@ -136,6 +145,7 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
     try {
       const res = await api.post("/shifts/close", {
         counted_cash_total: effectiveCounted,
+        closing_float: parseFloat(closingFloat) || 0,
         denominations: useDenominations ? counts : undefined,
         notes: closeNotes,
         send_whatsapp_report: sendWhatsApp
@@ -384,12 +394,16 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
             {/* Closing Remarks & WhatsApp Dispatch Toggle */}
             <div className="space-y-2">
               <div>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 block mb-1">Float retained for next shift (LKR)</label>
+                <Input type="number" min="0" value={closingFloat} onChange={(e) => setClosingFloat(e.target.value)} placeholder="0" />
+              </div>
+              <div>
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-400 block mb-1">Closing Remarks / Handover Notes</label>
                 <Input
                   type="text"
                   value={closeNotes}
                   onChange={(e) => setCloseNotes(e.target.value)}
-                  placeholder="e.g. Evening shift handoff complete"
+                  placeholder={Math.abs(variance) >= 1 ? "Required: explain the cash overage or shortage" : "e.g. Evening shift handoff complete"}
                 />
               </div>
 
@@ -417,7 +431,7 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
               <Button
                 variant="primary"
                 onClick={handleCloseShift}
-                disabled={loading}
+                disabled={loading || (Math.abs(variance) >= 1 && !closeNotes.trim())}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
               >
                 {loading ? "Closing Shift..." : "Finalize & Close Shift (Z-Report)"}
