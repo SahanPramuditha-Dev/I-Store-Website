@@ -419,8 +419,17 @@ function _applyV1Schema() {
   _flushToDisk();   // persist schema immediately
 }
 
+// Snapshot the live sql.js database, including writes not yet flushed to disk.
+function writeSnapshot(destination) {
+  if (!_db) throw new Error("Local database is not open");
+  let bytes = Buffer.from(_db.export());
+  if (DB_ENCRYPT) bytes = _encrypt(bytes);
+  fs.writeFileSync(destination, bytes, { flag: "wx" });
+}
+
 // ── Exports ────────────────────────────────────────────────────────────────
 module.exports = {
+  writeSnapshot,
   open,
   close,
   getPath,

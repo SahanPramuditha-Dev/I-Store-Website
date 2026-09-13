@@ -25,7 +25,8 @@ let initialized = false;
 let checkInProgress = false;
 let activeCheckSource = "manual";
 let operationsState = { active: false, reason: null, route: null };
-let stopBackendFn = null;
+let downloadInProgress = false;
+let installInProgress = false;
 let lastUpdateInfo = null;
 let _periodicCheckInterval = null;
 let currentUpdaterState = {
@@ -77,7 +78,7 @@ function _writeSnoozePrefs(prefs) {
 function _isSnoozed() {
   const prefs = _readSnoozePrefs();
   if (!prefs.snoozeUntil) return false;
-  if (prefs.snoozeUntil === "next-startup") return false; // consumed on startup
+  if (prefs.snoozeUntil === "next-startup") return true; // consumed on startup
   return Date.now() < prefs.snoozeUntil;
 }
 
@@ -105,6 +106,7 @@ function _markAutomaticCheck() {
 }
 
 async function _runUpdateCheck(source = "manual") {
+  if (installInProgress || downloadInProgress || currentUpdaterState.status === "ready-to-install") return { skipped: true, reason: "update-in-progress" };
   if (checkInProgress) return { checking: true };
   checkInProgress = true;
   activeCheckSource = source;
@@ -139,7 +141,7 @@ function _logEvent(event, payload = {}) {
 
 function initAutoUpdater(win, options = {}) {
   _mainWindow = win;
-  stopBackendFn = typeof options.stopBackend === "function" ? options.stopBackend : null;
+
   if (initialized) return;
   initialized = true;
 
@@ -197,6 +199,7 @@ function initAutoUpdater(win, options = {}) {
     const msg = String(err?.message || "");
     console.log("[updater] Updater note:", msg);
     _logEvent("update_note", { message: msg });
+    installInProgress = false;
 
     if (activeCheckSource === "background") return;
 
@@ -229,6 +232,7 @@ function initAutoUpdater(win, options = {}) {
   // ── Register IPC Handlers for Updater ────────────────────────────────────
   ipcMain.handle("updater:check", async () => {
     if (!UPDATE_CHECKS_ENABLED) return { skipped: true, reason: "release-metadata-unavailable" };
+    if (installInProgress || downloadInProgress || currentUpdaterState.status === "ready-to-install") return { skipped: true, reason: "update-in-progress" };
     if (checkInProgress) return { checking: true };
     try {
       _logEvent("manual_check_requested");
@@ -265,11 +269,14 @@ function initAutoUpdater(win, options = {}) {
   });
 
   ipcMain.handle("updater:download", async () => {
+    if (installInProgress || downloadInProgress) return { ok: false, error: "An update operation is already running." };
+    if (checkInProgress) return { ok: false, error: "Wait for the update check to finish." };
     if (operationsState.active) {
       _updateState({ status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
       return { blocked: true, reason: operationsState.reason || "operations-active" };
     }
     try {
+      downloadInProgress = true;
       _logEvent("download_requested");
       _updateState({ status: "downloading", error: null });
       const files = await autoUpdater.downloadUpdate();
@@ -278,10 +285,15 @@ function initAutoUpdater(win, options = {}) {
       _logEvent("download_failed", { error: err.message });
       _updateState({ status: "error", error: err.message });
       return { ok: false, error: err.message };
+    } finally {
+      downloadInProgress = false;
     }
   });
 
   ipcMain.handle("updater:install", async () => {
+    if (installInProgress) return { installing: true };
+    if (downloadInProgress || checkInProgress) return { error: "Wait for the update operation to finish before installing." };
+    _logEvent("install_requested");
     if (operationsState.active) {
       _logEvent("install_blocked", { reason: operationsState.reason || "operations-active", route: operationsState.route });
       _updateState({ status: "blocked", reason: operationsState.reason || "operations-active", route: operationsState.route });
@@ -296,49 +308,45 @@ function initAutoUpdater(win, options = {}) {
         return { blocked: true, reason: "pending-outbox", count: pending.length };
       }
 
+      if (!autoUpdater.installerPath || !fs.existsSync(autoUpdater.installerPath)) {
+        throw new Error("The downloaded installer is missing. Please download the update again.");
+      }
+      installInProgress = true;
+      _updateState({ status: "installing", error: null });
       _logEvent("pre_install_backup_started");
-      const BACKUP_TIMEOUT_MS = 60000;
-      const paths = [db.getPath(), path.join(app.getPath("userData"), "database", "istore.db")];
+      const localPath = db.getPath();
+      const paths = [localPath, path.join(app.getPath("userData"), "database", "istore.db")];
       for (const databasePath of new Set(paths)) {
         if (databasePath && fs.existsSync(databasePath)) {
-          await Promise.race([
-            createBackup(databasePath),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Pre-install backup timed out after 60s")), BACKUP_TIMEOUT_MS)
-            ),
-          ]);
+          await createBackup(databasePath, databasePath === localPath ? { snapshot: db.writeSnapshot } : {});
         }
       }
       _logEvent("pre_install_backup_completed");
-
-      db.close();
-      if (stopBackendFn) {
-        try {
-          await Promise.resolve(stopBackendFn());
-        } catch (_err) {
-        }
+      const remaining = typeof db.getPendingOutbox === "function" ? db.getPendingOutbox() : [];
+      if (operationsState.active || remaining.length > 0) {
+        installInProgress = false;
+        const reason = operationsState.active ? "operations-active" : "pending-outbox";
+        _updateState({ status: "blocked", reason, count: remaining.length });
+        _logEvent("install_blocked_after_backup", { reason, count: remaining.length });
+        return { blocked: true, reason, count: remaining.length };
       }
+
+      // electron-updater launches the installer before quitting the app.
+      // Destroying the last window here triggers window-all-closed and can
+      // terminate the process before quitAndInstall gets a chance to run.
       _logEvent("quit_and_install");
-
-      // Close/destroy all open Electron browser windows to prevent app.quit() from hanging
-      const { BrowserWindow } = require("electron");
-      BrowserWindow.getAllWindows().forEach((w) => {
-        try {
-          w.removeAllListeners("close");
-          w.destroy();
-        } catch (_e) {}
-      });
-
-      // Launch NSIS silent installer and restart
-      setTimeout(() => {
-        autoUpdater.quitAndInstall(false, true);
-      }, 300);
+      autoUpdater.quitAndInstall(false, true);
+      if (currentUpdaterState.status === "error") {
+        installInProgress = false;
+        return { error: currentUpdaterState.error };
+      }
 
       return { installing: true };
     } catch (error) {
-      console.error("[updater] Backup failed before install:", error);
+      installInProgress = false;
+      console.error("[updater] Failed before install:", error);
       _logEvent("pre_install_failed", { error: error.message });
-      _sendToRenderer("updater:status", { status: "backup-failed", error: error.message });
+      _updateState({ status: "error", error: error.message });
       return { error: error.message };
     }
   });

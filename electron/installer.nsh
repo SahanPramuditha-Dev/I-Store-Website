@@ -1,20 +1,38 @@
 !macro customInit
-  ; Terminate any running instances silently; ignore errors if no processes are running
-  nsExec::Exec 'taskkill /F /IM "E Store.exe" /T'
-  nsExec::Exec 'taskkill /F /IM "E Store.exe" /T'
-  nsExec::Exec 'taskkill /F /IM "IStoreBackend.exe" /T'
+  ; Move business data outside the deletion path used by older uninstallers.
+  ; Rename is atomic because both paths are on the same volume.
+  ${If} ${FileExists} "$LOCALAPPDATA\iStore.update-safety\*.*"
+    ${IfNot} ${FileExists} "$LOCALAPPDATA\iStore\*.*"
+      Rename "$LOCALAPPDATA\iStore.update-safety" "$LOCALAPPDATA\iStore"
+    ${Else}
+      MessageBox MB_OK|MB_ICONSTOP "E Store found both the live data directory and an update safety copy. Setup stopped without changing either directory. Contact support before continuing." /SD IDOK
+      Abort
+    ${EndIf}
+  ${EndIf}
+
+  ${If} ${FileExists} "$LOCALAPPDATA\iStore\*.*"
+    Rename "$LOCALAPPDATA\iStore" "$LOCALAPPDATA\iStore.update-safety"
+    ${If} ${Errors}
+      MessageBox MB_OK|MB_ICONSTOP "E Store could not secure your business data before updating. Close E Store and try again." /SD IDOK
+      Abort
+    ${EndIf}
+  ${EndIf}
 !macroend
 
-!macro customUnInstallCheck
-  ; Prevent uninstaller from failing due to locked executable files or active processes
-  nsExec::Exec 'taskkill /F /IM "E Store.exe" /T'
-  nsExec::Exec 'taskkill /F /IM "E Store.exe" /T'
-  nsExec::Exec 'taskkill /F /IM "IStoreBackend.exe" /T'
+!macro customInstall
+  ${If} ${FileExists} "$LOCALAPPDATA\iStore.update-safety\*.*"
+    ${If} ${FileExists} "$LOCALAPPDATA\iStore\*.*"
+      MessageBox MB_OK|MB_ICONSTOP "E Store was installed, but both live and protected data directories now exist. Neither was deleted. Contact support before opening E Store." /SD IDOK
+      Abort
+    ${EndIf}
+    Rename "$LOCALAPPDATA\iStore.update-safety" "$LOCALAPPDATA\iStore"
+    ${If} ${Errors}
+      MessageBox MB_OK|MB_ICONSTOP "E Store was installed, but the protected business data could not be restored automatically. Your data remains at $LOCALAPPDATA\iStore.update-safety. Contact support before opening E Store." /SD IDOK
+      Abort
+    ${EndIf}
+  ${EndIf}
 !macroend
 
 !macro customUnInstall
-  DetailPrint "Safeguarding user database at $LOCALAPPDATA\iStore..."
-  MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to completely delete your database and local backups from %LOCALAPPDATA%\iStore?$\n$\nSelect 'No' to preserve your business data (Recommended)." IDNO keepData
-  RMDir /r "$LOCALAPPDATA\iStore"
-  keepData:
+  DetailPrint "Preserving database and backups at $LOCALAPPDATA\iStore"
 !macroend

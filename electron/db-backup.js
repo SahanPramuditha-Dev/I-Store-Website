@@ -10,6 +10,10 @@
 const fs = require("fs");
 const path = require("path");
 const { app } = require("electron");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const { randomUUID } = require("crypto");
+const runFile = promisify(execFile);
 
 /**
  * Creates a timestamped backup of the local database file.
@@ -17,7 +21,7 @@ const { app } = require("electron");
  * @param {string} dbPath - Full path to current database file.
  * @returns {Promise<string>} - Resolves with the path to created backup file.
  */
-async function createBackup(dbPath) {
+async function createBackup(dbPath, { snapshot } = {}) {
   if (!dbPath || !fs.existsSync(dbPath)) {
     throw new Error(`[db-backup] Cannot backup: database file not found at "${dbPath}"`);
   }
@@ -30,11 +34,24 @@ async function createBackup(dbPath) {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupFileName = `istore-db-backup_${timestamp}.db`;
-  const backupPath = path.join(backupDir, backupFileName);
-
-  // Copy file atomically
-  fs.copyFileSync(dbPath, backupPath);
+  const identity = path.basename(dbPath).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const backupPath = path.join(backupDir, `istore-db-backup_${identity}_${timestamp}_${randomUUID()}.db`);
+  const temporaryPath = `${backupPath}.partial`;
+  try {
+    if (snapshot) {
+      await snapshot(temporaryPath);
+    } else {
+      const executable = app.isPackaged
+        ? path.join(process.resourcesPath, "backend", "IStoreBackend.exe")
+        : path.join(__dirname, "..", ".venv", "Scripts", "python.exe");
+      const args = app.isPackaged ? [] : [path.join(__dirname, "..", "backend", "desktop_server.py")];
+      await runFile(executable, [...args, "--backup-sqlite", dbPath, temporaryPath], { timeout: 55000, windowsHide: true });
+    }
+    fs.renameSync(temporaryPath, backupPath);
+  } catch (error) {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    throw error;
+  }
 
   console.log(`[db-backup] Successfully created database backup at: ${backupPath}`);
   

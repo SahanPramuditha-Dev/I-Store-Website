@@ -1,0 +1,38 @@
+/* Scoped styles keep global screen and button styles out of the updater. */
+.estore-update { position: fixed; top: 20px; right: 20px; z-index: 99999; width: min(420px, calc(100vw - 32px)); color: #e8edf5; font-family: inherit; font-size: 14px; line-height: 1.55; pointer-events: none; }
+.estore-update__panel { pointer-events: auto; display: flex; flex-direction: column; max-height: calc(100dvh - 40px); overflow: hidden; background: #131b2a; border: 1px solid #2b3548; border-radius: 16px; box-shadow: 0 16px 48px #0005; }
+.estore-update__header { display: flex; align-items: center; gap: 12px; padding: 22px 22px 0; flex-shrink: 0; }
+.estore-update__icon { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: 12px; color: #93b9ff; background: #233451; }
+.estore-update__icon--warning { color: #f3c778; background: #3c3325; }
+.estore-update__heading { min-width: 0; flex: 1; }
+.estore-update__eyebrow { margin: 0 0 3px; color: #99a7bb; font-size: 11px; font-weight: 500; letter-spacing: .025em; }
+.estore-update__heading h3 { margin: 0; color: #f1f5fa; font-size: 17px; line-height: 1.35; font-weight: 600; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.estore-update button { font-family: inherit; cursor: pointer; }
+.estore-update button:focus-visible, .estore-update summary:focus-visible { outline: 2px solid #93b9ff; outline-offset: 3px; }
+.estore-update__close { display: grid; place-items: center; align-self: flex-start; flex-shrink: 0; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #99a7bb; }
+.estore-update__close:hover { color: #fff; background: #263247; }
+.estore-update__body { min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 18px 22px 22px; scrollbar-width: thin; scrollbar-color: #46516a transparent; overflow-wrap: anywhere; }
+.estore-update__version { display: inline-block; margin-bottom: 12px; padding: 3px 9px; border: 1px solid #354158; border-radius: 6px; color: #c1d1ec; background: #1c2739; font-size: 11px; font-weight: 500; }
+.estore-update__description { margin: 0; color: #aebbcf; font-size: 13px; line-height: 1.65; }
+.estore-update__notes { margin-top: 18px; border-top: 1px solid #2b3548; padding-top: 14px; }
+.estore-update__notes summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: #d6e0ee; font-size: 12px; font-weight: 500; list-style: none; }
+.estore-update__notes summary::-webkit-details-marker { display: none; }
+.estore-update__notes[open] summary svg { transform: rotate(180deg); }
+.estore-update__notes-text { margin-top: 12px; color: #aebbcf; font-size: 12px; white-space: pre-wrap; line-height: 1.7; }
+.estore-update__footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid #2b3548; background: #111927; flex-shrink: 0; }
+.estore-update__button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 9px 12px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; line-height: 1.35; font-weight: 600; transition: background .15s; }
+.estore-update__button--primary { background: #3974e6; color: #fff; }
+.estore-update__button--primary:hover { background: #4683f4; }
+.estore-update__button--secondary { background: transparent; color: #b7c4d8; border-color: #354158; }
+.estore-update__button--secondary:hover { background: #223048; color: #edf3ff; }
+.estore-update__later { position: relative; margin-right: auto; }
+.estore-update__menu { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 1; width: 160px; padding: 5px; background: #202c40; border: 1px solid #3c4960; border-radius: 10px; box-shadow: 0 8px 24px #0006; }
+.estore-update__menu button { display: block; width: 100%; padding: 9px; border: 0; border-radius: 5px; background: transparent; text-align: left; color: #dce5f3; font-size: 12px; }
+.estore-update__menu button:hover { background: #30415d; }
+.estore-update__progress-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: #d2ddec; font-size: 12px; }
+.estore-update__progress-label strong { color: #b5ccfa; font-variant-numeric: tabular-nums; font-weight: 600; }
+.estore-update__track { height: 6px; overflow: hidden; border-radius: 3px; background: #2b3548; margin-bottom: 15px; }
+.estore-update__track > div { height: 100%; border-radius: inherit; background: #6698fa; transition: width .25s ease; }
+.estore-update__message { margin: 0; font-size: 13px; color: #e4c697; line-height: 1.65; }
+@media (max-width: 380px) { .estore-update { top: 12px; right: 12px; width: calc(100vw - 24px); } .estore-update__header { padding: 16px 16px 0; gap: 9px; } .estore-update__body { padding: 16px; } .estore-update__footer { padding: 14px 16px; } .estore-update__heading h3 { font-size: 15px; } .estore-update__footer > *, .estore-update__later > button { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .estore-update *, .estore-update *::before, .estore-update *::after { animation: none !important; transition: none !important; } }

@@ -1,3 +1,4 @@
+import { formatReleaseNotes } from "../../utils/releaseNotes";
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Download, CheckCircle2, ShieldCheck, Cpu, HardDrive, Sparkles, Activity, FileText, Lock, ChevronDown, Clock, ScrollText } from "lucide-react";
 import { Button, SectionCard, Badge } from "../UI";
@@ -27,6 +28,11 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
       window.istore.updater.getState().then((data) => {
         if (data?.status === "checking") {
           setUpdaterStatus("checking");
+        } else if (data?.status === "downloading") {
+          setUpdaterStatus("downloading");
+          setProgress(Math.min(100, Math.max(0, Number(data.count) || 0)));
+        } else if (data?.status === "installing") {
+          setUpdaterStatus("installing");
         } else if (data?.status === "available") {
           setUpdaterStatus("available");
           if (data.version) setLatestVersion(data.version);
@@ -54,6 +60,8 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
       const unsubStatus = window.istore.updater.onStatus((data) => {
         if (data.status === "checking") {
           setUpdaterStatus("checking");
+        } else if (data.status === "installing") {
+          setUpdaterStatus("installing");
         } else if (data.status === "available") {
           setUpdaterStatus("available");
           if (data.version) setLatestVersion(data.version);
@@ -123,7 +131,8 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
       const result = await window.istore.updater.checkForUpdates();
       if (result?.skipped) {
         toast?.(result.reason || "Update check skipped.", "info");
-        setUpdaterStatus("idle");
+        const state = await window.istore.updater.getState?.();
+        setUpdaterStatus(state?.status || "idle");
       } else if (result?.upToDate) {
         setUpdaterStatus("up-to-date");
         toast?.("You are using the latest version of E Store!", "success");
@@ -165,7 +174,8 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
   };
 
   const handleInstall = async () => {
-    if (!window.istore?.updater) return;
+    if (!window.istore?.updater || updaterStatus === "installing") return;
+    setUpdaterStatus("installing");
     try {
       const result = await window.istore.updater.installUpdate();
       if (result?.blocked) {
@@ -240,7 +250,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
               size="md"
               variant="secondary"
               onClick={handleCheckUpdates}
-              disabled={checking || updaterStatus === "downloading"}
+              disabled={checking || updaterStatus === "downloading" || updaterStatus === "installing"}
               className="font-bold border-indigo-500/40 hover:bg-indigo-500/20 text-indigo-200"
             >
               <RefreshCw size={15} className={checking ? "animate-spin text-cyan-400" : ""} />
@@ -319,7 +329,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
                     {releaseNotes && (
                       <div className="rounded-xl bg-slate-950/60 border border-white/5 p-3 max-h-28 overflow-y-auto">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">What's New</p>
-                        <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">{releaseNotes}</p>
+                        <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">{formatReleaseNotes(releaseNotes)}</p>
                       </div>
                     )}
 
@@ -375,6 +385,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
                   </div>
                 )}
 
+                {updaterStatus === "installing" && <p role="status" className="p-4 text-sm text-slate-300">Backing up your data and opening the installer. Please keep E Store open.</p>}
                 {updaterStatus === "ready-to-install" && (
                   <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-3">
                     <div className="flex items-center gap-2 text-emerald-300 font-bold text-sm">
@@ -382,7 +393,7 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
                       <span>Release Downloaded &amp; Verified!</span>
                     </div>
                     <p className="text-xs text-slate-300">
-                      A pre-update database backup has been saved to your local storage. Click below to restart E Store and finalize the installation.
+                      E Store will back up your data before restarting to install the update.
                     </p>
                     <Button size="sm" onClick={handleInstall} className="bg-emerald-600 hover:bg-emerald-500 font-bold">
                       Restart &amp; Install Now

@@ -5,6 +5,13 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Build & Publish Electron Executables
@@ -39,8 +46,10 @@ jobs:
           if ($tagVersion -ne $electronVersion -or $tagVersion -ne $frontendVersion) {
             throw "Release tag v$tagVersion must match Electron ($electronVersion) and frontend ($frontendVersion)."
           }
+          node electron/test-install-lifecycle.js
           node electron/test-update-version.js
           node electron/test-tenant-data-root.js
+          pwsh -File electron/scripts/test-installer-safety.ps1
 
       - name: Install Backend Dependencies & PyInstaller
         run: |
@@ -98,8 +107,9 @@ jobs:
           cd electron
           npm ci
 
-      - name: Build & Publish to GitHub Releases
+      - name: Build & Upload Draft Release
         env:
+          EP_DRAFT: "true"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd electron
@@ -115,3 +125,8 @@ jobs:
           foreach ($name in $required) {
             if ($assets -notcontains $name) { throw "Release asset missing: $name" }
           }
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false --latest
