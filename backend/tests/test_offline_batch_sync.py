@@ -8,7 +8,15 @@ from app.models import (
     Base, Organization, Branch, Role, User, InventoryItem, Sale, SaleItem
 )
 from app.schemas import SaleIn, SaleLine
-from app.routers.pos_router import batch_sync_offline_sales, OfflineBatchSyncRequest, OfflineSaleBatchItem
+from app.routers.pos_router import (
+    SuspendedCartIn,
+    batch_sync_offline_sales,
+    create_suspended_cart,
+    delete_suspended_cart,
+    list_suspended_carts,
+    OfflineBatchSyncRequest,
+    OfflineSaleBatchItem,
+)
 
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -167,4 +175,32 @@ def test_offline_batch_sync_success_and_idempotency():
     assert p1.quantity == 98.0
     assert p2.quantity == 49.0
 
+    db.close()
+
+
+def test_suspended_cart_is_server_backed_and_claimed_once():
+    db = TestingSessionLocal()
+    req = _create_mock_request(101, 1011)
+    user = MockUser(id=1, organization_id=101, branch_id=1011)
+    cart_payload = {
+        "customerId": "",
+        "paymentMethod": "Cash",
+        "cart": [{"item_id": 501, "name": "Fresh Milk 1L", "quantity": 2, "price": 450}],
+    }
+
+    created = create_suspended_cart(
+        payload=SuspendedCartIn(label="Counter order", payload=cart_payload),
+        request=req,
+        db=db,
+        current_user=user,
+    )
+
+    assert created["server_backed"] is True
+    assert created["label"] == "Counter order"
+    assert created["item_count"] == 1
+    assert created["cart_total"] == 900
+    assert len(list_suspended_carts(req, db, user)) == 1
+
+    assert delete_suspended_cart(created["id"], req, db, user) == {"success": True, "id": created["id"]}
+    assert list_suspended_carts(req, db, user) == []
     db.close()

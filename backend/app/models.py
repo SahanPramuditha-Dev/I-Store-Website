@@ -501,6 +501,25 @@ class SaleItem(Base, BaseHybridModel):
     warranty_record = relationship("WarrantyRecord", foreign_keys=[warranty_record_id])
 
 
+class SuspendedPosCart(Base, BaseHybridModel):
+    __tablename__ = "suspended_pos_carts"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "token", name="uq_suspended_pos_cart_org_token"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    token = Column(String(40), nullable=False, index=True)
+    label = Column(String(120), nullable=True)
+    payload = Column(JSON, nullable=False)
+    item_count = Column(Integer, default=0)
+    cart_total = Column(Float, default=0)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+
 class ProductReservation(Base, BaseHybridModel):
     __tablename__ = "product_reservations"
     __table_args__ = (

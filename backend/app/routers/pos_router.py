@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import uuid
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field
@@ -31,6 +32,7 @@ from app.models import (
     SaleItem,
     StockMovement,
     StoreCredit,
+    SuspendedPosCart,
     WarrantyRecord,
 )
 from app.schemas import SaleIn, SaleReturnIn, SaleVoidIn, QuickAddItemIn
@@ -70,6 +72,25 @@ from app.utils.time import utcnow, format_iso_utc
 
 router = APIRouter(prefix="/pos", tags=["pos"])
 logger = logging.getLogger("istore.api")
+
+
+class SuspendedCartIn(BaseModel):
+    label: str | None = Field(default=None, max_length=120)
+    payload: dict
+
+
+def _serialize_suspended_cart(row: SuspendedPosCart) -> dict:
+    payload = dict(row.payload or {})
+    payload.update({
+        "id": row.id,
+        "token": row.token,
+        "label": row.label,
+        "item_count": row.item_count,
+        "cart_total": row.cart_total,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "server_backed": True,
+    })
+    return payload
 
 
 def _normalize_line_type(raw_type: str | None, item_id: int | None) -> str:
@@ -649,6 +670,84 @@ def get_available_advances_for_checkout(
             }
         )
     return payload
+
+
+@router.get('/suspended-carts', dependencies=[Depends(require_permission("pos.view"))])
+def list_suspended_carts(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    rows = (
+        scope_query(db.query(SuspendedPosCart), SuspendedPosCart, request, branch_scoped=True)
+        .filter(
+            SuspendedPosCart.created_by == current_user.id,
+            SuspendedPosCart.is_deleted == False,  # noqa: E712
+        )
+        .order_by(SuspendedPosCart.updated_at.desc(), SuspendedPosCart.id.desc())
+        .limit(100)
+        .all()
+    )
+    return [_serialize_suspended_cart(row) for row in rows]
+
+
+@router.post('/suspended-carts', dependencies=[Depends(require_permission("pos.checkout"))])
+def create_suspended_cart(
+    payload: SuspendedCartIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    cart = payload.payload.get("cart")
+    if not isinstance(cart, list) or not cart:
+        raise HTTPException(status_code=400, detail="A suspended cart must contain at least one item")
+    if len(cart) > 500:
+        raise HTTPException(status_code=400, detail="A suspended cart cannot contain more than 500 lines")
+
+    token = f"SUSP-{uuid.uuid4().hex[:8].upper()}"
+    cart_total = 0.0
+    for line in cart:
+        if not isinstance(line, dict):
+            raise HTTPException(status_code=400, detail="Invalid suspended cart line")
+        cart_total += max(0.0, float(line.get("quantity") or 0)) * max(0.0, float(line.get("price") or 0))
+
+    row = SuspendedPosCart(
+        token=token,
+        label=(payload.label or "").strip() or None,
+        payload=payload.payload,
+        item_count=len(cart),
+        cart_total=round(cart_total, 2),
+        created_by=current_user.id,
+    )
+    stamp_tenant(row, request)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _serialize_suspended_cart(row)
+
+
+@router.delete('/suspended-carts/{cart_id}', dependencies=[Depends(require_permission("pos.checkout"))])
+def delete_suspended_cart(
+    cart_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    row = (
+        scope_query(db.query(SuspendedPosCart), SuspendedPosCart, request, branch_scoped=True)
+        .filter(
+            SuspendedPosCart.id == cart_id,
+            SuspendedPosCart.created_by == current_user.id,
+            SuspendedPosCart.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Suspended cart not found")
+    row.is_deleted = True
+    row.deleted_at = utcnow()
+    db.commit()
+    return {"success": True, "id": cart_id}
 
 
 @router.post('/checkout', dependencies=[Depends(require_permission("pos.checkout"))])

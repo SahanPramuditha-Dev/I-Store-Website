@@ -26,6 +26,7 @@ export default function POS() {
   const paymentRefInputRef = useRef(null);
   const repairTicketRef = useRef(null);
   const reservationRef = useRef(null);
+  const suspendedCartStorageKey = `pos_suspended_carts:${localStorage.getItem("username") || "anonymous"}`;
   const longPressTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
   const inventoryFetch = useFetch('/inventory?limit=50');
@@ -67,7 +68,7 @@ export default function POS() {
   const [reservationNo, setReservationNo] = useState("");
   const [suspendedCarts, setSuspendedCarts] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("pos_suspended_carts") || "[]");
+      return JSON.parse(localStorage.getItem(suspendedCartStorageKey) || "[]");
     } catch {
       return [];
     }
@@ -649,8 +650,26 @@ export default function POS() {
   ]);
 
   useEffect(() => {
-    localStorage.setItem("pos_suspended_carts", JSON.stringify(suspendedCarts));
-  }, [suspendedCarts]);
+    localStorage.setItem(suspendedCartStorageKey, JSON.stringify(suspendedCarts));
+  }, [suspendedCarts, suspendedCartStorageKey]);
+
+  const loadSuspendedCarts = useCallback(async () => {
+    try {
+      const response = await api.get("/pos/suspended-carts");
+      const serverRows = Array.isArray(response.data) ? response.data : [];
+      setSuspendedCarts((localRows) => {
+        const localOnly = localRows.filter((row) => !row.server_backed);
+        const serverTokens = new Set(serverRows.map((row) => row.token));
+        return [...serverRows, ...localOnly.filter((row) => !serverTokens.has(row.token))];
+      });
+    } catch {
+      // Keep locally cached carts available while the backend is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSuspendedCarts();
+  }, [loadSuspendedCarts]);
 
   useEffect(() => {
     localStorage.setItem("pos_auto_print", autoPrint);
@@ -943,37 +962,56 @@ export default function POS() {
     setTouchPadBuffer("");
   };
 
-  const suspendCurrentCart = () => {
+  const suspendCurrentCart = async () => {
     if (!cart.length) return toast("Cart is empty", "warning");
-    const token = `SUSP-${Date.now().toString().slice(-5)}`;
-    setSuspendedCarts((prev) => [
-      {
-        token,
+    const cartPayload = {
+      customerId,
+      paymentMethod,
+      mode,
+      discountMode,
+      discountValue,
+      taxAmount,
+      cashReceived,
+      cardAmount,
+      paymentReference,
+      repairTicketNo,
+      reservationNo,
+      selectedCreditMap,
+      selectedAdvanceMap,
+      cart,
+    };
+    let suspended;
+    try {
+      const response = await api.post("/pos/suspended-carts", {
+        label: draftLabel || null,
+        payload: cartPayload,
+      });
+      suspended = response.data;
+    } catch {
+      suspended = {
+        ...cartPayload,
+        token: `LOCAL-${Date.now().toString(36).toUpperCase()}`,
         created_at: new Date().toISOString(),
-        customerId,
-        paymentMethod,
-        mode,
-        discountMode,
-        discountValue,
-        taxAmount,
-        cashReceived,
-        cardAmount,
-        paymentReference,
-        repairTicketNo,
-        reservationNo,
-        selectedCreditMap,
-        selectedAdvanceMap,
-        cart,
-      },
-      ...prev,
-    ]);
+        server_backed: false,
+      };
+      toast("Server unavailable. Cart was secured on this terminal.", "warning");
+    }
+    setSuspendedCarts((prev) => [suspended, ...prev.filter((row) => row.token !== suspended.token)]);
     clearCart();
-    toast(`Cart suspended as ${token}`, "success");
+    toast(`Cart suspended as ${suspended.token}`, "success");
   };
 
-  const resumeSuspendedCart = (token) => {
+  const resumeSuspendedCart = async (token) => {
     const found = suspendedCarts.find((c) => c.token === token);
     if (!found) return;
+    if (found.server_backed && found.id) {
+      try {
+        await api.delete(`/pos/suspended-carts/${found.id}`);
+      } catch (error) {
+        toast(error.response?.data?.detail || "Could not claim this cart from the server", "error");
+        return;
+      }
+    }
     setCart(found.cart || []);
     setCustomerId(found.customerId || "");
     setPaymentMethod(found.paymentMethod || "Cash");
@@ -3597,10 +3635,13 @@ export default function POS() {
               {suspendedCarts.map((s) => (
                 <button key={s.token} onClick={() => resumeSuspendedCart(s.token)} className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-3 hover:bg-white/[0.06]">
                   <div className="flex justify-between text-sm font-bold text-slate-200">
-                    <span>{s.token}</span>
+                    <span>{s.label || s.token}</span>
                     <span>{s.cart.length} items</span>
                   </div>
-                  <div className="text-xs text-slate-500 mt-1">{new Date(s.created_at).toLocaleString()}</div>
+                  <div className="flex justify-between text-xs text-slate-500 mt-1">
+                    <span>{new Date(s.created_at).toLocaleString()}</span>
+                    <span>{s.server_backed ? "Synced" : "This terminal"}</span>
+                  </div>
                 </button>
               ))}
             </div>
