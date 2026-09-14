@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Database, ShieldAlert, Download, Upload, Eraser, Archive, Clock3, FileSpreadsheet, Trash2, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, Database, ShieldAlert, Download, Upload, Eraser, Archive, Clock3, FileSpreadsheet, Trash2, RefreshCw, Wrench } from "lucide-react";
 import { Button, Input, Select, SectionCard, Table, Badge } from "../../components/UI";
 import api from "../../lib/api";
 import SettingsSectionShell from "./SettingsSectionShell";
@@ -122,6 +122,24 @@ export default function BackupDataSettingsPanel({
 }) {
   const [dangerConfirm, setDangerConfirm] = useState("");
   const [restoreChecked, setRestoreChecked] = useState(false);
+  const [dbHealth, setDbHealth] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
+  const loadDbHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const response = await api.get("/settings/db-diagnostics");
+      setDbHealth(response.data);
+    } catch (error) {
+      setDbHealth({ status: "error", message: error.response?.data?.detail || "Database diagnostics failed" });
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDbHealth();
+  }, []);
 
   const kpis = useMemo(() => {
     const d = sectionValue || {};
@@ -136,6 +154,73 @@ export default function BackupDataSettingsPanel({
   }, [sectionValue, backupFiles]);
 
   const sections = [
+    {
+      id: "health",
+      label: "Database Health",
+      icon: Activity,
+      render: () => {
+        const healthy = dbHealth?.status === "healthy";
+        const migrations = dbHealth?.migrations;
+        return (
+          <div className="space-y-3">
+            <SectionCard title="Database Health" subtitle="Live integrity, storage, and schema migration status">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <Badge tone={healthy ? "green" : dbHealth?.status === "degraded" ? "amber" : "red"}>
+                    {healthLoading ? "Checking" : (dbHealth?.status || "Unknown")}
+                  </Badge>
+                  <p className="mt-2 text-xs text-slate-400">
+                    {healthy ? "Integrity and foreign-key checks passed." : (dbHealth?.message || "Review the diagnostics below.")}
+                  </p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={loadDbHealth} disabled={healthLoading}>
+                  <RefreshCw size={13} className={healthLoading ? "animate-spin" : ""} /> Run Health Check
+                </Button>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+                {[
+                  ["Database", `${dbHealth?.db_size_mb ?? "-"} MB`],
+                  ["WAL", `${dbHealth?.wal_size_mb ?? "-"} MB`],
+                  ["Tables", dbHealth?.table_count ?? "-"],
+                  ["Indexes", dbHealth?.index_count ?? "-"],
+                  ["Journal", String(dbHealth?.journal_mode || "-").toUpperCase()],
+                  ["SQLite", dbHealth?.sqlite_version || "-"],
+                  ["Foreign Keys", dbHealth?.foreign_key_violations ?? "-"],
+                  ["Schema", migrations?.status || "unavailable"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-200">{value}</p>
+                  </div>
+                ))}
+              </div>
+              {migrations?.pending && (
+                <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                  The database is not stamped at the current migration head. Automatic migrations are {dbHealth?.automatic_migrations ? "enabled" : "disabled"}; baseline the installation before changing this setting.
+                </div>
+              )}
+              <div className="mt-3 flex justify-end">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      const response = await api.post("/settings/db-maintenance");
+                      toast(response.data?.message || "Database maintenance completed.", response.data?.success ? "success" : "warning");
+                      await loadDbHealth();
+                    } catch (error) {
+                      toast(error.response?.data?.detail || "Database maintenance failed", "error");
+                    }
+                  }}
+                >
+                  <Wrench size={13} /> Optimize Database
+                </Button>
+              </div>
+            </SectionCard>
+          </div>
+        );
+      },
+    },
     {
       id: "auto",
       label: "Auto Backup",

@@ -36,3 +36,47 @@ def test_migrate_with_rollback_restores_backup_on_failure(monkeypatch):
 
     assert result["status"] == "rolled_back"
     assert restore_calls == [backup_payload["filename"]]
+
+
+def test_migrate_with_rollback_reports_restore_failure(monkeypatch):
+    class DummySession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        migrations,
+        "create_backup",
+        lambda *_args, **_kwargs: {"filename": "safety.sqlite.gz"},
+    )
+    monkeypatch.setattr(
+        migrations,
+        "restore_backup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("restore unavailable")),
+    )
+    monkeypatch.setattr(
+        migrations,
+        "migrate",
+        lambda: (_ for _ in ()).throw(RuntimeError("upgrade failed")),
+    )
+    monkeypatch.setattr(migrations, "SessionLocal", lambda: DummySession())
+
+    result = migrations.migrate_with_rollback()
+
+    assert result["status"] == "rollback_failed"
+    assert result["backup"] == "safety.sqlite.gz"
+    assert result["reason"] == "upgrade failed"
+    assert result["restore_error"] == "restore unavailable"
+
+
+def test_migrate_with_rollback_can_skip_safety_backup(monkeypatch):
+    backup_calls = []
+    monkeypatch.setattr(migrations, "create_backup", lambda *_args, **_kwargs: backup_calls.append(True))
+    monkeypatch.setattr(migrations, "migrate", lambda: None)
+
+    result = migrations.migrate_with_rollback(create_safety_backup=False)
+
+    assert result == {"status": "migrated", "backup": None}
+    assert backup_calls == []

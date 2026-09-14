@@ -26,6 +26,10 @@ if is_sqlite:
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA busy_timeout=30000")
             cursor.execute("PRAGMA cache_size=-4000")  # Cap SQLite in-memory page cache to 4MB
+            cursor.execute("PRAGMA temp_store=MEMORY")
+            cursor.execute("PRAGMA trusted_schema=OFF")
+            cursor.execute("PRAGMA secure_delete=FAST")
+            cursor.execute("PRAGMA journal_size_limit=67108864")
             try:
                 cursor.execute("PRAGMA journal_mode=WAL")
             except Exception:

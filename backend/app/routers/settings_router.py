@@ -1923,16 +1923,20 @@ def update_integrations_preferences(payload: dict, db: Session = Depends(get_db)
 def get_db_diagnostics(db: Session = Depends(get_db), _=Depends(get_current_user)):
     import sqlite3
     from app.config import DB_FILE
+    from app.migrations import get_migration_status
     if not DB_FILE.exists():
         return {"status": "error", "message": "Database file not found"}
     try:
-        conn = sqlite3.connect(str(DB_FILE))
+        conn = sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True, timeout=5)
         try:
-            integrity = conn.execute("PRAGMA integrity_check;").fetchall()
+            integrity = conn.execute("PRAGMA quick_check;").fetchall()
             fk_check = conn.execute("PRAGMA foreign_key_check;").fetchall()
             journal_mode = conn.execute("PRAGMA journal_mode;").fetchone()
             table_count = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';").fetchone()[0]
             index_count = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='index';").fetchone()[0]
+            sqlite_version = conn.execute("SELECT sqlite_version();").fetchone()
+            page_count = conn.execute("PRAGMA page_count;").fetchone()[0]
+            page_size = conn.execute("PRAGMA page_size;").fetchone()[0]
         finally:
             conn.close()
 
@@ -1942,14 +1946,17 @@ def get_db_diagnostics(db: Session = Depends(get_db), _=Depends(get_current_user
 
         return {
             "status": "healthy" if integrity == [("ok",)] and len(fk_check) == 0 else "degraded",
-            "db_path": str(DB_FILE),
             "db_size_mb": round(db_size_bytes / (1024 * 1024), 2),
             "wal_size_mb": round(wal_size_bytes / (1024 * 1024), 2),
+            "allocated_size_mb": round((page_count * page_size) / (1024 * 1024), 2),
             "journal_mode": journal_mode[0] if journal_mode else "unknown",
+            "sqlite_version": sqlite_version[0] if sqlite_version else "unknown",
             "integrity": "ok" if integrity == [("ok",)] else str(integrity),
             "foreign_key_violations": len(fk_check),
             "table_count": table_count,
             "index_count": index_count,
+            "migrations": get_migration_status(),
+            "automatic_migrations": settings.auto_migrate_enabled,
         }
     except Exception as exc:
         return {"status": "error", "message": str(exc)}

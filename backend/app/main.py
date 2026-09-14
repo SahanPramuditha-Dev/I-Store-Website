@@ -108,22 +108,15 @@ def _run_startup_tasks() -> None:
                 from app.migrations import migrate_with_rollback
             except Exception:
                 migrate_with_rollback = None
-            migrate_allowed = True
-            if settings.backup_before_migrate:
-                from app.services.backup_service import create_backup
-
+            if migrate_with_rollback:
                 try:
-                    with SessionLocal() as db:
-                        create_backup(db, is_auto=False, trigger="pre-migration")
-                    logger.info("Pre-migration backup completed successfully.")
-                except Exception as backup_error:
-                    migrate_allowed = False
-                    logger.error(f"Pre-migration backup failed; migration skipped for safety: {backup_error}")
-            if migrate_allowed and migrate_with_rollback:
-                try:
-                    result = migrate_with_rollback()
-                    if result.get("status") == "rolled_back":
-                        logger.error(f"Alembic migration failed and was rolled back: {result.get('reason')}")
+                    result = migrate_with_rollback(create_safety_backup=settings.backup_before_migrate)
+                    if result.get("status") in {"rolled_back", "rollback_failed", "failed"}:
+                        logger.error(
+                            "Alembic migration ended with status %s: %s",
+                            result.get("status"),
+                            result.get("reason"),
+                        )
                     else:
                         logger.info("Alembic migration completed.")
                 except Exception as migration_error:
