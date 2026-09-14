@@ -160,3 +160,27 @@ def test_decimal_quantities_pos_enforcement(db_session):
     )
     res = checkout(payload=payload_grocery_sale, request=req_grocery, background_tasks=bg_tasks, db=db_session, current_user=user_grocery)
     assert res["total"] == 6.0
+
+
+def test_checkout_rejects_inventory_price_below_server_floor(db_session):
+    req_mobile = _create_mock_request(org_id=3, branch_id=3)
+    user_mobile = MockUser(id=3, organization_id=3, branch_id=3)
+    payload = SaleIn(
+        customer_id=1,
+        payment_method="Cash",
+        cash_amount=1,
+        paid=True,
+        lines=[SaleLine(item_id=1, quantity=1, price=1.0)],
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        checkout(
+            payload=payload,
+            request=req_mobile,
+            background_tasks=BackgroundTasks(),
+            db=db_session,
+            current_user=user_mobile,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "below the allowed floor" in exc_info.value.detail

@@ -1,8 +1,9 @@
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from app.constants import SALE_INVENTORY_LINE_TYPES, SALE_LINE_TYPES
@@ -692,6 +693,20 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
                 raise HTTPException(status_code=403, detail="Serial / IMEI tracking is not licensed for this organization")
         line_type = _normalize_line_type(getattr(line, "line_type", None), line.item_id)
         price = float(line.price or 0)
+        if line_type in SALE_INVENTORY_LINE_TYPES:
+            item = (
+                scope_query(db.query(InventoryItem), InventoryItem, request, branch_scoped=True)
+                .filter(InventoryItem.id == line.item_id, InventoryItem.is_deleted == False)  # noqa: E712
+                .first()
+            )
+            if not item:
+                raise HTTPException(status_code=404, detail=f"Inventory item not found: {line.item_id}")
+            price_floor = max(float(item.cost_price or 0), float(item.min_allowed_price or 0))
+            if price + 0.001 < price_floor:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Price for {item.name} is below the allowed floor of LKR {price_floor:.2f}",
+                )
         line_total = float(qty) * price
         if line_type == "discount":
             subtotal -= abs(line_total)
@@ -1872,10 +1887,10 @@ class OfflineSaleBatchItem(BaseModel):
 
 
 class OfflineBatchSyncRequest(BaseModel):
-    sales: list[OfflineSaleBatchItem]
+    sales: list[OfflineSaleBatchItem] = Field(min_length=1, max_length=100)
 
 
-@router.post('/checkout/batch-sync')
+@router.post('/checkout/batch-sync', dependencies=[Depends(require_permission("pos.checkout"))])
 def batch_sync_offline_sales(
     payload: OfflineBatchSyncRequest,
     request: Request,
@@ -1893,6 +1908,13 @@ def batch_sync_offline_sales(
 
     for item in payload.sales:
         inv_no = item.offline_invoice_no.strip().upper()
+        if not re.fullmatch(r"INV-OFF-[A-Z0-9-]{8,64}", inv_no):
+            results.append({
+                "offline_invoice_no": inv_no,
+                "status": "error",
+                "error": "Invalid offline invoice number",
+            })
+            continue
         # Check if already synced for this tenant
         existing = scope_query(db.query(Sale), Sale, request).filter(Sale.invoice_no == inv_no).first()
         if existing:
