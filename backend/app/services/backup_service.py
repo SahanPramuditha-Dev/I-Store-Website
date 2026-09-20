@@ -301,9 +301,14 @@ def _is_gz(path: Path) -> bool:
 def _safe_backup_path(filename: str) -> Path:
     if "/" in filename or "\\" in filename:
         raise ValueError("invalid filename")
-    backup_dir = Path(settings.backup_folder)
-    target = (backup_dir / filename).resolve()
-    if not str(target).startswith(str(backup_dir.resolve())):
+    # Do not use Path.resolve() here.  Windows packaged applications can
+    # transparently redirect an existing child into LocalCache while leaving
+    # the parent path under LocalAppData, causing valid backups to fail a
+    # string-prefix check.  The API accepts a basename only, so a normalized
+    # lexical containment check is both safe and stable under redirection.
+    backup_dir = Path(os.path.abspath(settings.backup_folder))
+    target = Path(os.path.abspath(backup_dir / filename))
+    if os.path.commonpath((os.path.normcase(str(backup_dir)), os.path.normcase(str(target)))) != os.path.normcase(str(backup_dir)):
         raise ValueError("invalid backup target path")
     return target
 
@@ -487,7 +492,12 @@ def _prune_local_backups_tiered() -> dict[str, Any]:
     newest_file = files[0]
     now = datetime.now()
 
-    kept: list[Path] = [newest_file]
+    # Configuration is a minimum generation count.  Time-tier pruning may
+    # retain more, but must never silently retain fewer than the operator's
+    # configured local-backup floor.
+    minimum_generations = max(1, int(settings.backup_keep_local))
+    protected = set(files[:minimum_generations])
+    kept: list[Path] = list(files[:minimum_generations])
     daily_cutoff = now - timedelta(days=7)
     weekly_cutoff = now - timedelta(days=28)
     monthly_cutoff = now - timedelta(days=90)
@@ -497,6 +507,8 @@ def _prune_local_backups_tiered() -> dict[str, Any]:
     to_delete: list[Path] = []
 
     for f in files[1:]:
+        if f in protected:
+            continue
         name = f.name.lower()
         # Always keep special safety / manual snapshots unless older than 90 days
         if any(name.startswith(p) for p in ("manual_", "pre_restore_", "pre-migration_", "emergency_", "recovered_")):
@@ -684,26 +696,34 @@ def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -
 
         # Stage 7: Cloud Storage Upload & Remote Verification (if configured)
         firebase_result: dict[str, Any] = {"uploaded": False, "verified": False, "reason": "disabled"}
+        r2_result: dict[str, Any] = {"uploaded": False, "verified": False, "reason": "disabled"}
         remote_blob = None
-        remote_prefix = f"istore-backups/{datetime.now().strftime('%Y%m%d')}/"
+        tenant_code = "".join(
+            char if char.isalnum() or char in "-_" else "-"
+            for char in str(os.getenv("ISTORE_TENANT_CODE") or "default").strip().lower()
+        ).strip("-_") or "default"
+        remote_prefix = f"istore-backups/{tenant_code}/{datetime.now().strftime('%Y%m%d')}/"
+        upload_meta = {
+            "backup_id": backup_id,
+            "timestamp": timestamp,
+            "checksum": checksum,
+            "app_version": settings.app_version,
+            "schema_version": settings.db_schema_version,
+            "device_name": settings.device_name,
+            "tenant_code": tenant_code,
+            "trigger": trigger,
+            "encrypted": str(encrypted).lower(),
+            "compressed": "true",
+        }
 
-        if settings.firebase_backup_enabled:
+        if settings.firebase_backup_enabled and not encrypted:
+            firebase_result = {"uploaded": False, "verified": False, "reason": "cloud-backup-requires-encryption"}
+        elif settings.firebase_backup_enabled:
             sa = settings.firebase_service_account
             bucket = settings.firebase_bucket
             if sa and bucket and os.path.exists(sa):
                 try:
                     init_firebase(sa, bucket)
-                    upload_meta = {
-                        "backup_id": backup_id,
-                        "timestamp": timestamp,
-                        "checksum": checksum,
-                        "app_version": settings.app_version,
-                        "schema_version": settings.db_schema_version,
-                        "device_name": settings.device_name,
-                        "trigger": trigger,
-                        "encrypted": str(encrypted).lower(),
-                        "compressed": "true",
-                    }
                     blob_target = f"{remote_prefix}{artifact_path.name}"
                     upload_res = upload_backup(
                         str(artifact_path),
@@ -731,6 +751,31 @@ def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -
             else:
                 firebase_result = {"uploaded": False, "verified": False, "reason": "missing credentials/bucket"}
 
+        if settings.r2_backup_enabled and not encrypted:
+            r2_result = {"uploaded": False, "verified": False, "reason": "cloud-backup-requires-encryption"}
+        elif settings.r2_backup_enabled:
+            try:
+                from app.services.r2_backup import prune_remote_backups, upload_backup as upload_r2_backup, verify_backup as verify_r2_backup
+
+                r2_prefix = f"{settings.r2_backup_prefix}/{tenant_code}"
+                object_key = f"{r2_prefix}/{datetime.now().strftime('%Y%m%d')}/{artifact_path.name}"
+                upload_res = upload_r2_backup(str(artifact_path), object_key, upload_meta)
+                if upload_res.get("uploaded"):
+                    verify_res = verify_r2_backup(object_key, file_size, checksum)
+                    r2_result = {
+                        "uploaded": True,
+                        "verified": bool(verify_res.get("verified")),
+                        "object_key": object_key,
+                        "verify_detail": verify_res,
+                    }
+                    if verify_res.get("verified") and settings.r2_backup_keep > 0:
+                        prune_remote_backups(r2_prefix, settings.r2_backup_keep)
+                else:
+                    r2_result = upload_res
+            except Exception as exc:
+                r2_result = {"uploaded": False, "verified": False, "reason": str(exc)}
+                logger.warning(f"R2 backup upload/verify failed: {exc}")
+
         metadata_record = {
             "backup_id": backup_id,
             "timestamp": timestamp,
@@ -753,6 +798,9 @@ def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -
             "firebase_uploaded": bool(firebase_result.get("uploaded")),
             "firebase_verified": bool(firebase_result.get("verified")),
             "firebase_blob": remote_blob,
+            "r2_uploaded": bool(r2_result.get("uploaded")),
+            "r2_verified": bool(r2_result.get("verified")),
+            "r2_object_key": r2_result.get("object_key"),
         }
 
         if settings.firebase_backup_enabled and settings.firebase_store_metadata and firebase_result.get("uploaded"):
@@ -785,7 +833,7 @@ def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -
                 filename=artifact_path.name,
                 status="verified" if is_verified else "failed",
                 backup_type="auto" if is_auto else trigger,
-                storage_target="local_and_cloud" if firebase_result.get("uploaded") else "local",
+                storage_target="local_and_cloud" if (firebase_result.get("uploaded") or r2_result.get("uploaded")) else "local",
                 checksum=checksum,
                 size_bytes=file_size,
                 metadata_json=json.dumps(metadata_record, ensure_ascii=False),
@@ -805,6 +853,7 @@ def create_backup(db: Session, is_auto: bool = False, trigger: str = "manual") -
             "verified": is_verified,
             "restorable": is_verified,
             "firebase": firebase_result,
+            "r2": r2_result,
             "retention": retention_res,
             "metadata": metadata_record,
         }
@@ -852,12 +901,30 @@ def restore_backup(db: Session, filename: str, passphrase: str | None = None) ->
             pre_name = f"pre_restore_{datetime.now().strftime('%Y_%m_%d_%H%M%S')}.sqlite"
             pre_path = backup_dir / pre_name
             if live_db.exists():
-                _checkpoint_sqlite_database(live_db)
-                shutil.copy2(live_db, pre_path)
+                _safe_sqlite_online_snapshot(live_db, pre_path)
                 _write_checksum(pre_path)
 
-            # Atomically replace live database
-            shutil.copy2(sqlite_candidate, live_db)
+            # Stage on the same filesystem so os.replace is atomic.  Close
+            # this request's Session and dispose pooled connections first;
+            # copying over an open SQLite file is unsafe and fails on Windows.
+            replacement = live_db.with_name(f".{live_db.name}.restore-{uuid.uuid4().hex}.tmp")
+            shutil.copy2(sqlite_candidate, replacement)
+            if not _is_valid_sqlite_database(replacement):
+                replacement.unlink(missing_ok=True)
+                raise ValueError("Staged replacement failed SQLite integrity check.")
+            try:
+                close_session = getattr(db, "close", None)
+                if callable(close_session):
+                    close_session()
+                from app.database import engine
+                engine.dispose(close=True)
+                _remove_sqlite_companion_files(live_db)
+                os.replace(replacement, live_db)
+            finally:
+                replacement.unlink(missing_ok=True)
+
+            if not _is_valid_sqlite_database(live_db):
+                raise RuntimeError("Live database failed integrity verification after restore cutover.")
             _remove_sqlite_companion_files(live_db)
             restored_at = _now_utc_iso()
             _upsert_setting(db, LAST_RESTORE_KEY, restored_at)

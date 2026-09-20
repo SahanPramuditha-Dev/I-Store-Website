@@ -10,6 +10,8 @@
 
 A production-grade, all-in-one ERP system tailored for electronics stores, mobile repair shops, and modern retail businesses. Built with high performance in mind, **iStore ERP** runs seamlessly as a standalone **Windows desktop app (Electron)**, a **local networked POS**, or a **cloud-hosted web platform (Vercel + Neon PostgreSQL)**.
 
+**Current desktop release:** v1.1.114 — database migration, encrypted R2 backup, atomic restore, and update-safety validation release.
+
 ---
 
 ## 📸 Visual Showcase
@@ -91,6 +93,8 @@ A production-grade, all-in-one ERP system tailored for electronics stores, mobil
 ### 8. ☁️ Disaster Recovery & Hybrid Sync
 - Offline-first desktop operations with SQLite local persistence.
 - Automatic encrypted cloud snapshots (Firebase Storage / Cloudflare R2).
+- Tenant-separated R2 object prefixes, remote checksum verification, and approval-gated cloud restores.
+- Verified pre-update and pre-restore safety snapshots with SHA-256 sidecars.
 - Real-time outbox synchronization to Cloud Customer Portal via Supabase.
 
 ---

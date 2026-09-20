@@ -26,7 +26,7 @@ The auto-update system is built on **`electron-updater`** and **GitHub Releases*
    +-----------------------------------------------------+
    |        Pre-Update Safety Backup (`db-backup.js`)    |
    |  - Flushes WebAssembly SQLite memory buffer to disk |
-   |  - Creates timestamped backup in `%APPDATA%/backups` |
+   |  - Creates an online SQLite snapshot + SHA-256 file  |
    +--------------------------+--------------------------+
                               |
                               v
@@ -45,8 +45,8 @@ The auto-update system is built on **`electron-updater`** and **GitHub Releases*
                               v
    +-----------------------------------------------------+
    |           Post-Update Launch & Migration            |
-   |  - New app version opens `%APPDATA%/istore-local.db`|
-   |  - `_migrate()` runs any new schema version SQL     |
+   |  - Opens the tenant data-root database              |
+   |  - Alembic applies or stamps the current schema     |
    +-----------------------------------------------------+
 ```
 
@@ -56,21 +56,23 @@ The auto-update system is built on **`electron-updater`** and **GitHub Releases*
 
 To guarantee zero data loss during application updates:
 
-1. **Storage Location**: The SQLite database (`istore-local.db`) is stored in Electron's persistent `app.getPath("userData")` directory (`%APPDATA%/istore-electron/`), completely outside the application binary installation directory. Reinstalling or updating the app binary never touches or wipes user data.
+1. **Storage Location**: Business data is stored under the tenant-specific application data root, completely outside the versioned application binary directory. A normal update does not replace that data root. An OS reinstall can erase it, so an encrypted off-device backup is still required.
 2. **Pre-Update Online Backup**: When an update payload is fully downloaded:
-   - `updater.js` flushes all in-memory WebAssembly SQLite pages to disk via `db.close()`.
-   - `db-backup.js` creates a timestamped copy: `%APPDATA%/istore-electron/backups/istore-db-backup_<TIMESTAMP>.db`.
-   - Backup retention automatically purges files older than 30 days.
+   - `updater.js` refuses installation while unsafe active operations or unsynchronized work remain.
+   - `db-backup.js` creates a consistent SQLite online snapshot and a matching `.sha256` checksum file.
+   - The installer preserves the tenant data root while replacing application files.
+   - Backup retention removes an expired snapshot and its checksum together.
 
 ---
 
 ## 3. Database Schema Migrations
 
-Database schema versioning is managed inside `electron/local-db.js`:
+Backend database schema versioning is managed by Alembic:
 
-- On startup, `_migrate()` executes before displaying the window.
-- Tracks applied version numbers in the `schema_version` table.
-- When an updated binary includes new SQL tables or altered columns (e.g. Version 2, Version 3), `_migrate()` executes only the pending migration blocks sequentially.
+- A genuinely empty clean installation is created from the complete current SQLAlchemy metadata and stamped at the Alembic head.
+- Existing databases run pending Alembic revisions in order after a verified pre-migration backup.
+- Legacy runtime `create_all`/column synchronization is disabled unless explicitly enabled for development.
+- Failed migrations restore the verified pre-migration snapshot instead of continuing with a partially changed schema.
 
 ---
 
@@ -94,7 +96,7 @@ The main process communicates update state to the React frontend through context
 Releases are automated via GitHub Actions (`.github/workflows/release.yml`).
 
 ### Steps to Release:
-1. Bump version in `electron/package.json`:
+1. Bump the same version in `electron/package.json` and `frontend/package.json`:
    ```json
    "version": "1.0.1"
    ```

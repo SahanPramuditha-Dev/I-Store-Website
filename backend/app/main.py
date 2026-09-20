@@ -123,13 +123,19 @@ def _run_startup_tasks() -> None:
                     logger.error(f"Alembic migration failed: {migration_error}")
 
         try:
-            Base.metadata.create_all(bind=engine)
-            try:
-                from sync_schema import sync_schema
-                from app.config import DB_FILE
-                sync_schema(DB_FILE)
-            except Exception as sync_err:
-                logger.warning(f"Automatic schema column sync warning: {sync_err}")
+            # Alembic is the source of truth for production schema changes.
+            # `create_all` and the legacy column synchronizer are retained
+            # only for explicitly enabled development/ephemeral deployments;
+            # neither records revision history nor applies indexes, foreign
+            # keys, data migrations, or type changes.
+            if settings.allow_runtime_schema_sync:
+                Base.metadata.create_all(bind=engine)
+                try:
+                    from sync_schema import sync_schema
+                    from app.config import DB_FILE
+                    sync_schema(DB_FILE)
+                except Exception as sync_err:
+                    logger.warning(f"Automatic schema column sync warning: {sync_err}")
 
 
 

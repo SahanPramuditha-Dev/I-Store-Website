@@ -10,6 +10,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app.services.backup_service as backup_service
 
 
+def test_safe_backup_path_accepts_a_basename_and_rejects_traversal(tmp_path, monkeypatch):
+    monkeypatch.setattr(backup_service.settings, "backup_folder", str(tmp_path))
+
+    assert backup_service._safe_backup_path("verified.sqlite.gz") == tmp_path / "verified.sqlite.gz"
+    with pytest.raises(ValueError):
+        backup_service._safe_backup_path("../outside.sqlite")
+    with pytest.raises(ValueError):
+        backup_service._safe_backup_path(r"..\outside.sqlite")
+
+
 def _write_sqlite_db(path: Path) -> None:
     conn = sqlite3.connect(path)
     conn.execute("CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT)")

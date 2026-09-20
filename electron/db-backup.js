@@ -12,7 +12,7 @@ const path = require("path");
 const { app } = require("electron");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
-const { randomUUID } = require("crypto");
+const { createHash, randomUUID } = require("crypto");
 const runFile = promisify(execFile);
 
 /**
@@ -48,6 +48,8 @@ async function createBackup(dbPath, { snapshot } = {}) {
       await runFile(executable, [...args, "--backup-sqlite", dbPath, temporaryPath], { timeout: 55000, windowsHide: true });
     }
     fs.renameSync(temporaryPath, backupPath);
+    const checksum = createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
+    fs.writeFileSync(`${backupPath}.sha256`, checksum, { encoding: "utf-8", flag: "wx" });
   } catch (error) {
     if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
     throw error;
@@ -77,6 +79,8 @@ function _cleanupOldBackups(backupDir, maxAgeDays = 30) {
 
       if (now - stats.mtimeMs > maxAgeMs) {
         fs.unlinkSync(filePath);
+        const checksumPath = `${filePath}.sha256`;
+        if (fs.existsSync(checksumPath)) fs.unlinkSync(checksumPath);
         console.log(`[db-backup] Cleaned up old backup: ${file}`);
       }
     }

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.114] - 2026-09-20
+
+### Added
+- Encrypted Cloudflare R2 database backups with tenant-separated object keys, remote size/checksum verification, retention, listing, download, and restore testing.
+- Regression coverage for clean-install schema creation and historical Alembic upgrades.
+- Windows system certificate-store support for secure R2 access through antivirus HTTPS inspection.
+
+### Fixed
+- Made SQLite restore replacement atomic, disposed live connections before cutover, and verified the restored database after replacement.
+- Ensured pre-update and pre-restore backups use consistent SQLite snapshots and SHA-256 checksum sidecars.
+- Corrected SQLite-incompatible historical migration operations and missing optional-table guards.
+- Prevented runtime schema synchronization from silently bypassing Alembic unless explicitly enabled.
+- Ensured local retention never keeps fewer generations than configured.
+
+### Security
+- Cloud uploads now require backup encryption.
+- Cloud restore downloads must pass a non-destructive recovery test and enter the approval workflow before execution.
+
 ## [1.2.0] - 2026-08-17
 
 ### Added

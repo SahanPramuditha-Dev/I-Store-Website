@@ -143,6 +143,10 @@ def upgrade() -> None:
             sa.Column("price", sa.Float(), nullable=True),
             sa.Column("cost_price", sa.Float(), nullable=True),
             sa.Column("warranty_days", sa.Integer(), nullable=True),
+            # e9053aafee3c converts this legacy numeric field to text.  It
+            # must exist in the baseline so a brand-new database can execute
+            # the complete migration chain as well as an upgraded legacy DB.
+            sa.Column("serial_number", sa.Numeric(), nullable=True),
             sa.ForeignKeyConstraint(["sale_id"], ["sales.id"]),
             sa.ForeignKeyConstraint(["item_id"], ["inventory_items.id"]),
         )

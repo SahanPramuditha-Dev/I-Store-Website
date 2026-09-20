@@ -133,6 +133,9 @@ class Settings(BaseModel):
     r2_bucket: str = os.getenv("R2_BUCKET", "").strip()
     r2_endpoint: str = os.getenv("R2_ENDPOINT", "").strip()
     r2_public_base_url: str = os.getenv("R2_PUBLIC_BASE_URL", "").strip()
+    r2_backup_enabled: bool = _env_bool("R2_BACKUP_ENABLED", "false")
+    r2_backup_prefix: str = os.getenv("R2_BACKUP_PREFIX", "istore-backups").strip().strip("/") or "istore-backups"
+    r2_backup_keep: int = int(os.getenv("R2_BACKUP_KEEP", "30"))
 
     @property
     def is_production(self) -> bool:

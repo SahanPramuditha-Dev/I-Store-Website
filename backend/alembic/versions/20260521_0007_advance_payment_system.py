@@ -64,8 +64,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["linked_invoice_id"], ["sales.id"]),
             sa.ForeignKeyConstraint(["created_by"], ["users.id"]),
             sa.CheckConstraint("quantity > 0", name="ck_product_reservations_quantity_positive"),
+            sa.UniqueConstraint("reservation_number", name="uq_product_reservations_reservation_number"),
         )
-        op.create_unique_constraint("uq_product_reservations_reservation_number", "product_reservations", ["reservation_number"])
 
     if not _has_table("repair_estimates"):
         op.create_table(
@@ -87,8 +87,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["repair_ticket_id"], ["repair_tickets.id"]),
             sa.ForeignKeyConstraint(["customer_id"], ["customers.id"]),
             sa.ForeignKeyConstraint(["created_by"], ["users.id"]),
+            sa.UniqueConstraint("repair_ticket_id", name="uq_repair_estimates_repair_ticket_id"),
         )
-        op.create_unique_constraint("uq_repair_estimates_repair_ticket_id", "repair_estimates", ["repair_ticket_id"])
 
     if not _has_table("advance_payments"):
         op.create_table(
@@ -123,8 +123,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["estimate_id"], ["repair_estimates.id"]),
             sa.ForeignKeyConstraint(["invoice_id"], ["sales.id"]),
             sa.ForeignKeyConstraint(["received_by"], ["users.id"]),
+            sa.UniqueConstraint("advance_number", name="uq_advance_payments_advance_number"),
         )
-        op.create_unique_constraint("uq_advance_payments_advance_number", "advance_payments", ["advance_number"])
 
     if not _has_table("invoice_payments"):
         op.create_table(

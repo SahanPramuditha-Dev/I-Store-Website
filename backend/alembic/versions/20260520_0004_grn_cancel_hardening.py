@@ -30,7 +30,7 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 
 def _add_column_if_missing(table_name: str, column: sa.Column) -> None:
-    if _has_column(table_name, column.name):
+    if not _has_table(table_name) or _has_column(table_name, column.name):
         return
     with op.batch_alter_table(table_name, schema=None) as batch_op:
         batch_op.add_column(column)

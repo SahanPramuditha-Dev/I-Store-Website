@@ -3,9 +3,11 @@ from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from app.config import settings
+from sqlalchemy import inspect
 from app.services.backup_service import create_backup, restore_backup
-from app.database import SessionLocal
+from app.database import Base, SessionLocal, engine
+import app.models  # noqa: F401 - register the complete current schema
+from app.config import settings
 
 
 def _alembic_config() -> Config:
@@ -46,13 +48,28 @@ def migrate() -> None:
     if len(heads) != 1:
         raise RuntimeError(f"Expected one Alembic head, found {len(heads)}: {', '.join(heads)}")
 
+    # Replaying years of historical migrations is appropriate for an existing
+    # database, but a genuinely empty installation should be created directly
+    # from the current, complete metadata and then stamped.  This prevents an
+    # old partial baseline from becoming the schema of a brand-new shop.
+    existing_tables = {
+        name for name in inspect(engine).get_table_names() if name != "alembic_version"
+    }
+    if not existing_tables:
+        Base.metadata.create_all(bind=engine)
+        command.stamp(alembic_cfg, "head")
+        return
+
     command.upgrade(alembic_cfg, "head")
 
 
 def migrate_with_rollback(create_safety_backup: bool = True) -> dict[str, object]:
     backup_payload: dict[str, object] | None = None
     try:
-        if create_safety_backup:
+        # An empty installation has no database to snapshot.  Attempting a
+        # backup first prevented first-run Alembic initialization.
+        live_db_exists = Path(settings.sqlite_file).exists()
+        if create_safety_backup and live_db_exists:
             with SessionLocal() as db:
                 backup_payload = create_backup(db, is_auto=False, trigger="pre-migration")
         migrate()

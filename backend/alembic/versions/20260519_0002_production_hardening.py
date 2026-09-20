@@ -30,14 +30,20 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 
 def _add_column_if_missing(table_name: str, column: sa.Column) -> None:
-    if _has_column(table_name, column.name):
+    # This release also supports databases from older, partial desktop
+    # baselines.  A missing optional table must not make the entire upgrade
+    # chain unusable; its creating migration/runtime compatibility path owns
+    # creating it.
+    if not _has_table(table_name) or _has_column(table_name, column.name):
         return
     with op.batch_alter_table(table_name, schema=None) as batch_op:
         batch_op.add_column(column)
 
 
 def _create_index_if_missing(index_name: str, table_name: str, columns: list[str]) -> None:
-    indexes = _inspector().get_indexes(table_name) if _has_table(table_name) else []
+    if not _has_table(table_name):
+        return
+    indexes = _inspector().get_indexes(table_name)
     if any(idx.get("name") == index_name for idx in indexes):
         return
     op.create_index(index_name, table_name, columns, unique=False)

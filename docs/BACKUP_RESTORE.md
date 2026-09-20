@@ -1,6 +1,6 @@
 # Backup and Restore
 
-I Store uses local backup first, with optional Firebase Storage upload for disaster recovery.
+I Store uses a verified local backup first, with optional encrypted Firebase Storage or Cloudflare R2 upload for offsite disaster recovery.
 
 ## Local Backup Strategy
 
@@ -35,6 +35,30 @@ If enabled, Firestore stores metadata only:
 - Device name.
 
 It is not an operational database.
+
+## Cloudflare R2 Role
+
+R2 is the S3-compatible alternative to Firebase. Backups use a private bucket and are separated by tenant under `istore-backups/<tenant-code>/...`. The application verifies the uploaded object's size and SHA256 metadata before reporting the cloud copy as verified.
+
+```text
+BACKUP_ENCRYPT=true
+BACKUP_ENCRYPTION_PASSPHRASE=<strong-passphrase-kept-outside-the-PC>
+R2_BACKUP_ENABLED=true
+R2_ACCESS_KEY=<R2-token-access-key>
+R2_SECRET_KEY=<R2-token-secret>
+R2_BUCKET=<private-backup-bucket>
+R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+R2_BACKUP_PREFIX=istore-backups
+R2_BACKUP_KEEP=30
+```
+
+Cloud upload is rejected when backup encryption is disabled. Do not configure `R2_PUBLIC_BASE_URL` for the private backup bucket.
+
+## Tenant and Shop Separation
+
+An organization is the tenant and its branches are the shops. Operational rows carry organization and branch scope, while desktop data roots and remote backup keys include the tenant code. Never reuse one tenant code for unrelated businesses. A multi-shop organization may share one tenant but each terminal must be assigned to the correct branch and POS device.
+
+Before converting an older single-shop database, take and test an offsite backup, then run the supported adoption migration. Do not point a legacy database directly at a new multi-shop deployment merely because the current application models support multiple tenants.
 
 ## Scheduled Backups
 
@@ -78,6 +102,8 @@ POST /backup/restore/requests/{request_id}/execute
 
 Direct restore is disabled by default. Restores must go through the request, approval, and execute workflow.
 
+Cloud restore first downloads and verifies the artifact, then creates the same approval request. It does not bypass the restore workflow.
+
 ## Checksum Validation
 
 Backups should include SHA256 checksums. A restore should verify the selected file before replacing the active database. If checksum validation fails, stop the restore.
@@ -95,3 +121,17 @@ Suggested defaults:
 - Prune remote backups only after local backup history and checksum metadata are confirmed.
 
 Do not store production backups inside source folders or commit them to Git.
+
+## Clean Install and OS Reinstall
+
+A clean installation creates a new empty database at the current Windows user's application-data path. It does not automatically discover a database that was erased with the old operating system.
+
+For a reinstall on a previously used PC:
+
+1. Install and start I Store once so the new data folders are created.
+2. Configure the same tenant code and the Firebase or R2 credentials locally.
+3. Download the latest verified encrypted backup through Backup Center, or copy both the local backup and its `.sha256` file from external media.
+4. Test the restore, submit/approve the restore request, and execute it.
+5. Restart the application and verify tenant, branch, invoice totals, stock totals, and the latest transaction date before trading.
+
+The encryption passphrase is not recoverable from the backup. Keep it in a password manager or another location that survives loss of the PC. A cloud account alone is insufficient if the passphrase is lost.

@@ -30,7 +30,7 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 
 def _add_column_if_missing(table_name: str, column: sa.Column) -> None:
-    if _has_column(table_name, column.name):
+    if not _has_table(table_name) or _has_column(table_name, column.name):
         return
     op.add_column(table_name, column)
 

@@ -90,6 +90,16 @@ def _now_iso() -> str:
     return utcnow().isoformat()
 
 
+def _download_cloud_backup(provider: str, object_name: str, destination: str) -> dict[str, Any]:
+    if provider == "r2":
+        from app.services.r2_backup import download_backup
+    elif provider == "firebase":
+        from app.services.firebase_backup import download_backup
+    else:
+        return {"success": False, "reason": "Unsupported cloud backup provider"}
+    return download_backup(object_name, destination)
+
+
 def _role_level(role: str | None) -> int:
     name = str(role or "").strip().lower()
     mapping = {
@@ -1111,6 +1121,7 @@ def reject_restore_request(request_id: str, payload: RestoreRequestDecisionIn, d
 @router.post("/restore/requests/{request_id}/execute", dependencies=[Depends(require_permission("backup.restore"))])
 def execute_restore_request(request_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require_owner(user)
+    actor_user_id = int(user.id)
     req = _find_restore_request_row(db, request_id)
     if req is None:
         raise HTTPException(status_code=404, detail="restore request not found")
@@ -1179,13 +1190,37 @@ def execute_restore_request(request_id: str, db: Session = Depends(get_db), user
         db.commit()
         raise HTTPException(status_code=500, detail="Restore execution failed")
 
+    # restore_backup closes/disposes the old SQLite connection before atomic
+    # replacement.  Re-query against the restored database; the request may
+    # not exist there because it was created after the selected restore point.
+    req = _find_restore_request_row(db, request_id)
+    if req is None:
+        backup_record = _ensure_backup_record(db, filename, actor_user_id)
+        req = RestoreRequest(
+            request_code=request_id,
+            backup_record_id=backup_record.id,
+            reason="Restore workflow reconstructed after database cutover",
+            status="executed",
+            requested_by_user_id=actor_user_id,
+        )
+        db.add(req)
+        db.flush()
+        db.add(
+            RestoreApproval(
+                restore_request_id=req.id,
+                decision="approved",
+                note="Approval recorded before database cutover",
+                decided_by_user_id=actor_user_id,
+            )
+        )
+
     req.status = "executed"
-    req.executed_by_user_id = user.id
+    req.executed_by_user_id = actor_user_id
     req.executed_at = utcnow()
     req.execution_result = "success"
     pre_restore_snapshot = result.get("pre_restore_snapshot")
     if pre_restore_snapshot:
-        pre_record = _ensure_backup_record(db, str(pre_restore_snapshot), user.id)
+        pre_record = _ensure_backup_record(db, str(pre_restore_snapshot), actor_user_id)
         pre_record.backup_type = "pre_restore"
         pre_record.status = "verified"
         pre_record.storage_target = "local"
@@ -1193,7 +1228,7 @@ def execute_restore_request(request_id: str, db: Session = Depends(get_db), user
             db,
             restore_request_id=req.id,
             event_type="pre_restore_backup",
-            actor_user_id=user.id,
+            actor_user_id=actor_user_id,
             event_status="success",
             detail=f"Pre-restore backup created: {pre_restore_snapshot}",
             metadata={"filename": pre_restore_snapshot},
@@ -1202,7 +1237,7 @@ def execute_restore_request(request_id: str, db: Session = Depends(get_db), user
         db,
         restore_request_id=req.id,
         event_type="restore_completed",
-        actor_user_id=user.id,
+        actor_user_id=actor_user_id,
         event_status="success",
         detail="Restore executed successfully",
         metadata=result,
@@ -1325,13 +1360,19 @@ def get_scheduler_status(db: Session = Depends(get_db), _=Depends(get_current_us
 
     # Cloud status evaluation
     from app.services.firebase_backup import is_firebase_ready, list_remote_backups
+    from app.services.r2_backup import is_r2_backup_ready, list_remote_backups as list_r2_backups
     cloud_ready = is_firebase_ready()
     cloud_backups = list_remote_backups() if cloud_ready else []
+    r2_ready = is_r2_backup_ready()
+    r2_backups = list_r2_backups(f"{settings.r2_backup_prefix}/") if r2_ready else []
+    cloud_backups = [dict(row, provider="firebase") for row in cloud_backups] + r2_backups
+    cloud_backups.sort(key=lambda row: row.get("created_at") or "", reverse=True)
     latest_cloud = cloud_backups[0] if cloud_backups else None
 
     local_files = list_backup_filenames()
     local_status = "verified" if row_verified and row_verified.value else "none" if not local_files else "unverified"
-    cloud_status = "verified" if (latest_cloud and cloud_ready) else "not_configured" if not settings.firebase_backup_enabled else "upload_failed"
+    any_cloud_enabled = bool(settings.firebase_backup_enabled or settings.r2_backup_enabled)
+    cloud_status = "verified" if latest_cloud else "not_configured" if not any_cloud_enabled else "upload_failed"
 
     return {
         "enabled": bool(job is not None or settings.backup_schedule_enabled),
@@ -1344,7 +1385,8 @@ def get_scheduler_status(db: Session = Depends(get_db), _=Depends(get_current_us
         "backup_in_progress": is_backup_in_progress(),
         "local_backup_status": local_status,
         "local_backup_count": len(local_files),
-        "cloud_backup_enabled": bool(settings.firebase_backup_enabled),
+        "cloud_backup_enabled": any_cloud_enabled,
+        "cloud_providers": {"firebase": cloud_ready, "r2": r2_ready},
         "cloud_backup_status": cloud_status,
         "latest_cloud_backup": latest_cloud,
         "schedule": f"{settings.backup_schedule_hour:02d}:{settings.backup_schedule_minute:02d} daily ({settings.backup_schedule_timezone})",
@@ -1376,24 +1418,29 @@ def trigger_backup_now(db: Session = Depends(get_db), user: User = Depends(get_c
 @router.get("/cloud/list", dependencies=[Depends(require_permission("backup.view"))])
 def list_cloud_backups_endpoint(_=Depends(get_current_user)):
     from app.services.firebase_backup import list_remote_backups
-    return list_remote_backups()
+    from app.services.r2_backup import list_remote_backups as list_r2_backups
+    rows = [dict(row, provider="firebase") for row in list_remote_backups()]
+    rows.extend(list_r2_backups(f"{settings.r2_backup_prefix}/"))
+    rows.sort(key=lambda row: row.get("created_at") or "", reverse=True)
+    return rows
 
 
 @router.post("/cloud/test-restore", dependencies=[Depends(require_permission("backup.view"))])
 def test_restore_cloud_backup_endpoint(payload: dict, _=Depends(get_current_user)):
     blob_name = payload.get("blob_name")
+    provider = str(payload.get("provider") or "firebase").strip().lower()
     if not blob_name:
         raise HTTPException(status_code=400, detail="blob_name is required")
-    from app.services.firebase_backup import download_backup
     import tempfile
     with tempfile.NamedTemporaryFile(prefix="cloud_test_", suffix=Path(blob_name).suffix, delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
-        dl_res = download_backup(blob_name, str(tmp_path))
+        dl_res = _download_cloud_backup(provider, blob_name, str(tmp_path))
         if not dl_res.get("success"):
             raise HTTPException(status_code=500, detail=f"Cloud download failed: {dl_res.get('reason')}")
         test_res = test_restore_backup(tmp_path)
         test_res["blob_name"] = blob_name
+        test_res["provider"] = provider
         return test_res
     finally:
         tmp_path.unlink(missing_ok=True)
@@ -1403,27 +1450,45 @@ def test_restore_cloud_backup_endpoint(payload: dict, _=Depends(get_current_user
 def restore_cloud_backup_endpoint(payload: dict, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _require_owner(user)
     blob_name = payload.get("blob_name")
+    provider = str(payload.get("provider") or "firebase").strip().lower()
     if not blob_name:
         raise HTTPException(status_code=400, detail="blob_name is required")
-    from app.services.firebase_backup import download_backup
     backup_dir = Path(settings.backup_folder)
     backup_dir.mkdir(parents=True, exist_ok=True)
     local_target = backup_dir / Path(blob_name).name
-    dl_res = download_backup(blob_name, str(local_target))
+    dl_res = _download_cloud_backup(provider, blob_name, str(local_target))
     if not dl_res.get("success"):
         raise HTTPException(status_code=500, detail=f"Cloud download failed: {dl_res.get('reason')}")
-    try:
-        result = restore_backup(db, local_target.name)
-        log_activity(
-            db=db,
-            user_id=user.id,
-            action="CloudRestore",
-            entity_type="Backup",
-            entity_id=0,
-            description=f"Cloud backup restored: {blob_name}",
-            new_value=result,
-            is_reversible=False,
-        )
-        return result
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    test_result = test_restore_backup(local_target.name)
+    if not test_result.get("restorable"):
+        local_target.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"Cloud backup is not restorable: {test_result.get('reason')}")
+
+    backup_record = _ensure_backup_record(db, local_target.name, user.id)
+    request_code = f"RR-{uuid.uuid4().hex[:10].upper()}"
+    req = RestoreRequest(
+        request_code=request_code,
+        backup_record_id=backup_record.id,
+        reason=f"Cloud restore requested from {provider}: {blob_name}",
+        status="pending_approval",
+        requested_by_user_id=user.id,
+    )
+    db.add(req)
+    db.flush()
+    _record_restore_event(
+        db,
+        restore_request_id=req.id,
+        event_type="request_created",
+        actor_user_id=user.id,
+        event_status="success",
+        detail=req.reason,
+        metadata={"provider": provider, "blob_name": blob_name},
+    )
+    db.commit()
+    return {
+        "status": "pending_approval",
+        "request_id": request_code,
+        "filename": local_target.name,
+        "provider": provider,
+        "message": "Cloud backup downloaded and verified. Approve and execute the restore request to continue.",
+    }

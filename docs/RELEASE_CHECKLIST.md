@@ -1,5 +1,20 @@
 # v1.0 Release Checklist
 
+## v1.1.114 Update and Data-Consistency Validation
+
+- [x] Clean-install schema test passes and stamps the current Alembic head.
+- [x] Historical migration chain upgrades successfully on SQLite.
+- [x] Full backend regression suite passes.
+- [x] Encrypted R2 upload, remote checksum verification, download, decryption, and SQLite integrity test pass.
+- [x] Restore uses an online pre-restore snapshot and atomic database replacement.
+- [x] Electron pre-update snapshots produce SHA-256 sidecars.
+- [ ] GitHub release workflow builds the installer, blockmap, and `latest.yml`.
+- [ ] Upgrade an installed v1.1.113 client to v1.1.114 and confirm its existing data remains intact.
+- [ ] After the client update, compare tenant/branch, latest invoice, invoice count, stock totals, and latest transaction date with the pre-update values.
+- [ ] Confirm the pre-update backup and checksum exist and pass a non-destructive restore test.
+
+Do not test a destructive restore against the only production database. Keep the encrypted R2 backup and its passphrase available outside the test PC.
+
 **iStore ERP Production Release v1.0**  
 **Date:** August 2, 2026  
 **Status:** Ready with Conditional Fixes

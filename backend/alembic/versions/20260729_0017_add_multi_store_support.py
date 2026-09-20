@@ -36,7 +36,13 @@ def upgrade() -> None:
             existing_cols = {c["name"] for c in inspector.get_columns(table)}
             if "store_id" not in existing_cols:
                 with op.batch_alter_table(table) as batch_op:
-                    batch_op.add_column(sa.Column("store_id", sa.Integer(), sa.ForeignKey("stores.id"), nullable=True))
+                    batch_op.add_column(sa.Column("store_id", sa.Integer(), nullable=True))
+                    batch_op.create_foreign_key(
+                        f"fk_{table}_store_id_stores",
+                        "stores",
+                        ["store_id"],
+                        ["id"],
+                    )
                     batch_op.create_index(f"ix_{table}_store_id", ["store_id"])
 
 

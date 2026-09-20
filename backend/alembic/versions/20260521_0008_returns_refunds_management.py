@@ -72,8 +72,8 @@ def upgrade() -> None:
             sa.CheckConstraint("total_return_amount >= 0", name="ck_returns_total_return_amount_non_negative"),
             sa.CheckConstraint("refund_amount >= 0", name="ck_returns_refund_amount_non_negative"),
             sa.CheckConstraint("store_credit_amount >= 0", name="ck_returns_store_credit_amount_non_negative"),
+            sa.UniqueConstraint("return_number", name="uq_returns_return_number"),
         )
-        op.create_unique_constraint("uq_returns_return_number", "returns", ["return_number"])
     elif not _has_column("returns", "warranty_claim_id"):
         op.add_column("returns", sa.Column("warranty_claim_id", sa.Integer(), nullable=True))
 
@@ -129,8 +129,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["approved_by"], ["users.id"]),
             sa.ForeignKeyConstraint(["paid_by"], ["users.id"]),
             sa.CheckConstraint("refund_amount >= 0", name="ck_refund_payments_refund_amount_non_negative"),
+            sa.UniqueConstraint("refund_number", name="uq_refund_payments_refund_number"),
         )
-        op.create_unique_constraint("uq_refund_payments_refund_number", "refund_payments", ["refund_number"])
 
     if not _has_table("store_credits"):
         op.create_table(
@@ -150,8 +150,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["created_by"], ["users.id"]),
             sa.CheckConstraint("amount >= 0", name="ck_store_credits_amount_non_negative"),
             sa.CheckConstraint("remaining_amount >= 0", name="ck_store_credits_remaining_non_negative"),
+            sa.UniqueConstraint("credit_number", name="uq_store_credits_credit_number"),
         )
-        op.create_unique_constraint("uq_store_credits_credit_number", "store_credits", ["credit_number"])
 
     if not _has_table("exchange_records"):
         op.create_table(
@@ -174,8 +174,8 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(["new_product_id"], ["inventory_items.id"]),
             sa.ForeignKeyConstraint(["new_invoice_id"], ["sales.id"]),
             sa.ForeignKeyConstraint(["created_by"], ["users.id"]),
+            sa.UniqueConstraint("exchange_number", name="uq_exchange_records_exchange_number"),
         )
-        op.create_unique_constraint("uq_exchange_records_exchange_number", "exchange_records", ["exchange_number"])
 
     if not _has_table("damaged_stock_records"):
         op.create_table(

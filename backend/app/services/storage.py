@@ -213,7 +213,7 @@ class R2StorageService:
         self.bucket = bucket
         self.endpoint = endpoint.rstrip("/")
         self.public_base_url = public_base_url.rstrip("/") if public_base_url else None
-        self._client = None
+        self._s3_client = None
         self._boto3_ok = False
         try:
             import boto3  # type: ignore
@@ -227,15 +227,15 @@ class R2StorageService:
     def _client(self):
         if not self._boto3_ok:
             raise RuntimeError("boto3 is not installed — pip install boto3 to use R2")
-        if self._client is None:
-            self._client = self._boto3.client(
+        if self._s3_client is None:
+            self._s3_client = self._boto3.client(
                 "s3",
                 endpoint_url=self.endpoint,
                 aws_access_key_id=self.access_key,
                 aws_secret_access_key=self.secret_key,
                 region_name="auto",
             )
-        return self._client
+        return self._s3_client
 
     async def upload_file(
         self,
