@@ -11,7 +11,7 @@ httpx==0.28.1
 fpdf2==2.8.7
 apscheduler==3.10.4
 pytz==2024.1
-cryptography==43.0.3
+cryptography==50.0.1
 boto3>=1.35,<2
 firebase-admin>=6.5,<8
 truststore>=0.10,<1
