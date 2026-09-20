@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.115] - 2026-09-21
+
+### Changed
+- Version-only validation release used to exercise the packaged v1.1.114 → v1.1.115 GitHub auto-update path, including download, pre-install database backup, restart, and data-consistency checks.
+
 ## [1.1.114] - 2026-09-20
 
 ### Added

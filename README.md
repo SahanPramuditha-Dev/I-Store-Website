@@ -10,7 +10,7 @@
 
 A production-grade, all-in-one ERP system tailored for electronics stores, mobile repair shops, and modern retail businesses. Built with high performance in mind, **iStore ERP** runs seamlessly as a standalone **Windows desktop app (Electron)**, a **local networked POS**, or a **cloud-hosted web platform (Vercel + Neon PostgreSQL)**.
 
-**Current desktop release:** v1.1.114 — database migration, encrypted R2 backup, atomic restore, and update-safety validation release.
+**Current desktop release:** v1.1.115 — GitHub auto-update validation release following the database and backup safety update.
 
 ---
 
