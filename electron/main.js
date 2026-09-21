@@ -57,8 +57,7 @@ function getLicensedTenantMetadata() {
   };
 }
 
-function ensureDataRootMigration() {
-  const legacyUserData = app.getPath("userData");
+function ensureDataRootMigration(legacyUserData = app.getPath("userData")) {
   const targetUserData = resolveDataRoot();
   if (path.resolve(legacyUserData) === path.resolve(targetUserData)) return;
 
@@ -252,6 +251,14 @@ function stopBackend() {
 }
 
 // ── Prevent multiple instances ─────────────────────────────────────────────
+// Electron scopes its single-instance lock to userData. Select the licensed
+// tenant profile first so stale or differently branded installations cannot
+// cause a valid E Store launch to exit silently.
+const legacyUserDataRoot = app.getPath("userData");
+const startupDataRoot = resolveDataRoot();
+fs.mkdirSync(startupDataRoot, { recursive: true });
+app.setPath("userData", startupDataRoot);
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -373,9 +380,7 @@ function createWindow() {
 
 // ── App lifecycle ──────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  const targetUserData = resolveDataRoot();
-  ensureDataRootMigration();
-  app.setPath("userData", targetUserData);
+  ensureDataRootMigration(legacyUserDataRoot);
   startBackend();
   await initDatabase();
   const win = createWindow();
