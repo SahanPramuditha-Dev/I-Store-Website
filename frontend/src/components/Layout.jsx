@@ -43,13 +43,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetch } from "../hooks/useFetch";
 import { useCachedQuery } from "../hooks/useCachedQuery";
-import { canAccessPath, clearAuthState, getAuthValue, hasPermission, loadPermissions, NAV_PERMISSION_MAP } from "../lib/rbac";
+import { canAccessPath, clearAuthState, getAuthValue, loadPermissions } from "../lib/rbac";
 import { normalizeRepairStatus, isRepairDelivered } from "../lib/repairStatus";
 import api from "../lib/api";
 import { useStoreProfile } from "../hooks/useStoreProfile";
 import { useCapabilities } from "../context/CapabilityContext";
 import { Button, WorkstationNotice } from "./UI";
 import AIAssistant from "./ai/AIAssistant";
+import TerminalOnboardingModal from "./TerminalOnboardingModal";
 
 const navGroups = [
   {
@@ -191,6 +192,17 @@ export default function Layout() {
   const { data: apiNotifications, refresh: refreshNotifications } = useFetch("/notifications");
   const { identity } = useStoreProfile();
 
+  useEffect(() => {
+    // Let the authenticated workspace finish its initial render before
+    // starting Chromium for WhatsApp. This avoids a memory spike exactly at
+    // sign-in on busy POS workstations.
+    if (!window.istore?.whatsapp?.start) return undefined;
+    const timer = window.setTimeout(() => {
+      window.istore.whatsapp.start().catch(() => {});
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const fetchTenantContext = useCallback(() => {
     api.get("/settings/tenant/context")
       .then((res) => setTenantContext(res.data))
@@ -271,7 +283,21 @@ export default function Layout() {
     return () => clearInterval(interval);
   }, []);
 
-  const { hasCapability } = useCapabilities();
+  const { hasCapability, hasEntitlement } = useCapabilities();
+
+  const canOpenPath = useCallback((to) => {
+    const path = String(to || "");
+    if (!canAccessPath(path, permissions)) return false;
+    if ((path.startsWith("/pos") || path.startsWith("/invoice")) && !hasEntitlement("core_pos")) return false;
+    if ((path.startsWith("/inventory") || path.startsWith("/purchase") || path.startsWith("/barcodes")) && !hasEntitlement("inventory")) return false;
+    if ((path.startsWith("/repairs") || path.startsWith("/repair") || path.startsWith("/r") || path.startsWith("/warranty")) && !hasEntitlement("repairs")) return false;
+    if (path.startsWith("/whatsapp") && !hasEntitlement("smart_sms")) return false;
+    if ((path.startsWith("/repairs") || path.startsWith("/repair") || path.startsWith("/r")) && !hasCapability("repairs_management")) return false;
+    if (path.startsWith("/warranty") && !hasCapability("warranty_management")) return false;
+    if (path.startsWith("/inventory/serials") && !hasCapability("serial_tracking") && !hasCapability("imei_tracking")) return false;
+    if (path.startsWith("/inventory/batches") && !hasCapability("batch_tracking") && !hasCapability("expiry_tracking")) return false;
+    return true;
+  }, [permissions, hasCapability, hasEntitlement]);
 
   const visibleNavGroups = useMemo(
     () =>
@@ -279,21 +305,14 @@ export default function Layout() {
         .map((group) => ({
           ...group,
           items: group.items.filter(([to]) => {
-            // 1. RBAC permission check
-            if (!hasPermission(NAV_PERMISSION_MAP[to], permissions)) return false;
-            // 2. Capability check
-            if (to.startsWith("/repairs") && !hasCapability("repairs_management")) return false;
-            if (to.startsWith("/warranty") && !hasCapability("warranty_management")) return false;
-            if (to.includes("batches") && !hasCapability("batch_tracking") && !hasCapability("expiry_tracking")) return false;
-            return true;
+            return canOpenPath(to);
           }),
         }))
         .filter((group) => group.items.length > 0),
-    [permissions, hasCapability]
+    [canOpenPath]
   );
   const visibleFlatNav = visibleNavGroups.flatMap((g) => g.items);
   const crumb = visibleFlatNav.find(([to]) => location.pathname.startsWith(to))?.[1] ?? "Dashboard";
-  const canOpenPath = useCallback((to) => canAccessPath(String(to || ""), permissions), [permissions]);
   const navigateIfAllowed = useCallback(
     (to) => {
       if (canOpenPath(to)) {
@@ -321,7 +340,7 @@ export default function Layout() {
     () =>
       [
         { id: "open-pos", label: "Open POS", hint: "F2", to: "/pos" },
-        hasCapability("repairs_management") && { id: "create-repair", label: "Create Repair", hint: "Ctrl+R", to: "/repairs" },
+        hasCapability("repairs_management") && hasEntitlement("repairs") && { id: "create-repair", label: "Create Repair", hint: "Ctrl+R", to: "/repairs" },
         hasCapability("imei_tracking") && { id: "search-imei", label: "Search IMEI", hint: "Ctrl+I", to: "/search?focus=imei" },
         { id: "open-customer", label: "Open Customers", hint: "F3", to: "/customers" },
         { id: "open-invoice", label: "Open Invoices", hint: "F4", to: "/pos" },
@@ -333,7 +352,7 @@ export default function Layout() {
         .filter(Boolean)
         .filter((command) => canOpenPath(command.to))
         .map((command) => ({ ...command, action: () => navigateIfAllowed(command.to) })),
-    [canOpenPath, navigateIfAllowed, hasCapability]
+    [canOpenPath, navigateIfAllowed, hasCapability, hasEntitlement]
   );
   const filteredCommands = useMemo(() => {
     const query = String(commandQuery || "").trim().toLowerCase();
@@ -530,9 +549,10 @@ export default function Layout() {
                 n("/login");
               }}
               className="dashboard-logout-btn w-full rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--sidebar-text)] transition flex items-center justify-center gap-2"
+              title="Lock this workstation and return to the sign-in screen"
             >
               <LogOut size={16} />
-              {showFullSidebarText && <span>Logout</span>}
+              {showFullSidebarText && <span>Lock POS</span>}
             </button>
 
             {/* NEXUSIS Master Brand Footer Signature */}
@@ -916,8 +936,8 @@ export default function Layout() {
                                   Acknowledge
                                 </button>
                               ) : (
-                                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                                  ✓ Ack
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                  <Check size={11} aria-hidden="true" /> Acknowledged
                                 </span>
                               )}
                             </div>
@@ -1018,6 +1038,7 @@ export default function Layout() {
           </div>
         </main>
         <AIAssistant />
+        <TerminalOnboardingModal />
       </div>
     </div>
   );

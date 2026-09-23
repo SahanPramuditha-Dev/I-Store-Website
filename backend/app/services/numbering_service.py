@@ -21,6 +21,7 @@ SUPPORTED_PREFIXES = {
     "PAY",
     "LED",
     "APR",
+    "CLM",
     "RSV",
     "ORD",
 }

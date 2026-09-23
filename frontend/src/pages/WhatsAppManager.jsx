@@ -170,16 +170,17 @@ function FormattedWhatsAppText({ text, isDark = true }) {
 
 function MsgStatusBadge({ status }) {
   const m = {
-    READ:      { cls: "bg-cyan-50 dark:bg-cyan-500/15 text-cyan-800 dark:text-cyan-300 border-cyan-200 dark:border-cyan-500/30", label: "✓✓ READ" },
-    DELIVERED: { cls: "bg-blue-50 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-500/30", label: "✓✓ DELIVERED" },
-    SENT:      { cls: "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30", label: "✓ SENT" },
-    QUEUED:    { cls: "bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-500/30", label: "⏳ QUEUED" },
-    FAILED:    { cls: "bg-rose-50 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-500/30", label: "✕ FAILED" },
+    READ:      { cls: "bg-cyan-50 dark:bg-cyan-500/15 text-cyan-800 dark:text-cyan-300 border-cyan-200 dark:border-cyan-500/30", label: "READ", Icon: CheckCheck },
+    DELIVERED: { cls: "bg-blue-50 dark:bg-blue-500/15 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-500/30", label: "DELIVERED", Icon: CheckCheck },
+    SENT:      { cls: "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30", label: "SENT", Icon: Check },
+    QUEUED:    { cls: "bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-500/30", label: "QUEUED", Icon: Clock },
+    FAILED:    { cls: "bg-rose-50 dark:bg-rose-500/15 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-500/30", label: "FAILED", Icon: XCircle },
     CANCELLED: { cls: "bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-white/10", label: "CANCELLED" },
   }[status] || { cls: "bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-white/10", label: status };
 
   return (
     <span className={`border px-2 py-0.5 rounded-md font-extrabold text-[10px] tracking-wide inline-flex items-center gap-1 ${m.cls}`}>
+      {m.Icon ? <m.Icon size={11} aria-hidden="true" /> : null}
       {m.label}
     </span>
   );
@@ -197,6 +198,9 @@ export function WhatsAppManager() {
 
   // Connection
   const [status, setStatus] = useState("INITIALIZING");
+  const [portalBridge, setPortalBridge] = useState(null);
+  const [dismissedPortalBridgeState, setDismissedPortalBridgeState] = useState(null);
+  const [dismissedWhatsAppStatus, setDismissedWhatsAppStatus] = useState(null);
   const [qrCodeUrl, setQrCodeUrl] = useState(null);
   const [connectedUser, setConnectedUser] = useState(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -910,6 +914,7 @@ export function WhatsAppManager() {
       setOverview(res.data);
       if (res.data?.service) {
         setStatus(res.data.service.status || "OFFLINE");
+        setPortalBridge(res.data.service.portalBridge || null);
         setQrCodeUrl(res.data.service.qrCodeUrl || null);
         setConnectedUser(res.data.service.user || null);
       }
@@ -1212,7 +1217,7 @@ export function WhatsAppManager() {
         template_body: editedBody,
         is_active: editedActive
       });
-      setFeedback("✅ Template saved & active in ERP!");
+      setFeedback("Template saved and active in ERP.");
       toast({
         title: "Template Saved",
         description: `Changes to ${currentTemplate?.name || selectedEventType} are now live!`,
@@ -1221,7 +1226,7 @@ export function WhatsAppManager() {
       });
       fetchTemplates();
     } catch {
-      setFeedback("❌ Failed to save template.");
+      setFeedback("Failed to save template.");
       toast({ title: "Save Failed", description: "Could not save template changes.", tone: "error" });
     } finally {
       setSavingTemplate(false);
@@ -1233,11 +1238,11 @@ export function WhatsAppManager() {
     try {
       const res = await api.post(`/api/whatsapp/templates/${selectedEventType}/reset`);
       setEditedBody(res.data.template_body);
-      setFeedback("🔄 Reset to default!");
+      setFeedback("Reset to default.");
       toast({ title: "Reset Complete", description: "Template restored to original system wording.", tone: "info" });
       fetchTemplates();
     } catch {
-      setFeedback("❌ Failed to reset template.");
+      setFeedback("Failed to reset template.");
     }
   };
 
@@ -1513,7 +1518,22 @@ export function WhatsAppManager() {
       </div>
 
       {/* ── Microservice Offline Notification Banner ────────────────────────── */}
-      {(status === "OFFLINE" || status === "DISCONNECTED") && (
+      {portalBridge && portalBridge.state !== "online" && portalBridge.state !== "disabled" && dismissedPortalBridgeState !== portalBridge.state && (
+        <div role="alert" className="mb-4 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">Customer portal OTPs are unavailable: {portalBridge.state === "cloud_unreachable" ? "the cloud connection is unavailable and will retry automatically." : "WhatsApp needs to reconnect or be paired."} Open Diagnostics &amp; QR Pair below. Bills already synced remain available to signed-in customers.</span>
+          <button
+            type="button"
+            onClick={() => setDismissedPortalBridgeState(portalBridge.state)}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-amber-800 transition hover:bg-amber-200/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 dark:text-amber-200 dark:hover:bg-amber-500/20"
+            aria-label="Dismiss customer portal warning"
+            title="Dismiss"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      {(status === "OFFLINE" || status === "DISCONNECTED") && dismissedWhatsAppStatus !== status && (
         <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-sm">
           <div className="flex items-start gap-3 text-amber-900 dark:text-amber-300">
             <AlertCircle size={18} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
@@ -1536,6 +1556,15 @@ export function WhatsAppManager() {
               className="bg-white hover:bg-slate-50 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5"
             >
               <RefreshCw size={12} className={loadingOverview ? "animate-spin" : ""} /> Check Now
+            </button>
+            <button
+              type="button"
+              onClick={() => setDismissedWhatsAppStatus(status)}
+              className="grid h-8 w-8 place-items-center rounded-xl border border-amber-300 text-amber-800 transition hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 dark:border-amber-500/30 dark:text-amber-200 dark:hover:bg-amber-500/20"
+              aria-label="Dismiss WhatsApp service warning"
+              title="Dismiss"
+            >
+              <X size={15} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -1747,7 +1776,7 @@ export function WhatsAppManager() {
                     onClick={() => setChatSearch("")}
                     className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs"
                   >
-                    ✕
+                    <X size={13} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -1875,12 +1904,12 @@ export function WhatsAppManager() {
                       <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                         {chatData.customer?.invoices_count > 0 && (
                           <span className="text-cyan-700 dark:text-cyan-300">
-                            🧾 {chatData.customer.invoices_count} Invoices
+                            <FileText size={12} aria-hidden="true" /> {chatData.customer.invoices_count} Invoices
                           </span>
                         )}
                         {chatData.customer?.repairs_count > 0 && (
-                          <span className="text-amber-700 dark:text-amber-300">
-                            🛠️ {chatData.customer.repairs_count} Active Repairs
+                          <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+                            <Wrench size={12} aria-hidden="true" /> {chatData.customer.repairs_count} Active Repairs
                           </span>
                         )}
                         {status === "CONNECTED" ? (
@@ -1974,16 +2003,16 @@ export function WhatsAppManager() {
                             <div className="flex items-center justify-between gap-3 mb-1.5 pb-1 border-b border-black/5 dark:border-white/10">
                               <span className="text-[10px] font-bold tracking-wider">
                                 {isInbound ? (
-                                  <span className="text-cyan-700 dark:text-cyan-300 font-bold">
-                                    👤 {chatData.customer?.name || "Customer"}
+                                  <span className="inline-flex items-center gap-1 text-cyan-700 dark:text-cyan-300 font-bold">
+                                    <User size={12} aria-hidden="true" /> {chatData.customer?.name || "Customer"}
                                   </span>
                                 ) : isBot ? (
                                   <span className="text-emerald-800 dark:text-emerald-200 font-black flex items-center gap-1">
                                     <Bot size={12} className="text-emerald-600 dark:text-emerald-300" /> Self-Service Auto-Reply
                                   </span>
                                 ) : (
-                                  <span className="text-emerald-800 dark:text-emerald-200 font-bold">
-                                    💼 Staff / Manual Dispatch
+                                  <span className="inline-flex items-center gap-1 text-emerald-800 dark:text-emerald-200 font-bold">
+                                    <UserCheck size={12} aria-hidden="true" /> Staff / Manual Dispatch
                                   </span>
                                 )}
                               </span>
@@ -2007,7 +2036,7 @@ export function WhatsAppManager() {
                               <span>{formatDateTime(msg.created_at)}</span>
                               {!isInbound && (
                                 <span className="text-emerald-600 dark:text-emerald-300 font-bold" title={msg.status}>
-                                  ✓✓
+                                  <CheckCheck size={13} aria-label={msg.status || "Delivered"} />
                                 </span>
                               )}
                             </div>
@@ -2604,8 +2633,9 @@ export function WhatsAppManager() {
                       <FormattedWhatsAppText text={kbPreviewResult.ai_preview_answer} isDark={false} />
                     </div>
 
-                    <p className="text-[10px] text-slate-400 italic">
-                      🔒 Simulated preview only. No message was sent to WhatsApp.
+                    <p className="flex items-center gap-1.5 text-[10px] text-slate-400 italic">
+                      <ShieldCheck size={12} aria-hidden="true" />
+                      <span>Simulated preview only. No message was sent to WhatsApp.</span>
                     </p>
                   </div>
                 )}
@@ -2684,9 +2714,9 @@ export function WhatsAppManager() {
                     </div>
 
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
-                      <div>⏱️ Delay: <strong className="text-slate-900 dark:text-white">{rule.delay_hours} Hours</strong> after silence</div>
-                      <div>🔄 Max Follow-Ups: <strong className="text-slate-900 dark:text-white">{rule.max_follow_ups} Messages</strong></div>
-                      <div>🌙 Quiet Hours: <strong className="text-slate-900 dark:text-white">{rule.quiet_hours_start} → {rule.quiet_hours_end}</strong></div>
+                      <div className="flex items-center gap-1.5"><Clock size={12} aria-hidden="true" /> Delay: <strong className="text-slate-900 dark:text-white">{rule.delay_hours} Hours</strong> after silence</div>
+                      <div className="flex items-center gap-1.5"><RotateCcw size={12} aria-hidden="true" /> Max Follow-Ups: <strong className="text-slate-900 dark:text-white">{rule.max_follow_ups} Messages</strong></div>
+                      <div className="flex items-center gap-1.5"><Moon size={12} aria-hidden="true" /> Quiet Hours: <strong className="text-slate-900 dark:text-white">{rule.quiet_hours_start} → {rule.quiet_hours_end}</strong></div>
                     </div>
 
                     <div className="bg-white dark:bg-black/40 border border-slate-200 dark:border-white/5 rounded-lg p-2.5 text-[11px] text-slate-700 dark:text-slate-300 font-sans line-clamp-3">
@@ -2827,8 +2857,8 @@ export function WhatsAppManager() {
                         {rule.description || `Automated dispatch for ${rule.event_type}`}
                       </p>
 
-                      <div className="text-[11px] font-mono text-cyan-800 dark:text-cyan-300/80 bg-slate-100 dark:bg-slate-950/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/5 truncate">
-                        ⚡ Trigger: {rule.event_type}
+                      <div className="flex items-center gap-1.5 text-[11px] font-mono text-cyan-800 dark:text-cyan-300/80 bg-slate-100 dark:bg-slate-950/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-white/5 truncate">
+                        <Zap size={12} className="shrink-0" aria-hidden="true" /> Trigger: {rule.event_type}
                       </div>
                     </div>
 

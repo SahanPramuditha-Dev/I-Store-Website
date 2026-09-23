@@ -13,15 +13,16 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, CircleX, Clock3, X } from "lucide-react";
 import { useSyncStatus, SYNC_STATES } from "../hooks/useSyncStatus";
 
 // ── Style constants ─────────────────────────────────────────────────────────
 const BANNER_STYLES = {
-  [SYNC_STATES.SYNCED]:   { bg: "#14532d", text: "#bbf7d0", icon: "✓",  label: "All changes saved" },
+  [SYNC_STATES.SYNCED]:   { bg: "#14532d", text: "#bbf7d0", Icon: CheckCircle2, label: "All changes saved" },
   [SYNC_STATES.SYNCING]:  { bg: "#1e1b4b", text: "#c7d2fe", icon: null, label: "Syncing…" },
-  [SYNC_STATES.PENDING]:  { bg: "#78350f", text: "#fde68a", icon: "⏱", label: null },
-  [SYNC_STATES.CONFLICT]: { bg: "#7c2d12", text: "#fed7aa", icon: "⚠",  label: "Sync conflict detected" },
-  [SYNC_STATES.ERROR]:    { bg: "#7f1d1d", text: "#fecaca", icon: "✕",  label: "Sync failed" },
+  [SYNC_STATES.PENDING]:  { bg: "#78350f", text: "#fde68a", Icon: Clock3, label: null },
+  [SYNC_STATES.CONFLICT]: { bg: "#7c2d12", text: "#fed7aa", Icon: AlertTriangle, label: "Sync conflict detected" },
+  [SYNC_STATES.ERROR]:    { bg: "#7f1d1d", text: "#fecaca", Icon: CircleX, label: "Sync failed" },
 };
 
 // How long the "Synced" banner stays before disappearing
@@ -95,7 +96,7 @@ export function NetworkStatusBar() {
       {syncState === SYNC_STATES.SYNCING ? (
         <SpinnerIcon color={style.text} />
       ) : (
-        style.icon && <span style={{ fontSize: "13px" }}>{style.icon}</span>
+        style.Icon && <style.Icon size={14} aria-hidden="true" />
       )}
 
       {/* Message */}
@@ -175,7 +176,7 @@ export function NetworkStatusBar() {
             padding: "0 4px",
           }}
         >
-          ×
+          <X size={14} aria-hidden="true" />
         </button>
       )}
     </div>

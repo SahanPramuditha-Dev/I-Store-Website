@@ -384,8 +384,8 @@ export function ShiftModal({ open, onClose, currentShift, onShiftUpdated }) {
                   <span className="font-sans font-bold block">
                     {Math.abs(variance) < 1 ? "Drawer Status:" : variance > 0 ? "Cash Overage (+):" : "Cash Shortage (-):"}
                   </span>
-                  <span className="text-sm font-black">
-                    {Math.abs(variance) < 1 ? "✓ Perfectly Balanced" : `LKR ${Math.abs(variance).toLocaleString()}`}
+                  <span className="inline-flex items-center justify-end gap-1.5 text-sm font-black">
+                    {Math.abs(variance) < 1 ? <><CheckCircle2 size={15} aria-hidden="true" /> Perfectly Balanced</> : `LKR ${Math.abs(variance).toLocaleString()}`}
                   </span>
                 </div>
               </div>

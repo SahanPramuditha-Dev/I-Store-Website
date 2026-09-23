@@ -149,9 +149,10 @@ export function FeedbackProvider({ children }) {
               <button
                 className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition shrink-0"
                 onClick={() => dismissToast(t.id)}
+                aria-label="Dismiss notification"
                 title="Dismiss"
               >
-                <X size={14} />
+                <X size={14} aria-hidden="true" />
               </button>
             </div>
           </div>

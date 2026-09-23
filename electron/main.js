@@ -17,7 +17,8 @@
 
 "use strict";
 
-const { app, BrowserWindow, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, Menu, Tray, dialog, powerSaveBlocker } = require("electron");
+const os = require("os");
 app.disableHardwareAcceleration();
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -27,10 +28,113 @@ const syncBridge = require("./sync-bridge");
 const { initAutoUpdater } = require("./updater");
 const { ESTORE_PUBLIC_KEY_B64, loadCachedLicense } = require("./license-manager");
 const { getLicensedTenantCode, resolveTenantDataRoot } = require("./tenant-data-root");
+const { createWhatsAppService } = require("./whatsapp-service");
 
 const isDev = process.env.NODE_ENV === "development";
+// Select a startup profile from the actual workstation capacity. A 4 GB POS
+// PC is a low-end Chromium device once Windows, Electron and the local API
+// are running, while a well-equipped terminal should keep the normal profile.
+// Support can still explicitly force or disable the low-resource profile.
+const totalMemoryBytes = os.totalmem();
+const totalMemoryGiB = Math.round((totalMemoryBytes / (1024 ** 3)) * 10) / 10;
+const logicalCpuCores = Math.max(1, os.cpus()?.length || 1);
+const automaticLowResourceMode = totalMemoryBytes <= 6 * 1024 * 1024 * 1024
+  // Older dual-core i3 terminals with 8 GB can also become unresponsive when
+  // Windows and a barcode/print workload are active.
+  || (totalMemoryBytes <= 8 * 1024 * 1024 * 1024 && logicalCpuCores <= 2);
+const lowMemoryMode = process.env.ISTORE_LOW_MEMORY_MODE === "1"
+  || (process.env.ISTORE_LOW_MEMORY_MODE !== "0" && automaticLowResourceMode);
+const performanceProfile = lowMemoryMode ? "low-resource" : "standard";
+
+if (lowMemoryMode) {
+  // These are non-essential Chromium services. Disabling them reduces idle
+  // cache/process pressure; the POS remains fully local and offline-capable.
+  app.commandLine.appendSwitch("enable-low-end-device-mode");
+  app.commandLine.appendSwitch("disable-component-update");
+  app.commandLine.appendSwitch("disable-background-networking");
+  app.commandLine.appendSwitch("disable-features", [
+    "BackForwardCache",
+    "MediaRouter",
+    "Translate",
+    "OptimizationHints",
+    "AutofillServerCommunication",
+    "CertificateTransparencyComponentUpdater",
+  ].join(","));
+  // Keep Chromium disk caches bounded. This prevents a long-running cashier
+  // session from retaining an unnecessarily large image/HTTP cache.
+  app.commandLine.appendSwitch("disk-cache-size", "33554432");
+  app.commandLine.appendSwitch("media-cache-size", "8388608");
+}
 let backendProcess = null;
 let backendLogHandle = null;
+let mainWindow = null;
+let tray = null;
+let trayHintShown = false;
+let exitGuard = { hasCart: false, pendingSync: false, activeShift: false };
+let sleepBlockerId = null;
+let shutdownPromise = null;
+
+function updateSleepBlocker() {
+  const shouldStayAwake = Boolean(exitGuard.activeShift);
+  if (shouldStayAwake && sleepBlockerId === null) {
+    sleepBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+  } else if (!shouldStayAwake && sleepBlockerId !== null) {
+    powerSaveBlocker.stop(sleepBlockerId);
+    sleepBlockerId = null;
+  }
+}
+
+async function requestAppExit() {
+  const reasons = [];
+  if (exitGuard.hasCart) reasons.push("a sale is still in the cart");
+  if (exitGuard.pendingSync) reasons.push("changes are waiting to sync");
+  if (exitGuard.activeShift) reasons.push("a shift is still open");
+
+  if (reasons.length) {
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: "warning",
+      title: "Exit E Store?",
+      message: "Important POS work is still active.",
+      detail: `Before exiting, ${reasons.join(", ")}. You can minimise E Store to keep working.`,
+      buttons: ["Cancel", "Exit anyway"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (result.response !== 1) return false;
+  }
+  app.quit();
+  return true;
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  if (tray) return tray;
+
+  // This file is packaged with the renderer, so it is available both from the
+  // development checkout and inside app.asar in the installed desktop app.
+  tray = new Tray(path.join(__dirname, "frontend-dist", "favicon.ico"));
+  tray.setToolTip("E Store POS");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open POS", click: showMainWindow },
+    { type: "separator" },
+    {
+      label: "Exit E Store",
+      click: () => {
+        // `before-quit` performs the database/backend cleanup.
+        requestAppExit();
+      },
+    },
+  ]));
+  tray.on("click", showMainWindow);
+  return tray;
+}
 
 function resolveBaseDataRoot() {
   // Electron has no `localAppData` getPath key. On Windows, asking for it
@@ -44,6 +148,20 @@ function resolveBaseDataRoot() {
 
 function resolveDataRoot() {
   return resolveTenantDataRoot(resolveBaseDataRoot(), loadCachedLicense());
+}
+
+function logDesktopRecoveryEvent(event, detail = "") {
+  try {
+    const logDirectory = path.join(resolveDataRoot(), "logs");
+    fs.mkdirSync(logDirectory, { recursive: true });
+    fs.appendFileSync(
+      path.join(logDirectory, "desktop-recovery.log"),
+      `[${new Date().toISOString()}] ${event}${detail ? `: ${detail}` : ""}\n`,
+      "utf8"
+    );
+  } catch (_err) {
+    // Never let diagnostics interfere with checkout or application recovery.
+  }
 }
 
 function getLicensedTenantMetadata() {
@@ -258,6 +376,7 @@ const legacyUserDataRoot = app.getPath("userData");
 const startupDataRoot = resolveDataRoot();
 fs.mkdirSync(startupDataRoot, { recursive: true });
 app.setPath("userData", startupDataRoot);
+const whatsappService = createWhatsAppService({ app, baseDataRoot: resolveBaseDataRoot() });
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -327,6 +446,9 @@ function createWindow() {
       nodeIntegration:    false,
       sandbox:            false,   // required for preload IPC
       webSecurity:        true,
+      // POS fields are codes, prices and names; Chromium's spell-check
+      // dictionaries add memory but provide no useful cashier functionality.
+      spellcheck:         false,
     },
     // Show window only when ready to avoid white flash
     show: false,
@@ -345,8 +467,9 @@ function createWindow() {
     },
   });
 
-  // Schedule periodic background sync (every 2 minutes)
-  syncBridge.schedulePeriodicSync(win, 2 * 60 * 1000);
+  // On entry-level terminals, prioritise checkout responsiveness over frequent
+  // background work. Manual sync and reconnect-triggered sync remain instant.
+  syncBridge.schedulePeriodicSync(win, lowMemoryMode ? 5 * 60 * 1000 : 2 * 60 * 1000);
 
   // Load the frontend
   if (isDev) {
@@ -358,8 +481,25 @@ function createWindow() {
 
   win.once("ready-to-show", () => win.show());
 
+  // Dedicated tills benefit from a warm renderer and local API: closing the
+  // window hides it to the notification area, while the tray's explicit Exit
+  // command remains the predictable way to fully close the application.
+  win.on("close", (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      win.hide();
+      if (!trayHintShown && tray?.displayBalloon) {
+        trayHintShown = true;
+        tray.displayBalloon({
+          title: "E Store is still running",
+          content: "Use the notification-area icon to reopen POS or exit it safely.",
+        });
+      }
+    }
+  });
+
   win.on("closed", () => {
-    // IPC handlers auto-removed on window close
+    if (mainWindow === win) mainWindow = null;
   });
 
   // Auto-launch on Windows startup IPC handlers
@@ -383,32 +523,120 @@ app.whenReady().then(async () => {
   ensureDataRootMigration(legacyUserDataRoot);
   startBackend();
   await initDatabase();
-  const win = createWindow();
-  initAutoUpdater(win, { stopBackend });
+  mainWindow = createWindow();
+  createTray();
+  initAutoUpdater(mainWindow, { stopBackend });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      const newWin = createWindow();
-      initAutoUpdater(newWin);
+      mainWindow = createWindow();
+      initAutoUpdater(mainWindow);
+    } else {
+      showMainWindow();
     }
+  });
+
+  ipcMain.removeHandler("app:setExitGuard");
+  ipcMain.handle("app:setExitGuard", (event, nextGuard = {}) => {
+    if (event.sender !== mainWindow?.webContents) return false;
+    exitGuard = {
+      hasCart: Boolean(nextGuard.hasCart),
+      pendingSync: Boolean(nextGuard.pendingSync),
+      activeShift: Boolean(nextGuard.activeShift),
+    };
+    updateSleepBlocker();
+    return true;
+  });
+
+  ipcMain.removeHandler("terminal:hardwareStatus");
+  ipcMain.handle("terminal:hardwareStatus", async (event) => {
+    if (event.sender !== mainWindow?.webContents) return { available: false, printers: [] };
+    try {
+      const printers = await event.sender.getPrintersAsync();
+      return {
+        available: true,
+        performance: {
+          profile: performanceProfile,
+          automatic: process.env.ISTORE_LOW_MEMORY_MODE === undefined,
+          totalMemoryGiB,
+          logicalCpuCores,
+        },
+        printers: printers.map((printer) => ({
+          name: printer.name,
+          isDefault: Boolean(printer.isDefault),
+          status: printer.status || 0,
+        })),
+      };
+    } catch (error) {
+      return { available: false, printers: [], error: error.message };
+    }
+  });
+
+  ipcMain.removeHandler("whatsapp:start");
+  ipcMain.handle("whatsapp:start", async (event) => {
+    if (event.sender !== mainWindow?.webContents) return { started: false, error: "Unauthorized renderer" };
+    const result = await whatsappService.start();
+    if (result.error) logDesktopRecoveryEvent("whatsapp-service-start-failed", result.error);
+    return result;
+  });
+  ipcMain.removeHandler("whatsapp:stop");
+  ipcMain.handle("whatsapp:stop", async (event) => {
+    if (event.sender !== mainWindow?.webContents) return false;
+    await whatsappService.stop();
+    return true;
+  });
+  ipcMain.removeHandler("whatsapp:status");
+  ipcMain.handle("whatsapp:status", async (event) => {
+    if (event.sender !== mainWindow?.webContents) return { online: false };
+    return whatsappService.status();
   });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  // A renderer termination can destroy the last BrowserWindow. Keep the POS
+  // process and tray alive so the recovery handler can rebuild the window.
+  if (process.platform === "darwin" && !app.isQuitting) return;
+  if (app.isQuitting) app.quit();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  if (shutdownPromise) return;
+  event.preventDefault();
   app.isQuitting = true;
+  if (sleepBlockerId !== null) {
+    powerSaveBlocker.stop(sleepBlockerId);
+    sleepBlockerId = null;
+  }
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
   stopBackend();
   db.close();
+  shutdownPromise = whatsappService.stop()
+    .catch((error) => logDesktopRecoveryEvent("whatsapp-service-stop-failed", error.message))
+    .finally(() => app.quit());
+});
+
+app.on("render-process-gone", (_event, _webContents, details) => {
+  logDesktopRecoveryEvent("renderer-process-gone", `${details?.reason || "unknown"} (${details?.exitCode ?? "n/a"})`);
+  if (app.isQuitting || _webContents !== mainWindow?.webContents) return;
+  const recoverable = new Set(["crashed", "killed", "oom", "abnormal-exit", "launch-failed"]);
+  if (!recoverable.has(details?.reason)) return;
+  setTimeout(() => {
+    if (app.isQuitting) return;
+    if (!mainWindow || mainWindow.isDestroyed()) mainWindow = createWindow();
+    else mainWindow.reload();
+    showMainWindow();
+    logDesktopRecoveryEvent("renderer-recovery-started", details?.reason || "unknown");
+  }, 900);
+});
+
+app.on("child-process-gone", (_event, details) => {
+  logDesktopRecoveryEvent("child-process-gone", `${details?.type || "unknown"}: ${details?.reason || "unknown"}`);
 });
 
 app.on("second-instance", (_e, _argv, _cwd) => {
   // Focus existing window when user tries to open a second instance
-  const [win] = BrowserWindow.getAllWindows();
-  if (win) {
-    if (win.isMinimized()) win.restore();
-    win.focus();
-  }
+  showMainWindow();
 });

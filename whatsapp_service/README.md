@@ -14,6 +14,12 @@ npm install
 ```
 
 ### 2. Start the Service
+
+The installed E Store desktop application starts this service silently when
+POS opens and shuts down the instance it owns when E Store fully exits. No
+Scheduled Task, startup item, terminal window, or separately installed Node.js
+runtime is required in production. Manual startup remains available for source
+development and diagnostics:
 ```bash
 npm start
 ```

@@ -1,7 +1,8 @@
 import json
 import logging
+import base64
+import io
 from html import escape
-from urllib.parse import quote
 
 from sqlalchemy.orm import Session
 
@@ -10,24 +11,21 @@ from app.models import AppSetting
 SOFTWARE_NAME = "E Store"
 DEFAULT_SHOP_NAME = "I Point"
 
-CUSTOMER_PORTAL_BASE_URL = "https://i-store-customer-portal-one.vercel.app"
-
-
-def _customer_portal_invoice_token(invoice_number: str) -> str:
-    token_source = f"{invoice_number}istore_secure_salt_2026"
-    hash_val = 0
-    for ch in token_source:
-        hash_val = ((hash_val << 5) - hash_val + ord(ch)) & 0xFFFFFFFF
-    if hash_val >= 0x80000000:
-        hash_val -= 0x100000000
-    return f"sec_{abs(hash_val):08x}"[:12]
-
-
-def _customer_portal_invoice_url(invoice_number: str) -> str:
-    token = _customer_portal_invoice_token(invoice_number)
-    return f"{CUSTOMER_PORTAL_BASE_URL}/invoice/{quote(invoice_number)}?token={token}"
-
 logger = logging.getLogger(__name__)
+
+
+def _portal_qr_html(invoice):
+    url = invoice.get("customer_portal_url")
+    if not url or not str(url).startswith("https://") or "/r/" not in str(url):
+        return ""
+    import qrcode
+    import qrcode.image.svg
+    output = io.BytesIO()
+    qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, border=4).save(output)
+    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+    return (f'<div style="margin-top:15px;text-align:center;break-inside:avoid">'
+            f'<img src="data:image/svg+xml;base64,{encoded}" alt="Scan for digital bill" width="120" height="120" />'
+            '<div style="font-size:10px">Scan for digital bill · WhatsApp verification required</div></div>')
 
 
 def _safe_float(value) -> float:
@@ -488,7 +486,7 @@ def _render_invoice_html_customizer(invoice: dict, store: dict, settings: dict, 
 
     # Extraction
     invoice_number = escape(str(invoice.get("invoice_number") or invoice.get("invoice_no") or invoice.get("id") or ""))
-    portal_url = _customer_portal_invoice_url(invoice_number) if invoice_number else ""
+    portal_qr_html = _portal_qr_html(invoice)
     created_at = escape(str(invoice.get("created_at") or ""))
     salesperson = escape(str(invoice.get("created_by_name") or invoice.get("salesperson") or ""))
     
@@ -686,10 +684,7 @@ def _render_invoice_html_customizer(invoice: dict, store: dict, settings: dict, 
     </div>
 
     {thank_you_html}
-    <div style="margin-top: 15px; text-align: center;">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data={quote(portal_url, safe='')}" alt="Scan Bill QR" style="max-width: 90px; height: auto;" />
-      <div style="font-size: 8px; color: #666; margin-top: 2px;">Scan with camera for Mobile Digital Receipt</div>
-    </div>
+    {portal_qr_html}
   </div>
 </body>
 </html>"""

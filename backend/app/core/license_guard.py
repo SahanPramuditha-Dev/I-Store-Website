@@ -72,6 +72,26 @@ ENTITLEMENT_ROUTE_PREFIXES = {
     "bi_analytics": ("/api/analytics",),
 }
 
+FULL_SUITE_PACKAGE_CODES = {"FOREVER"}
+
+
+def resolve_effective_entitlements(payload: Dict[str, Any]) -> set[str]:
+    """Resolve route entitlements from the verified signed license payload.
+
+    Forever is contractually a full-suite package. Older Forever tokens can
+    contain a partial legacy entitlement list, so the signed package code is
+    authoritative for those tokens without weakening signature validation.
+    """
+    entitlements = {
+        str(value).strip().lower()
+        for value in (payload.get("entitlements") or [])
+        if str(value).strip()
+    }
+    package_code = str(payload.get("package_code") or "").strip().upper()
+    if package_code in FULL_SUITE_PACKAGE_CODES:
+        entitlements.update(ENTITLEMENT_ROUTE_PREFIXES)
+    return entitlements
+
 
 def _required_capabilities_for_path(path: str) -> set[str]:
     """Return acceptable signed capabilities for industry-specific API paths."""
@@ -318,7 +338,7 @@ async def require_active_license(request: Request) -> Dict[str, Any]:
             }
         )
 
-    entitlements = set(payload.get("entitlements") or [])
+    entitlements = resolve_effective_entitlements(payload)
     if "all" not in entitlements:
         for entitlement, prefixes in ENTITLEMENT_ROUTE_PREFIXES.items():
             if any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes):

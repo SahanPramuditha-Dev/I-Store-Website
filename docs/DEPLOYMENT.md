@@ -44,6 +44,19 @@ iStore ERP can be compiled into a standalone Windows installer (.exe) packaging 
 - Node.js 18+ and npm
 - Python 3.10+ (with virtual environment)
 - Inno Setup 6 (optional, for custom installer compilation)
+- Optional but strongly recommended: a trusted Windows code-signing certificate.
+  When configured, store its encoded certificate and password in GitHub Actions
+  as `WINDOWS_CODE_SIGNING_CERTIFICATE` and
+  `WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD`.
+
+### Unsigned initial releases
+
+The release workflow can publish without a signing certificate. Customers may
+see a Windows SmartScreen warning and must only use **More info → Run anyway**
+after verifying they downloaded the installer from your official release page.
+Some company-managed Windows devices can block unsigned apps completely. Do not
+claim the installer is signed or verified, and move to trusted signing before
+enabling unattended updates for a wider customer base.
 
 ### Build Commands
 
@@ -132,6 +145,8 @@ docker-compose down
 | `WHATSAPP_SERVICE_URL` | Local URL for Node.js WhatsApp microservice | `http://127.0.0.1:3001` |
 | `CUSTOMER_PORTAL_URL` | Public tracking URL for digital receipts | `https://i-store-customer-portal.vercel.app` |
 | `BACKUP_BEFORE_MIGRATE` | Auto snapshot before DB migrations | `true` |
+| `BACKUP_ENCRYPT` | Require encrypted production backups | `true` |
+| `BACKUP_ENCRYPTION_PASSPHRASE` | Unique backup encryption passphrase | Stored outside the PC |
 
 ---
 
@@ -142,3 +157,20 @@ docker-compose down
 3. **Rollback Strategy**:
    - Application rollback: Reinstall the previous Electron binary / revert Vercel deployment commit.
    - Database rollback: In case of schema migration failure, restore the pre-migration snapshot using `docs/RECOVERY_GUIDE.md` and `docs/BACKUP_RESTORE.md`.
+# Customer verification and invoice link rollout
+
+Production now requires distinct strong values for `SECRET_KEY`,
+`PORTAL_AUTH_SECRET`, and `INVOICE_SECURITY_SALT`. Keep these values stable
+across restarts and all backend workers. Changing the invoice secret invalidates
+previously issued public invoice links, so regenerate and resend existing links
+when rotating it.
+
+Apply Alembic migrations through `20260923_0022` before starting the production
+API. Customer OTPs are stored in `customer_portal_otps_local`, shared by all API
+workers using the same database. The local WhatsApp service must be connected
+and have `WHATSAPP_SERVICE_SECRET` configured; OTP requests fail explicitly when
+WhatsApp delivery is unavailable. SMS verification is unsupported.
+
+An invoice link now starts WhatsApp verification. The customer submits the code
+to `/public/auth/verify-otp`, then sends the returned short-lived bearer token
+when opening `/public/invoice/{invoice_no}` or `/public/repair/{ticket_no}`.

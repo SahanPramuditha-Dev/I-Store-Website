@@ -154,6 +154,8 @@ def init_backup_scheduler():
             replace_existing=True,
         )
 
+        from app.services.supabase_pos_sync import process_cloudflare_outbox
+        _scheduler.add_job(process_cloudflare_outbox, IntervalTrigger(minutes=1), id="cloudflare_portal_outbox", name="Customer bill sync", max_instances=1, coalesce=True, replace_existing=True)
         _scheduler.start()
         logger.info(f"Backup scheduler started successfully. Enabled: {cfg.get('enabled')}, Time: {cfg.get('hour'):02d}:{cfg.get('minute'):02d}")
     except Exception as exc:

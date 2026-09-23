@@ -15,6 +15,7 @@ try:
     from dotenv import load_dotenv
     root_dir = Path(__file__).resolve().parents[2]
     load_dotenv(root_dir / ".env")
+    load_dotenv(root_dir / ".portal-sync.env")
 except ImportError:
     pass
 
@@ -101,6 +102,8 @@ class Settings(BaseModel):
     backup_meta_history_keep: int = int(os.getenv("BACKUP_META_HISTORY_KEEP", "200"))
     backup_encrypt: bool = _env_bool("BACKUP_ENCRYPT", "true" if os.getenv("APP_ENV", "development").lower() == "production" else "false")
     backup_encryption_passphrase: str = os.getenv("BACKUP_ENCRYPTION_PASSPHRASE", "")
+    whatsapp_enabled: bool = _env_bool("WHATSAPP_ENABLED", "false")
+    whatsapp_service_secret: str = os.getenv("WHATSAPP_SERVICE_SECRET", "").strip()
     allow_direct_restore: bool = _env_bool("ALLOW_DIRECT_RESTORE", "false")
     firebase_backup_enabled: bool = os.getenv("FIREBASE_BACKUP_ENABLED", "false").lower() == "true"
     firebase_store_metadata: bool = os.getenv("FIREBASE_STORE_METADATA", "true").lower() == "true"
@@ -154,6 +157,13 @@ class Settings(BaseModel):
             msg = "Production SECRET_KEY must be set to a strong non-default value."
             raise RuntimeError(msg)
 
+        portal_secret = os.getenv("PORTAL_AUTH_SECRET", "").strip()
+        if len(portal_secret) < 32 or portal_secret == "istore_customer_session_secret_2026_key":
+            raise RuntimeError("Production PORTAL_AUTH_SECRET must be a unique value of at least 32 characters.")
+        invoice_secret = os.getenv("INVOICE_SECURITY_SALT", "").strip()
+        if len(invoice_secret) < 32 or invoice_secret == "istore_secure_salt_2026":
+            raise RuntimeError("Production INVOICE_SECURITY_SALT must be a unique value of at least 32 characters.")
+
         if any(origin.lower() == "null" for origin in self.cors_origins):
             # Always hard-fail for null CORS — this is a CORS bypass risk.
             raise RuntimeError("Production CORS_ORIGINS must not include null.")
@@ -169,6 +179,9 @@ class Settings(BaseModel):
             if _raise:
                 raise RuntimeError(msg)
             logger.warning(f"[config] {msg}")
+
+        if self.whatsapp_enabled and len(self.whatsapp_service_secret) < 32:
+            raise RuntimeError("Production WHATSAPP_SERVICE_SECRET must be a unique value of at least 32 characters when WhatsApp is enabled.")
 
         if self.allow_direct_restore:
             raise RuntimeError("Production ALLOW_DIRECT_RESTORE must remain disabled. Use approved restore requests.")

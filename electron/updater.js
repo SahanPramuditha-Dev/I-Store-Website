@@ -92,6 +92,15 @@ function _clearSnoozeIfExpired() {
 }
 
 const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const PRE_INSTALL_BACKUP_TIMEOUT_MS = 60_000;
+
+function _withTimeout(promise, timeoutMs, operation) {
+  let timeout;
+  const deadline = new Promise((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs / 1000} seconds.`)), timeoutMs);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timeout));
+}
 
 function _automaticCheckIsDue() {
   const prefs = _readSnoozePrefs();
@@ -318,7 +327,11 @@ function initAutoUpdater(win, options = {}) {
       const paths = [localPath, path.join(app.getPath("userData"), "database", "istore.db")];
       for (const databasePath of new Set(paths)) {
         if (databasePath && fs.existsSync(databasePath)) {
-          await createBackup(databasePath, databasePath === localPath ? { snapshot: db.writeSnapshot } : {});
+          await _withTimeout(
+            createBackup(databasePath, databasePath === localPath ? { snapshot: db.writeSnapshot } : {}),
+            PRE_INSTALL_BACKUP_TIMEOUT_MS,
+            "Pre-update database backup",
+          );
         }
       }
       _logEvent("pre_install_backup_completed");

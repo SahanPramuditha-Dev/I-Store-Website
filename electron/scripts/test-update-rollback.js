@@ -20,7 +20,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const crypto = require("crypto");
-const sqlite3 = require("sqlite3");
+const initSqlJs = require("sql.js");
 
 const TEST_DIR = path.join(__dirname, "..", "test-workspace");
 const TEST_DB = path.join(TEST_DIR, "database", "test.db");
@@ -68,51 +68,27 @@ function setup() {
   logSuccess("Test workspace created");
 }
 
-function createTestDatabase() {
+async function createTestDatabase() {
   log("Creating test database...");
-  return new Promise((resolve, reject) => {
-    const db = new sqlite3.Database(TEST_DB, (err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      db.serialize(() => {
-        db.run("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)", (err) => {
-          if (err) reject(err);
-        });
-        db.run("INSERT INTO items (name) VALUES ('test-item-1')", (err) => {
-          if (err) reject(err);
-        });
-        db.run("INSERT INTO items (name) VALUES ('test-item-2')", (err) => {
-          if (err) reject(err);
-          db.close(() => resolve());
-        });
-      });
-    });
-  });
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  db.run("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+  db.run("INSERT INTO items (name) VALUES ('test-item-1'), ('test-item-2')");
+  fs.writeFileSync(TEST_DB, Buffer.from(db.export()));
+  db.close();
 }
 
-function verifyDatabaseIntegrity(dbPath) {
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync(dbPath)) {
-      reject(new Error(`Database not found: ${dbPath}`));
-      return;
-    }
-    const db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        resolve(0);
-        return;
-      }
-      db.all("SELECT COUNT(*) as count FROM items", (err, rows) => {
-        if (err) {
-          db.close(() => resolve(0));
-          return;
-        }
-        const count = rows[0]?.count || 0;
-        db.close(() => resolve(count));
-      });
-    });
-  });
+async function verifyDatabaseIntegrity(dbPath) {
+  if (!fs.existsSync(dbPath)) throw new Error(`Database not found: ${dbPath}`);
+  const SQL = await initSqlJs();
+  try {
+    const db = new SQL.Database(fs.readFileSync(dbPath));
+    const count = db.exec("SELECT COUNT(*) FROM items")[0]?.values[0]?.[0] || 0;
+    db.close();
+    return count;
+  } catch {
+    return 0;
+  }
 }
 
 function simulateBackupCreation() {

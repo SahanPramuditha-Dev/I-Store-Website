@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import datetime
@@ -176,6 +177,11 @@ def _inventory_card_payload(db: Session, row: InventoryItem) -> dict:
         "image_url": row.image_url,
         "sale_price": float(row.sale_price or 0),
         "cost_price": float(row.cost_price or 0),
+        # Keep the POS card self-contained so the renderer does not need a
+        # second, general inventory request just for pricing guardrails.
+        "max_discount_amount": float(getattr(row, "max_discount_amount", 0) or getattr(row, "max_discount", 0) or 0),
+        "max_discount_percent": float(getattr(row, "max_discount_percent", 0) or 0),
+        "min_allowed_price": float(getattr(row, "min_allowed_price", 0) or 0),
         "warranty_days": int(row.shop_warranty_days or row.warranty_days or 0),
         "shop_warranty_days": int(row.shop_warranty_days or 0),
         "supplier_warranty_days": int(row.supplier_warranty_days or 0),
@@ -1428,6 +1434,7 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
         "payment_method": sale.payment_method,
     }))
 
+    _portal_sync_result = None
     # ── Cloud Sync ──────────────────────────────────────────────────────────
     # Push the finalized invoice to Supabase so the Customer Portal website
     # can show it as a Smart Bill immediately after checkout.
@@ -1438,7 +1445,7 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
 
         _invoice_label_str = _invoice_label(sale)
         _customer_name = customer.name if customer else "Walk-in"
-        _customer_phone = customer.phone if customer else ""
+        _customer_phone = (customer.whatsapp_number or customer.phone) if customer else ""
         _customer_email = customer.email if customer else ""
         _sync_items = [
             {
@@ -1463,7 +1470,7 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
         _store_id = _biz.get("store_id") or str(_shop_name).strip().lower().replace(" ", "-")
 
         # Enqueue invoice to Transactional Outbox within current database transaction
-        sync_checkout_invoice_to_cloud(
+        _portal_sync_result = sync_checkout_invoice_to_cloud(
             invoice_id=_invoice_label_str,
             customer_name=_customer_name,
             customer_phone=_customer_phone,
@@ -1484,8 +1491,13 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
             loyalty_rate=_loyalty_rate,
             db=db,
             organization_id=getattr(sale, "organization_id", None),
-            branch_id=getattr(sale, "branch_id", None)
+            branch_id=getattr(sale, "branch_id", None),
+            created_at=format_iso_utc(sale.created_at)
         )
+
+        # Checkout was already committed above; persist its new outbox record
+        # before another DB session attempts to flush it.
+        db.commit()
 
         def _do_sync():
             try:
@@ -1495,6 +1507,7 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
 
         threading.Thread(target=_do_sync, daemon=True).start()
     except Exception as _sync_err:
+        db.rollback()  # The sale was committed; clear only the failed sync transaction.
         logger.warning(f"Cloud sync outbox enqueue skipped: {_sync_err}")
     # ────────────────────────────────────────────────────────────────────────
 
@@ -1532,6 +1545,11 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
             f"&warranty_days={_first_warranty_days}"
         )
 
+        from app.services.cloudflare_portal_sync import enabled as cloudflare_portal_enabled
+        if cloudflare_portal_enabled():
+            # Never fall back to legacy predictable tokens / PII query strings.
+            _portal_url = (_portal_sync_result or {}).get("public_link") or os.getenv("CLOUDFLARE_PORTAL_URL", "")
+
         from app.routers.repair_router import _get_store_info
         _store_name, _store_phone, _store_addr, _ = _get_store_info(db, request=request)
         _qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=600x600&data={urllib.parse.quote(_portal_url)}&format=png&margin=12"
@@ -1565,6 +1583,8 @@ def checkout(payload: SaleIn, request: Request, background_tasks: BackgroundTask
     return {
         "sale_id": sale.id,
         "id": sale.id,
+        "customer_portal_url": (_portal_sync_result or {}).get("public_link"),
+        "customer_portal_cloudflare": os.getenv("CLOUDFLARE_PORTAL_ENABLED", "false").lower() == "true",
         "invoice_no": _invoice_label(sale),
         "repair_ticket_id": sale.repair_ticket_id,
         "repair_ticket_no": linked_repair.ticket_no if linked_repair else None,

@@ -100,6 +100,19 @@ export const INDUSTRY_TEMPLATES = {
   },
 };
 
+// Legacy Forever licenses were issued with an empty `entitlements` array.
+// Forever is a full-suite package, so an empty legacy value must not disable
+// otherwise licensed modules in the desktop client.
+const FOREVER_ENTITLEMENTS = ["core_pos", "inventory", "repairs", "smart_sms", "ai_assistant", "bi_analytics"];
+
+function resolveEntitlements(payload = {}) {
+  const configured = Array.isArray(payload.entitlements) ? payload.entitlements : [];
+  if (String(payload.package_code || "").trim().toUpperCase() === "FOREVER") {
+    return [...new Set([...configured, ...FOREVER_ENTITLEMENTS])];
+  }
+  return configured;
+}
+
 function getInitialCapabilityState() {
   try {
     const raw = localStorage.getItem("istore_license_token");
@@ -119,7 +132,7 @@ function getInitialCapabilityState() {
       return {
         industryType: ind || "MOBILE_RETAIL",
         capabilities: base,
-        entitlements: Array.isArray(payload.entitlements) ? payload.entitlements : [],
+        entitlements: resolveEntitlements(payload),
         featureFlags: Array.isArray(payload.feature_flags) ? payload.feature_flags : [],
       };
     }
@@ -162,7 +175,7 @@ export function CapabilityProvider({ children }) {
         const ind = (res.data.industry_type || "MOBILE_RETAIL").toUpperCase();
         setIndustryType(ind);
         setCapabilities(res.data.capabilities);
-        setEntitlements(Array.isArray(res.data.entitlements) ? res.data.entitlements : getInitialCapabilityState().entitlements);
+        setEntitlements(resolveEntitlements(res.data));
         setFeatureFlags(Array.isArray(res.data.feature_flags) ? res.data.feature_flags : getInitialCapabilityState().featureFlags);
       }
     } catch (e) {

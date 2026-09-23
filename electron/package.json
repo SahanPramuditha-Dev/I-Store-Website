@@ -1,6 +1,6 @@
 {
   "name": "istore-electron",
-  "version": "1.1.117",
+  "version": "1.1.124",
   "description": "E Store – Electron Desktop Business Platform",
   "main": "main.js",
   "private": true,
@@ -22,12 +22,10 @@
     "sql.js": "^1.12.0"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.6.0",
     "cross-env": "^7.0.3",
-    "electron": "^31.7.7",
-    "electron-builder": "^24.13.3",
-    "innosetup-compiler": "^6.3.1",
-    "sqlite3": "^5.1.7"
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "innosetup-compiler": "^6.3.1"
   },
   "build": {
     "appId": "com.istore.erp",
@@ -45,6 +43,7 @@
       "update-version.js",
       "tenant-data-root.js",
       "license-manager.js",
+      "whatsapp-service.js",
       "app-update.yml",
       "node_modules/**/*",
       "frontend-dist/**/*"
@@ -73,7 +72,7 @@
       "createStartMenuShortcut": true,
       "artifactName": "E-Store-Setup-${version}.${ext}",
       "deleteAppDataOnUninstall": false,
-      "runAfterFinish": true,
+      "runAfterFinish": false,
       "installerIcon": "../assets/icon.ico",
       "uninstallerIcon": "../assets/icon.ico",
       "include": "installer.nsh"
@@ -101,6 +100,22 @@
       {
         "from": "backend-dist/IStoreBackend",
         "to": "backend"
+      },
+      {
+        "from": "../whatsapp_service",
+        "to": "whatsapp-service",
+        "filter": [
+          "server.js",
+          "portal-bridge.js",
+          "sender-watchdog.js",
+          "package.json",
+          "node_modules/**/*",
+          "!.wwebjs_auth/**/*",
+          "!.wwebjs_cache/**/*",
+          "!logs/**/*",
+          "!.portal-bridge.env",
+          "!**/*.test.js"
+        ]
       }
     ]
   },

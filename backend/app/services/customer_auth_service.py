@@ -18,19 +18,16 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
+from app.models import CustomerPortalOtp
 
 from app.services.supabase_pos_sync import generate_invoice_token
 
 logger = logging.getLogger("istore.customer_auth")
 
-PORTAL_AUTH_SECRET = os.getenv("PORTAL_AUTH_SECRET", "istore_customer_session_secret_2026_key")
+from app.config import settings
+PORTAL_AUTH_SECRET = os.getenv("PORTAL_AUTH_SECRET") or settings.secret_key
 OTP_EXPIRATION_SECONDS = int(os.getenv("PORTAL_OTP_EXPIRATION_SECONDS", "300"))  # 5 minutes
 
-# In-memory OTP cache: phone -> {hash, expires_at, attempts}
-_ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
-
-# Anti-Abuse Rate Limiting: phone -> list of request epoch timestamps
-_OTP_REQUEST_TIMESTAMPS: Dict[str, list] = {}
 MAX_OTP_REQUESTS_PER_WINDOW = 3
 RATE_LIMIT_WINDOW_SECONDS = 600  # 10 minutes
 
@@ -55,7 +52,7 @@ def generate_customer_session_token(phone: str, store_id: str = "default", custo
     Generates a tamper-proof HMAC-signed session token for the customer portal.
     """
     now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(days=30)  # 30 days customer session
+    expires_at = now + timedelta(minutes=30)
 
     payload = {
         "phone": phone,
@@ -122,69 +119,56 @@ def request_customer_otp(
     phone: str,
     channel: str = "whatsapp",
     store_name: str = "I-Store",
-    db: Optional[Session] = None
+    db: Optional[Session] = None,
+    store_id: str = "default",
 ) -> Dict[str, Any]:
     """
-    Generates a 6-digit verification code and dispatches via WhatsApp (or SMS hook).
+    Generates a 6-digit verification code and dispatches via WhatsApp.
     Enforces strict anti-abuse rate-limiting (max 3 OTP requests per 10 minutes).
     """
     clean_phone = _normalize_phone(phone)
+    if channel.lower() != "whatsapp":
+        return {"success": False, "error": "Only WhatsApp verification is available."}
+    if db is None:
+        return {"success": False, "error": "Verification storage is unavailable."}
     if len(clean_phone) < 9:
         return {"success": False, "error": "Invalid phone number format."}
 
     # Anti-Abuse Rate Limiting Check
     now = datetime.now(timezone.utc)
-    now_ts = now.timestamp()
-    timestamps = [t for t in _OTP_REQUEST_TIMESTAMPS.get(clean_phone, []) if now_ts - t < RATE_LIMIT_WINDOW_SECONDS]
-    if len(timestamps) >= MAX_OTP_REQUESTS_PER_WINDOW:
-        wait_mins = max(1, int((RATE_LIMIT_WINDOW_SECONDS - (now_ts - timestamps[0])) / 60))
+    cutoff = (now - timedelta(seconds=RATE_LIMIT_WINDOW_SECONDS)).replace(tzinfo=None)
+    count = db.query(CustomerPortalOtp).filter(CustomerPortalOtp.phone == clean_phone, CustomerPortalOtp.created_at >= cutoff).count()
+    if count >= MAX_OTP_REQUESTS_PER_WINDOW:
         return {
             "success": False,
-            "error": f"Rate limit exceeded. Maximum {MAX_OTP_REQUESTS_PER_WINDOW} verification codes per 10 minutes. Please try again in {wait_mins} minute(s)."
+            "error": f"Rate limit exceeded. Maximum {MAX_OTP_REQUESTS_PER_WINDOW} verification codes per 10 minutes."
         }
-
-    timestamps.append(now_ts)
-    _OTP_REQUEST_TIMESTAMPS[clean_phone] = timestamps
 
     # Generate 6-digit numeric OTP
     code = f"{secrets.randbelow(1000000):06d}"
     code_hash = _hash_otp(clean_phone, code)
     expires_at = now + timedelta(seconds=OTP_EXPIRATION_SECONDS)
 
-    _ACTIVE_OTPS[clean_phone] = {
-        "hash": code_hash,
-        "expires_at": expires_at,
-        "attempts": 0
-    }
+    otp_record = CustomerPortalOtp(phone=clean_phone, store_id=store_id, code_hash=code_hash,
+                                   created_at=now.replace(tzinfo=None), expires_at=expires_at.replace(tzinfo=None), attempts=0)
+    db.add(otp_record)
+    db.commit()
 
-    # Dispatch OTP via chosen channel
-    dispatched = False
-    if channel.lower() == "whatsapp":
-        try:
-            from app.utils.whatsapp_helper import log_and_send_whatsapp
-            msg_text = (
-                f"🔐 *{store_name} Customer Portal Verification*\n\n"
-                f"Your 6-digit verification code is: *{code}*\n\n"
-                f"This code will expire in 5 minutes. Do not share this code with anyone."
-            )
-            # If WhatsApp service is active, send message
-            log_and_send_whatsapp(
-                event_type="CUSTOMER_PORTAL_OTP",
-                phone=clean_phone,
-                variables={"otp_code": code, "store_name": store_name, "message": msg_text}
-            )
-            dispatched = True
-            logger.info(f"Dispatched WhatsApp OTP to {clean_phone}")
-        except Exception as we:
-            logger.warning(f"WhatsApp OTP dispatch notice: {we}")
-
-    elif channel.lower() == "sms":
-        # Pluggable SMS Gateway Adapter Hook (e.g. NotifyLK, Twilio, Dialog)
-        logger.info(f"SMS Gateway Hook called for {clean_phone}. (Pluggable adapter ready)")
-        dispatched = True
-
-    # In development/test mode, record code in log
-    logger.debug(f"[DEV/TEST] Generated OTP for {clean_phone}: {code}")
+    from app.utils.whatsapp_helper import LocalWebWhatsAppProvider
+    import asyncio
+    msg_text = (
+        f"*{store_name} verification*\nYour code is *{code}*. "
+        "It expires in 5 minutes. Do not share it."
+    )
+    try:
+        delivery = asyncio.run(LocalWebWhatsAppProvider().send_text(clean_phone, msg_text))
+    except Exception as exc:
+        logger.warning("WhatsApp OTP delivery failed: %s", exc)
+        delivery = {"success": False}
+    if not delivery.get("success"):
+        db.delete(otp_record)
+        db.commit()
+        return {"success": False, "error": "WhatsApp verification is unavailable. Please try again later."}
 
     return {
         "success": True,
@@ -206,27 +190,36 @@ def verify_customer_otp(
     Returns: (is_valid, message, session_token)
     """
     clean_phone = _normalize_phone(phone)
-    record = _ACTIVE_OTPS.get(clean_phone)
+    if db is None:
+        return False, "Verification storage is unavailable.", None
+    record = (db.query(CustomerPortalOtp).filter(CustomerPortalOtp.phone == clean_phone,
+              CustomerPortalOtp.store_id == store_id, CustomerPortalOtp.consumed_at.is_(None))
+              .order_by(CustomerPortalOtp.created_at.desc()).first())
 
     if not record:
         return False, "No active verification code found. Please request a new code.", None
 
     now = datetime.now(timezone.utc)
-    if now > record["expires_at"]:
-        _ACTIVE_OTPS.pop(clean_phone, None)
+    if now.replace(tzinfo=None) > record.expires_at:
         return False, "Verification code has expired. Please request a new one.", None
 
-    if record["attempts"] >= 5:
-        _ACTIVE_OTPS.pop(clean_phone, None)
+    if record.attempts >= 5:
         return False, "Too many failed attempts. Please request a new code.", None
 
     expected_hash = _hash_otp(clean_phone, otp_code.strip())
-    if not hmac.compare_digest(record["hash"], expected_hash):
-        record["attempts"] += 1
+    if not hmac.compare_digest(record.code_hash, expected_hash):
+        record.attempts += 1
+        db.commit()
         return False, "Incorrect verification code. Please check and try again.", None
 
-    # OTP Verified Successfully -> Clear from cache
-    _ACTIVE_OTPS.pop(clean_phone, None)
+    # Consume once even when two workers verify the same code concurrently.
+    updated = db.query(CustomerPortalOtp).filter(
+        CustomerPortalOtp.id == record.id,
+        CustomerPortalOtp.consumed_at.is_(None),
+    ).update({CustomerPortalOtp.consumed_at: now.replace(tzinfo=None)})
+    db.commit()
+    if updated != 1:
+        return False, "Verification code has already been used.", None
 
     # Resolve customer name if DB is available
     customer_name = "Customer"
@@ -255,13 +248,13 @@ def verify_smart_invoice_token(
     db: Optional[Session] = None
 ) -> Tuple[bool, str, Optional[str], Optional[Dict[str, Any]]]:
     """
-    Verifies a Smart Invoice / QR token and automatically creates an authenticated customer session.
+    Verifies a Smart Invoice / QR token. WhatsApp verification is still required.
     Returns: (is_valid, message, session_token, invoice_summary)
     """
     clean_no = invoice_no.strip().upper()
     expected_token = generate_invoice_token(clean_no)
 
-    if not token or token.strip() != expected_token:
+    if not token or not hmac.compare_digest(token.strip(), expected_token):
         return False, "Invalid or expired invoice security token.", None, None
 
     customer_phone = ""
@@ -285,11 +278,7 @@ def verify_smart_invoice_token(
         except Exception as e:
             logger.debug(f"Sale lookup notice: {e}")
 
-    session_token = generate_customer_session_token(
-        phone=customer_phone or clean_no,
-        store_id=store_id,
-        customer_name=customer_name,
-        invoice_id=clean_no
-    )
+    if invoice_summary is None:
+        return False, "Invoice not found.", None, None
 
-    return True, "Invoice token verified", session_token, invoice_summary
+    return True, "Invoice link verified; WhatsApp verification required", None, invoice_summary

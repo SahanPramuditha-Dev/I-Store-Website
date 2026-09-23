@@ -3422,6 +3422,81 @@ html:not(.dark) *::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0
   transition: all 0.2s ease;
 }
 
+.dashboard-attention-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.dashboard-attention-strip.has-items {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: linear-gradient(90deg, rgba(120, 53, 15, 0.18), rgba(15, 23, 42, 0.42));
+}
+
+.dashboard-attention-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.dashboard-attention-heading > div {
+  display: grid;
+  gap: 1px;
+}
+
+.dashboard-attention-heading strong {
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.dashboard-attention-heading span,
+.dashboard-attention-more {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.dashboard-attention-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dashboard-attention-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: rgba(15, 23, 42, 0.44);
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+
+.dashboard-attention-action:hover {
+  transform: translateY(-1px);
+  background: rgba(51, 65, 85, 0.6);
+}
+
+.dashboard-attention-action b { color: #fff; }
+.dashboard-attention-action.tone-rose:hover { border-color: rgba(244, 63, 94, 0.7); }
+.dashboard-attention-action.tone-amber:hover { border-color: rgba(245, 158, 11, 0.7); }
+.dashboard-attention-action.tone-indigo:hover { border-color: rgba(99, 102, 241, 0.7); }
+
 /* Empty-data mode: do not present an empty business as a broken spreadsheet. */
 .app-table-viewport:has(.app-empty-state) {
   flex: 0 0 auto;
@@ -3750,6 +3825,26 @@ html:not(.dark) .dashboard-actions-card {
   border: 1px solid var(--border-card, #94a3b8) !important;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 4px 12px rgba(15, 23, 42, 0.02) !important;
 }
+
+html:not(.dark) .dashboard-attention-strip {
+  background: #f8fafc;
+  border-color: #dbe3ef;
+}
+
+html:not(.dark) .dashboard-attention-strip.has-items {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+html:not(.dark) .dashboard-attention-heading strong { color: #1e293b; }
+html:not(.dark) .dashboard-attention-heading span,
+html:not(.dark) .dashboard-attention-more { color: #64748b; }
+html:not(.dark) .dashboard-attention-action {
+  background: #fff;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+html:not(.dark) .dashboard-attention-action b { color: #0f172a; }
 
 html:not(.dark) .dashboard-health-item {
   background: #ffffff !important;

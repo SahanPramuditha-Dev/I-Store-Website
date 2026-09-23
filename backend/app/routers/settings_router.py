@@ -15,6 +15,7 @@ from app.services.security_service import (
     canonical_role_name,
     clear_user_permission_override,
     enforce_owner_user_change_guard,
+    enforce_role_locked_guard,
     ensure_security_defaults,
     get_active_sessions,
     get_effective_permission_codes,
@@ -35,6 +36,7 @@ from app.services.security_service import (
     validate_pin,
 )
 from app.services.capability_service import resolve_license_limits
+from app.core.tenant_guard import scope_query, stamp_tenant
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -42,6 +44,18 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 def _require_access_permission(db: Session, user: User, permission: str) -> None:
     if not has_permission(db, user, permission):
         raise HTTPException(status_code=403, detail=f"Permission denied: {permission}")
+
+
+def _is_owner(db: Session, user: User) -> bool:
+    """Owner-only operations must use the authoritative assigned role."""
+    role = db.query(Role).filter(Role.id == user.role_id).first() if user.role_id else None
+    return bool(role and role.name == "owner")
+
+
+def _require_assignable_role(db: Session, actor: User, role_name: str) -> None:
+    """Prevent staff-management permissions from becoming a privilege-escalation primitive."""
+    if role_name in {"owner", "admin"} and not _is_owner(db, actor):
+        raise HTTPException(status_code=403, detail="Only an Owner may assign Owner or Admin roles")
 
 PRINT_PROFILE_KEY = "print_profile"
 UI_PREFERENCES_KEY = "ui_preferences"
@@ -1277,10 +1291,10 @@ def update_settings_section(section_key: str, payload: dict, db: Session = Depen
 
 
 @router.get("/employees", dependencies=[Depends(require_permission("access.view"))])
-def employees(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def employees(request: Request, db: Session = Depends(get_db), _=Depends(get_current_user)):
     _require_access_permission(db, _, "access.view")
     ensure_security_defaults(db)
-    users = db.query(User).filter(User.is_deleted == False).order_by(User.id.asc()).all()
+    users = scope_query(db.query(User).filter(User.is_deleted == False), User, request).order_by(User.id.asc()).all()
     profiles = _load_employee_profiles(db)
     return [_build_employee_payload(user, profiles.get(str(user.id))) for user in users]
 
@@ -1310,6 +1324,7 @@ def create_employee(payload: EmployeeIn, request: Request, db: Session = Depends
         raise HTTPException(status_code=400, detail=" ".join(issues))
 
     canonical = canonical_role_name(payload.role)
+    _require_assignable_role(db, current, canonical)
     role = db.query(Role).filter(Role.name == canonical).first()
     if not role:
         raise HTTPException(status_code=400, detail=f"Unknown role: {payload.role}")
@@ -1334,6 +1349,7 @@ def create_employee(payload: EmployeeIn, request: Request, db: Session = Depends
         last_password_change_at=utcnow(),
         is_active=payload.is_active,
     )
+    stamp_tenant(user, request)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -1371,7 +1387,7 @@ def create_employee(payload: EmployeeIn, request: Request, db: Session = Depends
 def update_employee(user_id: int, payload: EmployeeUpdateIn, request: Request, db: Session = Depends(get_db), current=Depends(get_current_user)):
     _require_access_permission(db, current, "access.edit_user")
     ensure_security_defaults(db)
-    user = db.query(User).filter(User.id == user_id).first()
+    user = scope_query(db.query(User).filter(User.id == user_id), User, request).first()
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
 
@@ -1392,6 +1408,7 @@ def update_employee(user_id: int, payload: EmployeeUpdateIn, request: Request, d
             canonical = canonical_role_name(data["role"])
             enforce_owner_user_change_guard(db, target_user=user, new_role_name=canonical, deleting=False)
         canonical = canonical_role_name(data["role"])
+        _require_assignable_role(db, current, canonical)
         new_role = db.query(Role).filter(Role.name == canonical).first()
         if not new_role:
             raise HTTPException(status_code=400, detail=f"Unknown role: {data['role']}")
@@ -1449,7 +1466,7 @@ def update_employee(user_id: int, payload: EmployeeUpdateIn, request: Request, d
 def delete_employee(user_id: int, request: Request, db: Session = Depends(get_db), current=Depends(get_current_user)):
     _require_access_permission(db, current, "access.disable_user")
     ensure_security_defaults(db)
-    user = db.query(User).filter(User.id == user_id).first()
+    user = scope_query(db.query(User).filter(User.id == user_id), User, request).first()
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
     role_obj = db.query(Role).filter(Role.id == user.role_id).first() if user.role_id else None
@@ -1523,6 +1540,10 @@ def access_control_set_role_permissions(
 ):
     _require_access_permission(db, current, "access.manage_permissions")
     ensure_security_defaults(db)
+    role = db.query(Role).filter(Role.id == int(role_id)).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    enforce_role_locked_guard(role, "modified")
     permission_ids = payload.get("permission_ids") or []
     allowed = bool(payload.get("allowed", True))
     if not isinstance(permission_ids, list):
@@ -1551,6 +1572,10 @@ def access_control_grant_all(
 ):
     _require_access_permission(db, current, "access.manage_permissions")
     ensure_security_defaults(db)
+    role = db.query(Role).filter(Role.id == int(role_id)).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    enforce_role_locked_guard(role, "modified")
     set_role_permissions_bulk(db, role_id, allowed=True)
     record_security_audit(
         db,
@@ -1575,6 +1600,10 @@ def access_control_revoke_all(
 ):
     _require_access_permission(db, current, "access.manage_permissions")
     ensure_security_defaults(db)
+    role = db.query(Role).filter(Role.id == int(role_id)).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="Role not found")
+    enforce_role_locked_guard(role, "modified")
     set_role_permissions_bulk(db, role_id, allowed=False)
     record_security_audit(
         db,

@@ -4,7 +4,7 @@ import { RefreshCw, Download, CheckCircle2, ShieldCheck, Cpu, HardDrive, Sparkle
 import { Button, SectionCard, Badge } from "../UI";
 
 export default function SoftwareUpdatesSettingsPanel({ toast }) {
-  const [appVersion, setAppVersion] = useState("v1.1.104");
+  const [appVersion, setAppVersion] = useState("v1.1.124");
   const [checking, setChecking] = useState(false);
   const [updaterStatus, setUpdaterStatus] = useState("idle"); // 'idle' | 'checking' | 'available' | 'downloading' | 'ready-to-install' | 'up-to-date' | 'error' | 'blocked'
   const [progress, setProgress] = useState(0);
@@ -207,21 +207,21 @@ export default function SoftwareUpdatesSettingsPanel({ toast }) {
     if (entry.raw) return entry.raw;
     const time = entry.at ? new Date(entry.at).toLocaleTimeString() : "";
     const eventMap = {
-      checking_for_update:     "🔍 Checking for update",
-      update_available:        `🟢 Update available${entry.version ? ` (v${entry.version})` : ""}`,
-      update_not_available:    "✅ Already up to date",
-      update_downloaded:       `📦 Downloaded${entry.version ? ` v${entry.version}` : ""}`,
-      download_progress:       `⬇️  Downloading… ${entry.percent ? Math.round(entry.percent) + "%" : ""}`,
-      pre_install_backup_started:   "💾 Starting pre-install backup",
-      pre_install_backup_completed: "💾 Backup completed",
-      quit_and_install:        "🔄 Installing update and restarting",
-      update_snoozed:          `⏰ Snoozed (${entry.duration})`,
-      manual_check_requested:  "🔍 Manual check requested",
-      periodic_check_started:  "🔄 Periodic background check",
-      background_check_snoozed:"⏰ Background check skipped (snoozed)",
-      install_blocked:         `🔒 Install blocked: ${entry.reason || ""}`,
-      check_error:             `❌ Check error: ${entry.message || ""}`,
-      update_note:             `ℹ️  ${entry.message || ""}`,
+      checking_for_update:     "Checking for update",
+      update_available:        `Update available${entry.version ? ` (v${entry.version})` : ""}`,
+      update_not_available:    "Already up to date",
+      update_downloaded:       `Downloaded${entry.version ? ` v${entry.version}` : ""}`,
+      download_progress:       `Downloading… ${entry.percent ? Math.round(entry.percent) + "%" : ""}`,
+      pre_install_backup_started:   "Starting pre-install backup",
+      pre_install_backup_completed: "Backup completed",
+      quit_and_install:        "Installing update and restarting",
+      update_snoozed:          `Snoozed (${entry.duration})`,
+      manual_check_requested:  "Manual check requested",
+      periodic_check_started:  "Periodic background check",
+      background_check_snoozed:"Background check skipped (snoozed)",
+      install_blocked:         `Install blocked: ${entry.reason || ""}`,
+      check_error:             `Check error: ${entry.message || ""}`,
+      update_note:             entry.message || "Update note",
     };
     return `${time ? `[${time}]` : ""} ${eventMap[entry.event] || entry.event || ""}`.trim();
   };

@@ -1,13 +1,14 @@
 import json
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Customer, RepairTicket, Sale, SaleItem
 from app.constants import REPAIR_STATUS_LABELS
-from app.services.supabase_pos_sync import generate_invoice_token
+from app.core.tenant_guard import resolve_store_id
+from app.core.limiter import limiter
 from app.services.customer_auth_service import (
     request_customer_otp,
     verify_customer_otp,
@@ -20,8 +21,9 @@ router = APIRouter(prefix="/public", tags=["public"])
 
 class RequestOtpIn(BaseModel):
     phone: str = Field(..., description="Customer mobile number")
-    channel: str = Field(default="whatsapp", description="whatsapp | sms")
+    channel: str = Field(default="whatsapp", description="whatsapp only")
     store_name: Optional[str] = "I-Store"
+    store_id: str = "default"
 
 
 class VerifyOtpIn(BaseModel):
@@ -41,13 +43,15 @@ class VerifyTokenIn(BaseModel):
 # =========================================================================
 
 @router.post("/auth/request-otp")
-def api_request_customer_otp(payload: RequestOtpIn, db: Session = Depends(get_db)):
+@limiter.limit("10/hour")
+def api_request_customer_otp(request: Request, payload: RequestOtpIn, db: Session = Depends(get_db)):
     """Dispatches a 6-digit verification code to the customer via WhatsApp (or SMS hook)."""
     res = request_customer_otp(
         phone=payload.phone,
         channel=payload.channel,
         store_name=payload.store_name or "I-Store",
-        db=db
+        db=db,
+        store_id=payload.store_id,
     )
     if not res.get("success"):
         raise HTTPException(status_code=400, detail=res.get("error", "Failed to dispatch OTP"))
@@ -55,7 +59,8 @@ def api_request_customer_otp(payload: RequestOtpIn, db: Session = Depends(get_db
 
 
 @router.post("/auth/verify-otp")
-def api_verify_customer_otp(payload: VerifyOtpIn, db: Session = Depends(get_db)):
+@limiter.limit("30/hour")
+def api_verify_customer_otp(request: Request, payload: VerifyOtpIn, db: Session = Depends(get_db)):
     """Verifies the customer's 6-digit OTP and establishes an authenticated session token."""
     is_valid, msg, session_token = verify_customer_otp(
         phone=payload.phone,
@@ -75,7 +80,7 @@ def api_verify_customer_otp(payload: VerifyOtpIn, db: Session = Depends(get_db))
 
 @router.post("/auth/verify-token")
 def api_verify_smart_token(payload: VerifyTokenIn, db: Session = Depends(get_db)):
-    """Validates an invoice or QR token and creates an authenticated customer session."""
+    """Validates an invoice link and sends a code to its billing WhatsApp number."""
     is_valid, msg, session_token, summary = verify_smart_invoice_token(
         invoice_no=payload.invoice_no,
         token=payload.token,
@@ -84,11 +89,17 @@ def api_verify_smart_token(payload: VerifyTokenIn, db: Session = Depends(get_db)
     )
     if not is_valid:
         raise HTTPException(status_code=403, detail=msg)
+    sale = db.query(Sale).filter(Sale.invoice_no == payload.invoice_no.strip().upper(), Sale.is_deleted == False).first()
+    customer = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale and sale.customer_id else None
+    if not customer or not customer.phone:
+        raise HTTPException(status_code=400, detail="This invoice has no WhatsApp number for verification")
+    result = request_customer_otp(phone=customer.phone, db=db, store_id=payload.store_id or "default")
+    if not result.get("success"):
+        raise HTTPException(status_code=503, detail=result.get("error", "WhatsApp verification unavailable"))
     return {
         "success": True,
-        "message": msg,
-        "session_token": session_token,
-        "invoice_summary": summary
+        "message": "A verification code was sent to the billing WhatsApp number.",
+        "requires_otp": True,
     }
 
 
@@ -118,11 +129,13 @@ def _invoice_label(sale: Sale) -> str:
 
 
 @router.get("/invoice/{invoice_no}")
-def get_public_invoice(invoice_no: str, token: str = Query(""), db: Session = Depends(get_db)):
+def get_public_invoice(invoice_no: str, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="WhatsApp verification required")
+    valid, _, session = verify_customer_session_token(authorization[7:].strip())
+    if not valid or not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired customer session")
     clean_no = invoice_no.strip().upper()
-    expected_token = generate_invoice_token(clean_no)
-    if token != expected_token:
-        raise HTTPException(status_code=403, detail="Invalid security token")
 
     sale = db.query(Sale).filter(Sale.invoice_no == clean_no, Sale.is_deleted == False).first()
     if not sale and clean_no.startswith("INV-"):
@@ -135,11 +148,15 @@ def get_public_invoice(invoice_no: str, token: str = Query(""), db: Session = De
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     customer = db.query(Customer).filter(Customer.id == sale.customer_id).first() if sale.customer_id else None
+    from app.services.customer_auth_service import _normalize_phone
+    sale_store = sale.store_id or resolve_store_id(db, sale.organization_id)
+    if (not customer or _normalize_phone(customer.phone) != _normalize_phone(session.get("phone"))
+            or sale_store != session.get("store_id")):
+        raise HTTPException(status_code=404, detail="Invoice not found")
     items = db.query(SaleItem).filter(SaleItem.sale_id == sale.id).all()
 
     return {
         "id": _invoice_label(sale),
-        "token": expected_token,
         "created_at": sale.created_at.isoformat() if sale.created_at else None,
         "customer_name": customer.name if customer else "Walk-in Customer",
         "customer_phone": customer.phone if customer else "",
@@ -164,7 +181,12 @@ def get_public_invoice(invoice_no: str, token: str = Query(""), db: Session = De
 
 
 @router.get("/repair/{ticket_no}")
-def get_public_repair(ticket_no: str, db: Session = Depends(get_db)):
+def get_public_repair(ticket_no: str, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="WhatsApp verification required")
+    valid, _, session = verify_customer_session_token(authorization[7:].strip())
+    if not valid or not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired customer session")
     clean_no = ticket_no.strip().upper()
     repair = db.query(RepairTicket).filter(RepairTicket.ticket_no == clean_no, RepairTicket.is_deleted == False).first()
     if not repair and clean_no.startswith("JOB-"):
@@ -177,6 +199,11 @@ def get_public_repair(ticket_no: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Repair ticket not found")
 
     customer = db.query(Customer).filter(Customer.id == repair.customer_id).first() if repair.customer_id else None
+    from app.services.customer_auth_service import _normalize_phone
+    repair_store = repair.store_id or resolve_store_id(db, repair.organization_id)
+    if (not customer or _normalize_phone(customer.phone) != _normalize_phone(session.get("phone"))
+            or repair_store != session.get("store_id")):
+        raise HTTPException(status_code=404, detail="Repair ticket not found")
     return {
         "id": repair.ticket_no or f"JOB-{repair.id:05d}",
         "customer_phone": customer.phone if customer else "",

@@ -331,18 +331,10 @@ def access_set_role_permissions(
             detail=f"Sensitive permission changes require confirm_sensitive=true ({', '.join(sorted(set(sensitive_changed)))})",
         )
     if self_access_removed:
-        owner_confirm_id = int(payload.get("owner_confirmation_user_id") or 0)
-        if owner_confirm_id <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Self lockout protection: owner_confirmation_user_id is required to remove your own access.manage_permissions",
-            )
-        owner_user = db.query(User).filter(User.id == owner_confirm_id, User.is_deleted == False, User.is_active == True).first()  # noqa: E712
-        if not owner_user:
-            raise HTTPException(status_code=400, detail="Owner confirmation user not found")
-        owner_role = db.query(Role).filter(Role.id == owner_user.role_id).first() if owner_user.role_id else None
-        if not owner_role or owner_role.name != "owner" or int(owner_user.id) == int(getattr(current, "id", 0)):
-            raise HTTPException(status_code=400, detail="Owner confirmation must come from another active Owner")
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot remove your own access.manage_permissions. Ask another authorized administrator to change this role.",
+        )
 
     changed, revoked = _apply_role_permission_changes(
         db,
@@ -440,6 +432,8 @@ def access_role_revoke_all(
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
     enforce_role_locked_guard(role, "modified")
+    if int(getattr(current, "role_id", 0) or 0) == int(role.id):
+        raise HTTPException(status_code=400, detail="You cannot revoke all permissions from your own role")
     reason = _require_change_reason((payload or {}).get("reason"))
     set_role_permissions_bulk(db, role.id, False)
 
@@ -495,6 +489,8 @@ def access_role_reset_defaults(
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
     enforce_role_locked_guard(role, "reset")
+    if int(getattr(current, "role_id", 0) or 0) == int(role.id):
+        raise HTTPException(status_code=400, detail="Ask another authorized administrator to reset your role")
     reason = _require_change_reason((payload or {}).get("reason"))
     reset_role_permissions_to_default(db, role.id)
     log_access_control_audit(
@@ -537,6 +533,8 @@ def access_role_copy_from(
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
     enforce_role_locked_guard(role, "modified")
+    if int(getattr(current, "role_id", 0) or 0) == int(role.id):
+        raise HTTPException(status_code=400, detail="Ask another authorized administrator to replace your role permissions")
     reason = _require_change_reason((payload or {}).get("reason"))
     changed = copy_role_permissions(db, role_id=id, source_role_id=source_role_id)
     log_access_control_audit(

@@ -27,7 +27,8 @@ const ALLOWED_INVOKE = new Set([
   "license:status", "license:activate", "license:getFingerprint",
   "updater:check", "updater:download", "updater:install", "updater:setOperationsActive", "updater:getVersion", "updater:getState",
   "updater:snooze", "updater:getUpdateLog",
-  "app:getAutoLaunch", "app:setAutoLaunch",
+  "app:getAutoLaunch", "app:setAutoLaunch", "app:setExitGuard", "terminal:hardwareStatus",
+  "whatsapp:start", "whatsapp:stop", "whatsapp:status",
 ]);
 
 // ── Whitelist of valid "on" event channels ────────────────────────────────
@@ -96,6 +97,19 @@ contextBridge.exposeInMainWorld("istore", {
   autoLaunch: {
     get: () => safeInvoke("app:getAutoLaunch"),
     set: (openAtLogin) => safeInvoke("app:setAutoLaunch", openAtLogin),
+  },
+
+  // ── Desktop terminal lifecycle ───────────────────────────────────────
+  terminal: {
+    setExitGuard: (state) => safeInvoke("app:setExitGuard", state),
+    getHardwareStatus: () => safeInvoke("terminal:hardwareStatus"),
+  },
+
+  // ── WhatsApp service lifecycle ──────────────────────────────────────
+  whatsapp: {
+    start: () => safeInvoke("whatsapp:start"),
+    stop: () => safeInvoke("whatsapp:stop"),
+    status: () => safeInvoke("whatsapp:status"),
   },
 
   // ── Cursors ──────────────────────────────────────────────────────────

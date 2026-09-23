@@ -117,10 +117,14 @@ def _run_startup_tasks() -> None:
                             result.get("status"),
                             result.get("reason"),
                         )
+                        if settings.is_production:
+                            raise RuntimeError("Database migration did not complete successfully")
                     else:
                         logger.info("Alembic migration completed.")
                 except Exception as migration_error:
                     logger.error(f"Alembic migration failed: {migration_error}")
+                    if settings.is_production:
+                        raise
 
         try:
             # Alembic is the source of truth for production schema changes.
@@ -153,6 +157,11 @@ def _run_startup_tasks() -> None:
                 ensure_development_test_admin(_db)
         except Exception as db_init_error:
             logger.error(f"Database sync/initialization failed during startup: {db_init_error}")
+            if settings.is_production:
+                raise
+
+        if settings.is_production and not sa_inspect(engine).has_table("customer_portal_otps_local"):
+            raise RuntimeError("Required customer portal OTP migration is missing")
 
         # Initialize backup scheduler
         init_backup_scheduler()
@@ -174,6 +183,8 @@ def _run_startup_tasks() -> None:
         logger.error(f"Startup failed: {e}")
         import traceback
         logger.error(traceback.format_exc())
+        if settings.is_production:
+            raise
         # Keep API alive even if a non-critical startup step fails.
         # This prevents full process crash loops in local/dev.
         logger.warning("Continuing startup in degraded mode.")

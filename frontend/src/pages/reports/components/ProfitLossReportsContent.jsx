@@ -1031,7 +1031,7 @@ export default function ProfitLossReportsContent({
                   <div className="space-y-1">
                     {forecastData.risk_flags.map((risk, idx) => (
                       <div key={idx} className="p-2.5 rounded-xl border border-amber-500/20 bg-amber-950/20 text-xs text-amber-200 flex items-start gap-2">
-                        <span className="text-amber-400 font-bold">⚠️</span>
+                        <ShieldAlert size={16} className="shrink-0 text-amber-400" aria-hidden="true" />
                         <span>{risk}</span>
                       </div>
                     ))}

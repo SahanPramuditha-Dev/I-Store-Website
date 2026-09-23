@@ -6,6 +6,7 @@ import {
   Coins,
   Edit3,
   Globe,
+  HardDriveDownload,
   Palette,
   Printer,
   Receipt,
@@ -34,19 +35,21 @@ const AppearanceSettingsPanel = lazy(() => import("../components/settings/Appear
 const CustomerPortalSettingsPanel = lazy(() => import("../components/settings/CustomerPortalSettingsPanel"));
 const SystemApisSettingsPanel = lazy(() => import("../components/settings/SystemApisSettingsPanel"));
 const SoftwareUpdatesSettingsPanel = lazy(() => import("../components/settings/SoftwareUpdatesSettingsPanel"));
+const BackupDataSettingsPanel = lazy(() => import("../components/settings/BackupDataSettingsPanel"));
 
 const TABS = [
-  { id: "store_profile", label: "Store Profile", group: "Core", icon: Store },
-  { id: "access_control", label: "Access Control", group: "Security", icon: Users },
-  { id: "business_ops", label: "Business Ops", group: "Operations", icon: BriefcaseBusiness },
-  { id: "financial_settings", label: "Financial Settings", group: "Finance", icon: Coins },
-  { id: "repair_settings", label: "Repair Settings", group: "Operations", icon: Wrench },
-  { id: "customer_portal", label: "Customer Portal", group: "Online", icon: Globe },
-  { id: "invoice_receipt_design", label: "Invoice & Receipt Design", group: "Documents", icon: Receipt },
-  { id: "notifications_alerts", label: "Notifications & Alerts", group: "System", icon: Bell },
-  { id: "appearance_display", label: "Appearance & Display", group: "System", icon: Palette },
-  { id: "system_apis", label: "System & APIs", group: "System", icon: SettingsIcon },
-  { id: "software_updates", label: "Software Updates", group: "System", icon: SettingsIcon },
+  { id: "store_profile", label: "Store Profile", group: "Core", description: "Business identity, branches, contact details, and document branding.", icon: Store },
+  { id: "access_control", label: "Access Control", group: "Security", description: "Staff accounts, permissions, sessions, and security policies.", icon: Users },
+  { id: "business_ops", label: "Business Ops", group: "Operations", description: "Rules for POS, discounts, inventory, customers, and expenses.", icon: BriefcaseBusiness },
+  { id: "financial_settings", label: "Financial Settings", group: "Finance", description: "Currency, taxes, payments, cash operations, and commissions.", icon: Coins },
+  { id: "repair_settings", label: "Repair Settings", group: "Operations", description: "Repair workflow, status rules, service catalogs, and terms.", icon: Wrench },
+  { id: "customer_portal", label: "Customer Portal", group: "Online", description: "Customer-facing portal, loyalty, cloud vault, and communication settings.", icon: Globe },
+  { id: "invoice_receipt_design", label: "Invoice & Receipt Design", group: "Documents", description: "Templates and live previews for invoices, job cards, and labels.", icon: Receipt },
+  { id: "notifications_alerts", label: "Notifications & Alerts", group: "System", description: "In-app alerts, recipients, templates, and notification thresholds.", icon: Bell },
+  { id: "appearance_display", label: "Appearance & Display", group: "System", description: "Theme, layout density, visual preferences, and formatting.", icon: Palette },
+  { id: "backup_data", label: "Backup & Data", group: "System", description: "Backups, restore safeguards, exports, and controlled cleanup.", icon: HardDriveDownload },
+  { id: "system_apis", label: "System & APIs", group: "System", description: "Workstation connections, printers, scanners, integrations, and APIs.", icon: SettingsIcon },
+  { id: "software_updates", label: "Software Updates", group: "System", description: "Installed version, update history, and workstation diagnostics.", icon: SettingsIcon },
 ];
 
 const EMPTY_EMPLOYEE_FORM = {
@@ -569,7 +572,17 @@ function ObjectEditor({ value, path = "", onChange, depth = 0 }) {
 
 export default function Settings() {
   const { toast, confirm, prompt } = useFeedback();
-  const [activeTab, setActiveTab] = useState("store_profile");
+  const [activeTab, setActiveTab] = useState(() => {
+    const savedTab = localStorage.getItem("settings_active_tab");
+    return TABS.some((tab) => tab.id === savedTab) ? savedTab : "store_profile";
+  });
+  const [activeGroup, setActiveGroup] = useState(() => {
+    const savedTab = localStorage.getItem("settings_active_tab");
+    return TABS.find((tab) => tab.id === savedTab)?.group || "Core";
+  });
+  const [settingsQuery, setSettingsQuery] = useState("");
+  const [dirtySections, setDirtySections] = useState({});
+  const [lastSavedAt, setLastSavedAt] = useState(null);
   const [state, setState] = useState(() => buildClientFallbackState());
   const [legacyMode, setLegacyMode] = useState(false);
   const [employees, setEmployees] = useState([]);
@@ -584,6 +597,33 @@ export default function Settings() {
     return defs.map((role) => role.role).filter(Boolean);
   }, [state]);
   const activeTabMeta = TABS.find((tab) => tab.id === activeTab) || TABS[0];
+  const tabGroups = useMemo(() => [...new Set(TABS.map((tab) => tab.group))], []);
+  const visibleTabs = useMemo(() => {
+    const query = settingsQuery.trim().toLowerCase();
+    return TABS.filter((tab) => {
+      const matchesGroup = query ? true : tab.group === activeGroup;
+      const matchesQuery = !query || `${tab.label} ${tab.description} ${tab.group}`.toLowerCase().includes(query);
+      return matchesGroup && matchesQuery;
+    });
+  }, [activeGroup, settingsQuery]);
+  const setupChecklist = useMemo(() => {
+    const profile = state?.store_profile || {};
+    const shopName = String(profile?.business_identity?.shop_name || "").trim();
+    const contact = profile?.contact_information || {};
+    const financial = state?.financial_settings || {};
+    return [
+      { id: "store_profile", label: "Store identity", hint: "Name and primary contact", done: Boolean(shopName && (contact.primary_phone || contact.email_address)) },
+      { id: "access_control", label: "Staff access", hint: "At least one active staff account", done: employees.length > 0 },
+      { id: "financial_settings", label: "Payments", hint: "Currency and payment settings", done: Boolean(financial?.currency?.currency_code || financial?.currency_settings?.currency_code || financial?.payment_methods?.length) },
+      { id: "backup_data", label: "Backups", hint: "Automatic backups enabled", done: Boolean(state?.backup_data?.auto_backup?.enable_automatic_backup) },
+      { id: "system_apis", label: "Workstation", hint: "Printer and device connections", done: Boolean(state?.system_apis?.printer_settings?.default_printer || state?.system_apis?.printers?.default_printer) },
+    ];
+  }, [employees.length, state]);
+  const completedSetupItems = setupChecklist.filter((item) => item.done).length;
+
+  useEffect(() => {
+    localStorage.setItem("settings_active_tab", activeTab);
+  }, [activeTab]);
 
   const load = async () => {
     setLoading(true);
@@ -649,6 +689,7 @@ export default function Settings() {
   }, []);
 
   const setSection = (section, updater) => {
+    setDirtySections((prev) => ({ ...prev, [section]: true }));
     setState((prev) => {
       if (!prev) return prev;
       const next = clone(prev);
@@ -687,6 +728,8 @@ export default function Settings() {
       await api.put(`/settings/section/${section}`, state[section]);
       const refreshed = await api.get("/settings/state");
       setState(hydrateSections(refreshed.data));
+      setDirtySections((prev) => ({ ...prev, [section]: false }));
+      setLastSavedAt(new Date());
       toast(`${titleCase(section)} saved`, "success");
       return true;
     } catch (error) {
@@ -709,6 +752,8 @@ export default function Settings() {
       delete payload._header;
       const res = await api.put("/settings/state", payload);
       setState(hydrateSections(res.data));
+      setDirtySections({});
+      setLastSavedAt(new Date());
       toast("All settings saved", "success");
     } catch (error) {
       toast(error.response?.data?.detail || "Failed to save all settings", "error");
@@ -1047,6 +1092,18 @@ export default function Settings() {
     />
   );
 
+  const renderBackupDataSettings = () => (
+    <BackupDataSettingsPanel
+      sectionValue={state?.backup_data || {}}
+      onSectionChange={(nextSection) => setSection("backup_data", nextSection)}
+      onSaveSection={() => saveSection("backup_data")}
+      saving={!!saving.backup_data}
+      toast={toast}
+      confirm={confirm}
+      onReload={load}
+    />
+  );
+
   if (loading) return <Loading text="Loading settings module..." />;
 
   return (
@@ -1071,21 +1128,81 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="app-tab-strip shrink-0 rounded-2xl border border-white/10 bg-slate-900/60 p-2">
-        {TABS.map((tab) => {
+      <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-3 dark:border-indigo-500/20 dark:bg-indigo-500/10" aria-label="Store setup checklist">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-indigo-950 dark:text-indigo-100">Store readiness</h2>
+            <p className="text-[11px] text-indigo-800/80 dark:text-indigo-200/70">Complete the essentials to prepare this workstation for daily operations.</p>
+          </div>
+          <Badge tone={completedSetupItems === setupChecklist.length ? "success" : "warning"}>{completedSetupItems}/{setupChecklist.length} complete</Badge>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          {setupChecklist.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              onClick={() => {
+                const tab = TABS.find((entry) => entry.id === item.id);
+                if (tab) { setActiveTab(tab.id); setActiveGroup(tab.group); }
+              }}
+              className={`rounded-xl border px-3 py-2 text-left transition ${item.done ? "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/15" : "border-amber-300 bg-amber-50 hover:bg-amber-100 dark:border-amber-500/25 dark:bg-amber-500/10 dark:hover:bg-amber-500/15"}`}
+            >
+              <span className={`block text-[10px] font-black uppercase tracking-wider ${item.done ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>{item.done ? "Complete" : "Action needed"}</span>
+              <span className="mt-1 block text-xs font-bold text-slate-900 dark:text-slate-100">{item.label}</span>
+              <span className="mt-0.5 block text-[10px] text-slate-600 dark:text-slate-400">{item.hint}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <div className="app-tab-strip shrink-0 rounded-2xl border border-white/10 bg-slate-900/60 p-2 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Input
+            value={settingsQuery}
+            onChange={(event) => setSettingsQuery(event.target.value)}
+            placeholder="Search settings"
+            aria-label="Search settings pages"
+            className="h-8 max-w-xs text-xs"
+          />
+          <span className="text-[10px] font-semibold text-slate-500">
+            {lastSavedAt ? `Last saved ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Changes are saved per section or with Save All"}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1.5" aria-label="Settings categories">
+          {tabGroups.map((group) => (
+            <button
+              type="button"
+              key={group}
+              onClick={() => {
+                setActiveGroup(group);
+                const firstTab = TABS.find((tab) => tab.group === group);
+                if (firstTab) setActiveTab(firstTab.id);
+              }}
+              aria-pressed={activeGroup === group}
+              className={`rounded-md px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition ${activeGroup === group ? "bg-indigo-500 text-white" : "text-slate-400 hover:bg-white/10 hover:text-white"}`}
+            >
+              {group}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+        {visibleTabs.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); setActiveGroup(tab.group); }}
+              aria-current={activeTab === tab.id ? "page" : undefined}
               className={`px-3 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider border transition flex items-center gap-2 ${
                 activeTab === tab.id ? "bg-indigo-500/20 border-indigo-400/40 text-indigo-100" : "bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10"
               }`}
             >
               <Icon size={13} /> {tab.label}
+              {dirtySections[tab.id] ? <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-label="Unsaved changes" /> : null}
             </button>
           );
         })}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-900/35 px-3 py-2">
@@ -1095,7 +1212,7 @@ export default function Settings() {
           </span>
           <span className="truncate text-sm font-bold text-slate-100">{activeTabMeta.label}</span>
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Unsaved changes use section or Save All actions</span>
+          <span className="text-[11px] text-slate-400">{activeTabMeta.description}</span>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 custom-scrollbar">
@@ -1119,6 +1236,8 @@ export default function Settings() {
           ? renderNotificationsSettings()
           : activeTab === "appearance_display"
           ? renderAppearanceSettings()
+          : activeTab === "backup_data"
+          ? renderBackupDataSettings()
           : activeTab === "system_apis"
           ? renderSystemApisSettings()
           : activeTab === "software_updates"

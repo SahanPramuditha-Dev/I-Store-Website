@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user, require_permission
 from app.constants import REPAIR_STATUS_CANCELLED, REPAIR_STATUS_DELIVERED
 from app.database import get_db
-from app.models import AppSetting, InventoryItem, Notification, RepairTicket, Sale, WarrantyRecord
+from app.models import AppSetting, FinancialAuditFlag, InventoryItem, Notification, RepairTicket, Sale, WarrantyRecord
 from app.utils.time import utcnow
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -425,6 +425,38 @@ def _refresh_notifications(db: Session) -> dict:
         ):
             created += 1
 
+    # 6. Escalate the financial audit engine's high-risk findings into the
+    # manager-facing notification centre. The audit engine already applies the
+    # configured thresholds for voids, returns, discounts and cash variance;
+    # this makes unresolved High/Critical findings actionable during daily use.
+    audit_flags = (
+        db.query(FinancialAuditFlag)
+        .filter(
+            FinancialAuditFlag.status.in_(["Open", "Pending Review", "Escalated"]),
+            func.lower(FinancialAuditFlag.severity).in_(["high", "critical"]),
+        )
+        .order_by(FinancialAuditFlag.raised_at.desc(), FinancialAuditFlag.id.desc())
+        .limit(50)
+        .all()
+    )
+    active_audit_flag_ids = set()
+    for flag in audit_flags:
+        active_audit_flag_ids.add(flag.id)
+        severity = "critical" if str(flag.severity or "").lower() == "critical" else "high"
+        title = f"Audit Alert: {flag.flag_type or 'Review required'}"
+        message = str(flag.description or "A financial audit rule requires manager review.")
+        if _add_or_update_notification(
+            db,
+            notif_type="Audit Alert",
+            title=title,
+            message=message,
+            severity=severity,
+            source_module="financial_audit",
+            entity_type="FinancialAuditFlag",
+            entity_id=flag.id,
+        ):
+            created += 1
+
     # AUTO-RESOLVE: Archive alerts that have resolved
     auto_resolved_at = utcnow()
     # Archive replenished low-stock alerts
@@ -433,6 +465,14 @@ def _refresh_notifications(db: Session) -> dict:
         Notification.type == "Low Stock",
         Notification.entity_type == "InventoryItem",
         Notification.entity_id.notin_(active_low_stock_ids) if active_low_stock_ids else True,
+    ).update({"is_archived": True, "archived_at": auto_resolved_at}, synchronize_session=False)
+
+    # Archive alerts once the underlying audit flag is resolved or downgraded.
+    db.query(Notification).filter(
+        Notification.is_archived == False,  # noqa: E712
+        Notification.type == "Audit Alert",
+        Notification.entity_type == "FinancialAuditFlag",
+        Notification.entity_id.notin_(active_audit_flag_ids) if active_audit_flag_ids else True,
     ).update({"is_archived": True, "archived_at": auto_resolved_at}, synchronize_session=False)
 
     # Archive completed/cancelled/on-time overdue repair alerts

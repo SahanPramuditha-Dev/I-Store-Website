@@ -2106,8 +2106,9 @@ export default function Repairs() {
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">IMEI / Serial</p>
                   {form.imei && (
-                    <span className={`text-[10px] font-bold ${isValidLuhnIMEI(form.imei) ? "text-emerald-400" : "text-amber-400"}`}>
-                      {isValidLuhnIMEI(form.imei) ? "✓ Valid Luhn IMEI" : form.imei.length === 15 ? "⚠ Invalid Luhn Checksum" : `${form.imei.length}/15 digits`}
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold ${isValidLuhnIMEI(form.imei) ? "text-emerald-400" : "text-amber-400"}`}>
+                      {isValidLuhnIMEI(form.imei) ? <CheckCircle2 size={12} aria-hidden="true" /> : form.imei.length === 15 ? <AlertTriangle size={12} aria-hidden="true" /> : null}
+                      <span>{isValidLuhnIMEI(form.imei) ? "Valid Luhn IMEI" : form.imei.length === 15 ? "Invalid Luhn Checksum" : `${form.imei.length}/15 digits`}</span>
                     </span>
                   )}
                 </div>
@@ -2126,7 +2127,7 @@ export default function Repairs() {
                       <div className="rounded-lg border border-rose-500/50 bg-rose-950/80 p-2.5 text-rose-200 font-bold flex items-center gap-2 animate-pulse shadow-lg">
                         <AlertTriangle className="text-rose-400 shrink-0" size={18} />
                         <div>
-                          <div className="text-xs uppercase tracking-wider text-rose-100 font-black">⛔ STOLEN / BLACKLISTED DEVICE DETECTED</div>
+                          <div className="text-xs uppercase tracking-wider text-rose-100 font-black">Stolen / blacklisted device detected</div>
                           <div className="text-[11px] font-normal text-rose-300">
                             Reason: {imeiIntelligence.blacklist_info?.reason || "Reported lost or stolen"} (By: {imeiIntelligence.blacklist_info?.reported_by || "System Admin"})
                           </div>
@@ -2135,13 +2136,14 @@ export default function Repairs() {
                     )}
 
                     <div className="flex items-center justify-between font-bold text-indigo-200">
-                      <span>📱 Device Intelligence</span>
+                      <span className="inline-flex items-center gap-1.5"><Smartphone size={13} aria-hidden="true" /> Device Intelligence</span>
                       {imeiIntelligence.item_name && <span className="text-[11px] text-slate-300">{imeiIntelligence.item_name}</span>}
                     </div>
 
                     {imeiIntelligence.sale && (
-                      <div className="text-slate-300">
-                        🛒 Sold on <strong className="text-white">{imeiIntelligence.sale.sold_at?.slice(0, 10)}</strong> to <span className="text-indigo-300">{imeiIntelligence.sale.customer_name}</span> ({imeiIntelligence.sale.invoice_number})
+                      <div className="flex items-center gap-1.5 text-slate-300">
+                        <ShoppingCart size={13} className="shrink-0" aria-hidden="true" />
+                        <span>Sold on <strong className="text-white">{imeiIntelligence.sale.sold_at?.slice(0, 10)}</strong> to <span className="text-indigo-300">{imeiIntelligence.sale.customer_name}</span> ({imeiIntelligence.sale.invoice_number})</span>
                       </div>
                     )}
 
@@ -2304,8 +2306,9 @@ export default function Repairs() {
               <div className="space-y-2">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Flagged Risk Tickets</p>
                 {slaRiskData.risk_tickets?.length === 0 ? (
-                  <div className="p-6 rounded-2xl border border-emerald-300 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/10 text-center text-xs text-emerald-800 dark:text-emerald-300">
-                    🎉 All active repair jobs are within SLA thresholds! No bottleneck risks detected.
+                  <div className="flex items-center justify-center gap-2 p-6 rounded-2xl border border-emerald-300 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-950/10 text-center text-xs text-emerald-800 dark:text-emerald-300">
+                    <CheckCircle2 size={16} aria-hidden="true" />
+                    <span>All active repair jobs are within SLA thresholds. No bottleneck risks detected.</span>
                   </div>
                 ) : (
                   slaRiskData.risk_tickets.map((t, idx) => (
@@ -2323,7 +2326,10 @@ export default function Repairs() {
                         <span>Status: <strong className="text-slate-800 dark:text-slate-200 uppercase">{t.status.replace(/_/g, " ")}</strong></span>
                         <span>Technician: <strong className="text-slate-800 dark:text-slate-200">{t.technician}</strong></span>
                       </div>
-                      <p className="text-amber-800 dark:text-amber-300/90 text-xs font-medium mt-1">⚠️ {t.reason}</p>
+                      <p className="flex items-start gap-1.5 text-amber-800 dark:text-amber-300/90 text-xs font-medium mt-1">
+                        <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        <span>{t.reason}</span>
+                      </p>
                       <p className="text-slate-700 dark:text-slate-300 text-[11px]"><strong className="text-purple-700 dark:text-purple-300">Action:</strong> {t.recommended_action}</p>
                     </div>
                   ))

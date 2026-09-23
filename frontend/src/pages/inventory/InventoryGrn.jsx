@@ -6,6 +6,7 @@ import { downloadCsv, downloadPdf, paginateRows } from "../../lib/tableUtils";
 import { AppCard, StickyTable } from "../../components/MuiPrimitives";
 import { Select, ProductSelect } from "../../components/UI";
 import { useFeedback } from "../../components/FeedbackProvider";
+import { X } from "lucide-react";
 
 const emptyLine = { item_id: "", quantity: 1, damaged_qty: 0, unit_cost: 0, sale_price: 0 };
 const money = (value) => `LKR ${Number(value || 0).toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -446,7 +447,7 @@ export default function InventoryGrn() {
                             onClick={() => removeLine(index)}
                             className="rounded border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs font-bold text-rose-300 hover:bg-rose-500/20"
                           >
-                            ✕
+                            <X size={13} aria-hidden="true" />
                           </button>
                         </td>
                       </tr>

@@ -40,7 +40,6 @@ from app.services.customer_auth_service import (
     verify_smart_invoice_token,
     generate_customer_session_token,
     verify_customer_session_token,
-    _ACTIVE_OTPS
 )
 from app.services.portal_inbound_gateway import (
     ingest_portal_claim,
@@ -267,25 +266,32 @@ def test_full_cross_system_e2e_lifecycle(db, keys, monkeypatch):
     # Mode A: Smart Invoice Token
     from app.services.supabase_pos_sync import generate_invoice_token
     inv_token = generate_invoice_token("INV-2026-E2E-001")
-    is_valid_inv, inv_msg, customer_session_token, verified_store = verify_smart_invoice_token("INV-2026-E2E-001", inv_token)
+    is_valid_inv, inv_msg, customer_session_token, verified_store = verify_smart_invoice_token("INV-2026-E2E-001", inv_token, db=db)
     assert is_valid_inv is True
-    assert customer_session_token is not None
+    assert customer_session_token is None  # invoice link starts WhatsApp verification
 
     # Mode B: WhatsApp 6-digit OTP
-    otp_res = request_customer_otp(
+    from app.models import CustomerPortalOtp
+    from app.utils.whatsapp_helper import LocalWebWhatsAppProvider
+    import re
+    messages = []
+    async def fake_send(self, phone, message):
+        messages.append(message)
+        return {"success": True}
+    with patch.object(LocalWebWhatsAppProvider, "send_text", fake_send):
+        otp_res = request_customer_otp(
         phone="0771234567",
         channel="whatsapp",
-        store_name="Apex Mobile"
-    )
+        store_name="Apex Mobile",
+        db=db,
+        )
     assert otp_res["success"] is True
 
-    # In test environment, assign test OTP hash to test verification flow
-    from app.services.customer_auth_service import _hash_otp
-    test_code = "654321"
-    _ACTIVE_OTPS["0771234567"]["hash"] = _hash_otp("0771234567", test_code)
+    test_code = re.search(r"\*(\d{6})\*", messages[-1]).group(1)
+    assert db.query(CustomerPortalOtp).count() == 1
 
     # Verify OTP & create authenticated session
-    is_valid_otp, otp_msg, session_token = verify_customer_otp("0771234567", test_code)
+    is_valid_otp, otp_msg, session_token = verify_customer_otp("0771234567", test_code, db=db)
     assert is_valid_otp is True
     assert session_token is not None
 

@@ -101,6 +101,7 @@ assets/serviceAccountKey.json
 *.pem
 *.key
 *.cert
+*.pfx
 
 # ==============================================================================
 # IDE & Operating System Files

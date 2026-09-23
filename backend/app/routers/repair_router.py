@@ -1356,15 +1356,16 @@ class RepairPhotoPayload(BaseModel):
     caption: Optional[str] = None
 
 
-@router.post("/{repair_id}/photos")
+@router.post("/{repair_id}/photos", dependencies=[Depends(require_permission("repairs.edit"))])
 def add_repair_photo(
     repair_id: int,
     payload: RepairPhotoPayload,
+    request: Request,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """Attaches an inspection photo (intake or completion) to a repair ticket."""
-    repair = db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False).first()
+    repair = scope_query(db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False), RepairTicket, request).first()
     if not repair:
         raise HTTPException(status_code=404, detail="Repair ticket not found")
 
@@ -1394,16 +1395,17 @@ def add_repair_photo(
     return {"ok": True, "message": "Photo attached successfully.", "photo": new_photo}
 
 
-@router.post("/{repair_id}/send-pickup-reminder")
+@router.post("/{repair_id}/send-pickup-reminder", dependencies=[Depends(require_permission("notifications.create"))])
 async def send_repair_pickup_reminder(
     repair_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """Dispatches an official 'Ready for Pickup' WhatsApp notification with balance due and store hours."""
     from app.utils.whatsapp_helper import resolve_store_variables, normalize_sri_lankan_phone, whatsapp_provider
 
-    repair = db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False).first()
+    repair = scope_query(db.query(RepairTicket).filter(RepairTicket.id == repair_id, RepairTicket.is_deleted == False), RepairTicket, request).first()
     if not repair:
         raise HTTPException(status_code=404, detail="Repair ticket not found")
 

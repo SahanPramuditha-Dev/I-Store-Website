@@ -140,7 +140,7 @@ def _resolve_user_name(user: Optional[User]) -> str:
     return getattr(user, "name", None) or getattr(user, "full_name", None) or getattr(user, "username", None) or "Cashier"
 
 
-@router.get("/current")
+@router.get("/current", dependencies=[Depends(require_permission("pos.checkout"))])
 def get_current_shift(
     request: Request,
     db: Session = Depends(get_db),
@@ -492,7 +492,7 @@ def close_register_shift(
     }
 
 
-@router.get("/history")
+@router.get("/history", dependencies=[Depends(require_permission("financial_audit.view"))])
 def get_shift_history(
     request: Request,
     limit: int = Query(default=30),

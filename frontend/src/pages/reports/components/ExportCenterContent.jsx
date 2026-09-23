@@ -9,7 +9,7 @@ import {
   Printer,
   ShieldCheck,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import { createWorkbookBlob } from "../../../lib/workbook";
 import { Badge, Button, KpiCard, SectionCard, Table, Select } from "../../../components/UI";
 import api from "../../../lib/api";
 import {
@@ -63,18 +63,12 @@ function isCompletedRepair(status) {
   return value === "completed" || value === "delivered";
 }
 
-function toWorkbookBlob(columns, rows, sheetName = "Report") {
+async function toWorkbookBlob(columns, rows, sheetName = "Report") {
   const header = columns.map((column) => column.label);
   const body = (rows || []).map((row) =>
     columns.map((column) => (typeof column.value === "function" ? column.value(row) : row[column.value])),
   );
-  const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
-  const buffer = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-  return new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  return createWorkbookBlob(header, body, sheetName);
 }
 
 function safeJsonString(value) {
@@ -667,7 +661,7 @@ export default function ExportCenterContent({
       const size = downloadCsv(`${safeBase}.csv`, columns, rows);
       fileSize = formatBytes(size);
     } else if (format === "XLSX") {
-      const size = downloadXlsx(`${safeBase}.xlsx`, columns, rows, report.title);
+      const size = await downloadXlsx(`${safeBase}.xlsx`, columns, rows, report.title);
       fileSize = formatBytes(size);
     } else if (format === "PRINT") {
       openPrintView(report.title, columns, rows);
@@ -708,7 +702,7 @@ export default function ExportCenterContent({
           content: toCsvString(report.columns, report.rows),
         });
       } else if (format === "XLSX") {
-        const blob = toWorkbookBlob(report.columns, report.rows, report.title);
+        const blob = await toWorkbookBlob(report.columns, report.rows, report.title);
         files.push({
           name: `${fileBase}.xlsx`,
           content: await blob.arrayBuffer(),

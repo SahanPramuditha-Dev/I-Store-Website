@@ -14,6 +14,7 @@ from app.core.license_guard import (
     load_public_key_from_b64,
     get_cached_license,
     _required_capabilities_for_path,
+    resolve_effective_entitlements,
 )
 
 
@@ -23,6 +24,26 @@ def test_industry_specific_paths_require_signed_capabilities():
     assert _required_capabilities_for_path("/inventory/42/serials") == {"serial_tracking", "imei_tracking"}
     assert _required_capabilities_for_path("/catalog/products/7/save-variants") == {"variants_matrix", "size_color_variants"}
     assert _required_capabilities_for_path("/inventory") == set()
+
+
+def test_forever_package_restores_full_suite_for_legacy_tokens():
+    entitlements = resolve_effective_entitlements({
+        "package_code": "FOREVER",
+        "entitlements": ["core_pos", "inventory"],
+    })
+
+    assert "bi_analytics" in entitlements
+    assert "ai_assistant" in entitlements
+    assert "smart_sms" in entitlements
+
+
+def test_non_forever_packages_do_not_gain_unsigned_entitlements():
+    entitlements = resolve_effective_entitlements({
+        "package_code": "BUSINESS",
+        "entitlements": ["core_pos", "inventory"],
+    })
+
+    assert entitlements == {"core_pos", "inventory"}
 
 def _generate_ed25519_keypair():
     priv = ed25519.Ed25519PrivateKey.generate()

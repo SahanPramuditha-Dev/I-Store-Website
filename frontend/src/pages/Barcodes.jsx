@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowDown,
   ArrowUp,
   Barcode,
@@ -43,15 +44,15 @@ import { Badge, Button, KpiCard, PageHeader, SectionCard, Select, Table } from "
 import { downloadCsv, formatLabel, openPrintView } from "../lib/tableUtils";
 
 const TABS = [
-  { key: "dashboard", label: "1. Labels Dashboard", icon: LayoutGrid },
-  { key: "products", label: "2. Product Labels", icon: Package },
-  { key: "repairs", label: "3. Repair Job Labels", icon: Wrench },
-  { key: "spares", label: "4. Spare Parts Labels", icon: Truck },
-  { key: "assets", label: "5. Asset Labels", icon: ShieldCheck },
-  { key: "designer", label: "6. Label Designer", icon: Wand2 },
-  { key: "queue", label: "7. Print Queue", icon: ClipboardList },
-  { key: "scanner", label: "8. Barcode Scanner", icon: ScanLine },
-  { key: "history", label: "9. Label History", icon: History },
+  { key: "dashboard", label: "Overview", group: "Overview", icon: LayoutGrid },
+  { key: "products", label: "Products", group: "Print", icon: Package },
+  { key: "repairs", label: "Repair Jobs", group: "Print", icon: Wrench },
+  { key: "spares", label: "Spare Parts", group: "Print", icon: Truck },
+  { key: "assets", label: "Assets", group: "Print", icon: ShieldCheck },
+  { key: "designer", label: "Label Designer", group: "Manage", icon: Wand2 },
+  { key: "queue", label: "Print Queue", group: "Manage", icon: ClipboardList },
+  { key: "history", label: "History", group: "Manage", icon: History },
+  { key: "scanner", label: "Scanner", group: "Tools", icon: ScanLine },
 ];
 
 const LABEL_TYPE_BY_TAB = {
@@ -536,7 +537,7 @@ export default function Barcodes() {
   const { toast, confirm } = useFeedback();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem("barcodes_active_tab") || "dashboard");
   const [labelsApiAvailable, setLabelsApiAvailable] = useState(true);
 
   const [meta, setMeta] = useState(null);
@@ -586,6 +587,7 @@ export default function Barcodes() {
   const [designerZoom, setDesignerZoom] = useState(140);
   const [designerDrag, setDesignerDrag] = useState(null);
   const designerPreviewRef = useRef(null);
+  const scanInputRef = useRef(null);
 
   const [assetForm, setAssetForm] = useState({
     asset_name: "",
@@ -609,6 +611,21 @@ export default function Barcodes() {
     }
     return map;
   }, [templates]);
+  const barcodeTabGroups = useMemo(() => [...new Set(TABS.map((tab) => tab.group))], []);
+  const queuedJobs = useMemo(() => queueRows.filter((row) => ["Waiting", "Printing", "Paused"].includes(row.status)).length, [queueRows]);
+  const activeSelection = useMemo(() => {
+    const selections = {
+      products: selectedProducts,
+      repairs: selectedRepairs,
+      spares: selectedSpares,
+      assets: selectedAssets,
+    };
+    return selections[activeTab] || [];
+  }, [activeTab, selectedAssets, selectedProducts, selectedRepairs, selectedSpares]);
+
+  useEffect(() => {
+    localStorage.setItem("barcodes_active_tab", activeTab);
+  }, [activeTab]);
 
   const selectedTemplate = useMemo(() => {
     const scope = activeTab === "designer" ? designerDraft?.label_scope : LABEL_TYPE_BY_TAB[previewTabSource.tab || activeTab];
@@ -1434,6 +1451,26 @@ export default function Barcodes() {
     }
   };
 
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      const tag = event.target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key === "/") {
+        event.preventDefault();
+        setActiveTab("scanner");
+        requestAnimationFrame(() => scanInputRef.current?.focus());
+      } else if (event.key.toLowerCase() === "q") {
+        event.preventDefault();
+        setActiveTab("queue");
+      } else if (event.key.toLowerCase() === "p" && previewTemplate) {
+        event.preventDefault();
+        printPreview();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [previewTemplate, printPreview]);
+
   const exportHistoryCsv = () => {
     const rows = historyState?.rows || [];
     const size = downloadCsv("label-history.csv", HISTORY_COLUMNS, rows);
@@ -1508,17 +1545,51 @@ export default function Barcodes() {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        {TABS.map((tab) => (
-          <TabButton
-            key={tab.key}
-            active={activeTab === tab.key}
-            label={tab.label}
-            icon={tab.icon}
-            onClick={() => setActiveTab(tab.key)}
-          />
+      <div className="space-y-2" aria-label="Label module navigation">
+        {barcodeTabGroups.map((group) => (
+          <div key={group} className="flex flex-wrap items-center gap-2">
+            <span className="w-14 text-[10px] font-black uppercase tracking-widest text-slate-500">{group}</span>
+            {TABS.filter((tab) => tab.group === group).map((tab) => (
+              <TabButton
+                key={tab.key}
+                active={activeTab === tab.key}
+                label={tab.label}
+                icon={tab.icon}
+                onClick={() => setActiveTab(tab.key)}
+              />
+            ))}
+          </div>
         ))}
       </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Print operations status">
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-white/10 dark:bg-slate-900/50">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Printer</span>
+          <ToneBadge value={dashboard?.kpis?.printer_status || "Offline"} />
+        </div>
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-white/10 dark:bg-slate-900/50">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Queue requiring attention</span>
+          <Badge tone={queuedJobs ? "amber" : "green"}>{queuedJobs} job{queuedJobs === 1 ? "" : "s"}</Badge>
+        </div>
+        <button type="button" onClick={() => setActiveTab("queue")} className="flex items-center justify-between rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-left shadow-sm transition hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20">
+          <span className="text-xs font-semibold text-indigo-800 dark:text-indigo-200">Review print queue</span>
+          <ArrowRight size={14} className="text-indigo-600 dark:text-indigo-300" />
+        </button>
+      </div>
+
+      {activeSelection.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2.5 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10">
+          <p className="text-xs font-semibold text-indigo-900 dark:text-indigo-100">
+            {activeSelection.length} item{activeSelection.length === 1 ? "" : "s"} selected for label printing
+          </p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setActiveTab("queue")}>Review queue</Button>
+            <Button size="sm" onClick={() => addCurrentSelectionToQueue(activeTab)} disabled={busy}>
+              <Plus size={13} /> Add selected to queue
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 min-h-0 flex-1">
         <div className="xl:col-span-8 min-h-0 overflow-auto custom-scrollbar pr-1 space-y-3">
@@ -2108,7 +2179,12 @@ export default function Barcodes() {
                           <td>{row.priority}</td>
                           <td>
                             <div className="flex items-center gap-1">
-                              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); printNow(row); }}><Play size={12} /></Button>
+                              {row.status === "Failed" ? (
+                                <Button size="sm" variant="secondary" title="Return this failed job to the print queue" onClick={(e) => { e.stopPropagation(); updateQueueStatus(row, "Waiting"); }}>
+                                  <RefreshCw size={12} /> Retry
+                                </Button>
+                              ) : null}
+                              <Button size="sm" variant="ghost" title="Send this job to the currently selected printer" onClick={(e) => { e.stopPropagation(); printNow(row); }}><Play size={12} /></Button>
                               <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); updateQueueStatus(row, "Paused"); }}><Pause size={12} /></Button>
                               <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); moveQueueItem(row, "up"); }}><ArrowUp size={12} /></Button>
                               <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); moveQueueItem(row, "down"); }}><ArrowDown size={12} /></Button>
@@ -2156,6 +2232,7 @@ export default function Barcodes() {
               <SectionCard title="Barcode Scanner" subtitle="Scan product, repair, spare part, customer, or asset labels for instant lookup">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2 mb-3">
                   <input
+                    ref={scanInputRef}
                     className="field !py-2 !px-3 !text-xs xl:col-span-3"
                     placeholder="Scan with USB scanner or type barcode value"
                     value={scanInput}

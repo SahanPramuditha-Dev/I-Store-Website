@@ -243,7 +243,7 @@ def _seed_templates_if_needed(db: Session):
 
 # ─── Hub Overview Metrics ────────────────────────────────────────────────────
 
-@router.get("/overview")
+@router.get("/overview", dependencies=[Depends(require_permission("notifications.view"))])
 async def get_hub_overview(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -365,7 +365,7 @@ async def receive_ack_webhook(
 
 # ─── Visual Pipeline Trace Inspector ──────────────────────────────────────────
 
-@router.get("/logs/{log_id}/trace")
+@router.get("/logs/{log_id}/trace", dependencies=[Depends(require_permission("notifications.view"))])
 def get_log_trace(
     log_id: str,
     db: Session = Depends(get_db),
@@ -403,7 +403,7 @@ def get_log_trace(
 async def run_pipeline_diagnostic(
     phone: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission("settings.manage"))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """
     Runs an 8-step automated diagnostic test suite verifying every component in the chain:
@@ -538,7 +538,7 @@ async def run_pipeline_diagnostic(
 
 @router.post("/service/reconnect")
 async def reconnect_service(
-    current_user=Depends(require_permission("settings.manage"))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Proxies a reconnect trigger to the microservice."""
     try:
@@ -554,7 +554,7 @@ async def reconnect_service(
 
 @router.post("/service/logout")
 async def logout_service(
-    current_user=Depends(require_permission("settings.manage"))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Unlinks current WhatsApp phone number and prepares fresh QR code for new device pairing."""
     try:
@@ -570,7 +570,7 @@ async def logout_service(
 
 # ─── Check Number Proxy ───────────────────────────────────────────────────────
 
-@router.get("/check-number/{phone}")
+@router.get("/check-number/{phone}", dependencies=[Depends(require_permission("notifications.view"))])
 async def check_number(phone: str, current_user=Depends(get_current_user)):
     clean = normalize_sri_lankan_phone(phone)
     if not clean:
@@ -580,14 +580,14 @@ async def check_number(phone: str, current_user=Depends(get_current_user)):
 
 # ─── Service Status Proxy ────────────────────────────────────────────────────
 
-@router.get("/service-status")
+@router.get("/service-status", dependencies=[Depends(require_permission("notifications.view"))])
 async def get_service_status(current_user=Depends(get_current_user)):
     return await whatsapp_provider.get_service_status()
 
 
 # ─── Template Management ──────────────────────────────────────────────────────
 
-@router.get("/templates")
+@router.get("/templates", dependencies=[Depends(require_permission("notifications.view"))])
 def get_templates(
     category: Optional[str] = Query(None),
     db: Session = Depends(get_db),
@@ -620,7 +620,7 @@ def update_template(
     event_type: str,
     payload: TemplateUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission("settings.manage"))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     _seed_templates_if_needed(db)
     tmpl = db.query(WhatsAppTemplate).filter(WhatsAppTemplate.event_type == event_type).first()
@@ -641,7 +641,7 @@ def update_template(
 def reset_template(
     event_type: str,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission("settings.manage"))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     _seed_templates_if_needed(db)
     if event_type not in DEFAULT_TEMPLATES:
@@ -656,7 +656,7 @@ def reset_template(
 
 # ─── Audit Log Management ────────────────────────────────────────────────────
 
-@router.get("/logs")
+@router.get("/logs", dependencies=[Depends(require_permission("notifications.view"))])
 def get_logs(
     status: Optional[str] = Query(None),
     event_type: Optional[str] = Query(None),
@@ -721,7 +721,7 @@ def get_logs(
     return {"total": total_count, "logs": res}
 
 
-@router.post("/logs/{log_id}/retry")
+@router.post("/logs/{log_id}/retry", dependencies=[Depends(require_permission("notifications.create"))])
 async def retry_failed_log(
     log_id: str,
     db: Session = Depends(get_db),
@@ -769,7 +769,7 @@ async def retry_failed_log(
 
 # ─── Direct Message Dispatch ─────────────────────────────────────────────────
 
-@router.post("/send-direct")
+@router.post("/send-direct", dependencies=[Depends(require_permission("notifications.create"))])
 async def send_direct_message(
     payload: DirectMessageRequest,
     db: Session = Depends(get_db),
@@ -841,7 +841,7 @@ async def send_direct_message(
 
 # ─── Daily Z-Report Summary Dispatch ─────────────────────────────────────────
 
-@router.post("/send-daily-summary")
+@router.post("/send-daily-summary", dependencies=[Depends(require_permission("notifications.create"))])
 async def send_daily_summary(
     phone: Optional[str] = Query(default=None, description="Optional target phone; defaults to store owner phone"),
     db: Session = Depends(get_db),
@@ -928,7 +928,7 @@ class ChatSendPayload(BaseModel):
 
 # ─── Automation Rules Endpoints ──────────────────────────────────────────────
 
-@router.get("/automation-rules")
+@router.get("/automation-rules", dependencies=[Depends(require_permission("notifications.view"))])
 async def get_automation_rules(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -958,7 +958,7 @@ async def update_automation_rule(
     event_type: str,
     payload: AutomationRuleUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission(["settings.update", "admin", "owner"]))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Enables or disables an automated WhatsApp trigger rule."""
     rule = db.query(WhatsAppAutomationRule).filter(WhatsAppAutomationRule.event_type == event_type).first()
@@ -992,7 +992,7 @@ async def update_automation_rule(
 async def bulk_toggle_automation_rules(
     payload: BulkRuleToggle,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission(["settings.update", "admin", "owner"]))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Enables or disables all automation rules or rules within a specific category."""
     query = db.query(WhatsAppAutomationRule)
@@ -1009,7 +1009,7 @@ async def bulk_toggle_automation_rules(
 
 # ─── Quick Replies Endpoints ──────────────────────────────────────────────────
 
-@router.get("/quick-replies")
+@router.get("/quick-replies", dependencies=[Depends(require_permission("notifications.view"))])
 async def get_quick_replies(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -1033,7 +1033,7 @@ async def get_quick_replies(
     }
 
 
-@router.post("/quick-replies")
+@router.post("/quick-replies", dependencies=[Depends(require_permission("notifications.configure"))])
 async def create_quick_reply(
     payload: QuickReplyCreate,
     db: Session = Depends(get_db),
@@ -1062,7 +1062,7 @@ async def create_quick_reply(
     return {"ok": True, "quick_reply": {"id": item.id, "shortcut": item.shortcut, "title": item.title, "content": item.content, "category": item.category}}
 
 
-@router.put("/quick-replies/{reply_id}")
+@router.put("/quick-replies/{reply_id}", dependencies=[Depends(require_permission("notifications.configure"))])
 async def update_quick_reply(
     reply_id: str,
     payload: QuickReplyUpdate,
@@ -1090,7 +1090,7 @@ async def update_quick_reply(
     return {"ok": True, "id": item.id}
 
 
-@router.delete("/quick-replies/{reply_id}")
+@router.delete("/quick-replies/{reply_id}", dependencies=[Depends(require_permission("notifications.configure"))])
 async def delete_quick_reply(
     reply_id: str,
     db: Session = Depends(get_db),
@@ -1107,7 +1107,7 @@ async def delete_quick_reply(
 
 # ─── Custom Bot Rules & Away Message Endpoints ───────────────────────────────
 
-@router.get("/bot-rules")
+@router.get("/bot-rules", dependencies=[Depends(require_permission("notifications.view"))])
 async def get_bot_rules(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -1136,7 +1136,7 @@ async def get_bot_rules(
 async def create_bot_rule(
     payload: BotRuleCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission(["settings.update", "admin", "owner"]))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Creates a new keyword bot auto-reply rule."""
     rule = WhatsAppBotRule(
@@ -1160,7 +1160,7 @@ async def update_bot_rule(
     rule_id: str,
     payload: BotRuleUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission(["settings.update", "admin", "owner"]))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Updates an existing keyword bot rule."""
     rule = db.query(WhatsAppBotRule).filter(WhatsAppBotRule.id == rule_id).first()
@@ -1190,7 +1190,7 @@ async def update_bot_rule(
 async def delete_bot_rule(
     rule_id: str,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission(["settings.update", "admin", "owner"]))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Deletes a custom bot rule."""
     rule = db.query(WhatsAppBotRule).filter(WhatsAppBotRule.id == rule_id).first()
@@ -1201,7 +1201,7 @@ async def delete_bot_rule(
     return {"ok": True}
 
 
-@router.get("/away-settings")
+@router.get("/away-settings", dependencies=[Depends(require_permission("notifications.view"))])
 async def get_away_settings(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -1229,7 +1229,7 @@ async def get_away_settings(
 async def update_away_settings(
     payload: AwaySettingsUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_permission(["settings.update", "admin", "owner"]))
+    current_user=Depends(require_permission("notifications.configure"))
 ):
     """Updates after-hours auto-responder settings."""
     def _upsert(k: str, v: str):
@@ -1339,7 +1339,7 @@ async def handle_incoming_whatsapp_message(
 
 # ─── Live Chat & Conversation Threads Endpoints ──────────────────────────────
 
-@router.get("/chats")
+@router.get("/chats", dependencies=[Depends(require_permission("notifications.view"))])
 def get_whatsapp_chats(
     search: Optional[str] = None,
     limit: int = 50,
@@ -1421,7 +1421,7 @@ def get_whatsapp_chats(
     return results[:limit]
 
 
-@router.get("/chats/{phone}/messages")
+@router.get("/chats/{phone}/messages", dependencies=[Depends(require_permission("notifications.view"))])
 def get_whatsapp_chat_messages(
     phone: str,
     limit: int = 150,
@@ -1488,7 +1488,7 @@ def get_whatsapp_chat_messages(
     }
 
 
-@router.get("/chats/{phone}/profile-pic")
+@router.get("/chats/{phone}/profile-pic", dependencies=[Depends(require_permission("notifications.view"))])
 async def get_whatsapp_contact_profile_pic(
     phone: str,
     current_user: User = Depends(get_current_user)
@@ -1500,7 +1500,8 @@ async def get_whatsapp_contact_profile_pic(
     clean_digits = "".join(filter(str.isdigit, clean_phone))
     try:
         async with httpx.AsyncClient(timeout=3.5) as client:
-            resp = await client.get(f"{WHATSAPP_SERVICE_URL}/api/contact-profile/{clean_digits}")
+            headers = {"X-Internal-Secret": WHATSAPP_SERVICE_SECRET} if WHATSAPP_SERVICE_SECRET else {}
+            resp = await client.get(f"{WHATSAPP_SERVICE_URL}/api/contact-profile/{clean_digits}", headers=headers)
             if resp.status_code == 200:
                 return resp.json()
     except Exception as e:
@@ -1508,7 +1509,7 @@ async def get_whatsapp_contact_profile_pic(
     return {"phone": clean_phone, "profilePicUrl": None}
 
 
-@router.post("/chats/{phone}/send")
+@router.post("/chats/{phone}/send", dependencies=[Depends(require_permission("notifications.create"))])
 async def send_whatsapp_chat_message(
     phone: str,
     payload: ChatSendPayload,
@@ -1584,7 +1585,7 @@ async def send_whatsapp_chat_message(
     }
 
 
-@router.post("/trigger-reminders")
+@router.post("/trigger-reminders", dependencies=[Depends(require_permission("notifications.create"))])
 async def trigger_reminder_jobs(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -1604,7 +1605,7 @@ async def trigger_reminder_jobs(
 
 # ─── Live Staff Takeover & AI State Machine Endpoints ─────────────────────────
 
-@router.post("/chats/{phone}/takeover")
+@router.post("/chats/{phone}/takeover", dependencies=[Depends(require_permission("notifications.create"))])
 def takeover_chat(
     phone: str,
     db: Session = Depends(get_db),
@@ -1634,7 +1635,7 @@ def takeover_chat(
     }
 
 
-@router.post("/chats/{phone}/resume-ai")
+@router.post("/chats/{phone}/resume-ai", dependencies=[Depends(require_permission("notifications.configure"))])
 def resume_ai_chat(
     phone: str,
     db: Session = Depends(get_db),
@@ -1662,7 +1663,7 @@ def resume_ai_chat(
     }
 
 
-@router.get("/chats/{phone}/summary")
+@router.get("/chats/{phone}/summary", dependencies=[Depends(require_permission("notifications.view"))])
 def get_chat_staff_summary(
     phone: str,
     db: Session = Depends(get_db),
@@ -1677,7 +1678,7 @@ def get_chat_staff_summary(
     return {"ok": True, "summary": summary}
 
 
-@router.get("/ai-analytics")
+@router.get("/ai-analytics", dependencies=[Depends(require_permission("notifications.view"))])
 def get_whatsapp_ai_analytics(
     days: int = Query(default=30, ge=1, le=365),
     db: Session = Depends(get_db),
@@ -1791,7 +1792,7 @@ class KBPreviewPayload(BaseModel):
     article_id: Optional[str] = None
 
 
-@router.get("/kb/articles")
+@router.get("/kb/articles", dependencies=[Depends(require_permission("notifications.view"))])
 def list_knowledge_base_articles(
     category: Optional[str] = None,
     search: Optional[str] = None,
@@ -1849,7 +1850,7 @@ def list_knowledge_base_articles(
     }
 
 
-@router.post("/kb/articles")
+@router.post("/kb/articles", dependencies=[Depends(require_permission("notifications.configure"))])
 def create_knowledge_base_article(
     payload: KBArticleCreatePayload,
     db: Session = Depends(get_db),
@@ -1875,7 +1876,7 @@ def create_knowledge_base_article(
     return {"ok": True, "article_id": article.id, "message": "Knowledge base policy created successfully."}
 
 
-@router.put("/kb/articles/{article_id}")
+@router.put("/kb/articles/{article_id}", dependencies=[Depends(require_permission("notifications.configure"))])
 def update_knowledge_base_article(
     article_id: str,
     payload: KBArticleUpdatePayload,
@@ -1908,7 +1909,7 @@ def update_knowledge_base_article(
     return {"ok": True, "article_id": article.id, "version": article.version, "message": "Article updated."}
 
 
-@router.delete("/kb/articles/{article_id}")
+@router.delete("/kb/articles/{article_id}", dependencies=[Depends(require_permission("notifications.configure"))])
 def delete_knowledge_base_article(
     article_id: str,
     db: Session = Depends(get_db),
@@ -1923,7 +1924,7 @@ def delete_knowledge_base_article(
     return {"ok": True, "message": "Knowledge base article deleted."}
 
 
-@router.post("/kb/preview-ai")
+@router.post("/kb/preview-ai", dependencies=[Depends(require_permission("notifications.view"))])
 def preview_knowledge_base_ai_answer(
     payload: KBPreviewPayload,
     db: Session = Depends(get_db),
@@ -1949,7 +1950,7 @@ class FollowUpRuleUpdatePayload(BaseModel):
     template_body: Optional[str] = None
 
 
-@router.get("/followups/overview")
+@router.get("/followups/overview", dependencies=[Depends(require_permission("notifications.view"))])
 def get_follow_up_overview(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -2006,7 +2007,7 @@ def get_follow_up_overview(
     }
 
 
-@router.put("/followups/rules/{rule_id}")
+@router.put("/followups/rules/{rule_id}", dependencies=[Depends(require_permission("notifications.configure"))])
 def update_follow_up_rule(
     rule_id: str,
     payload: FollowUpRuleUpdatePayload,
@@ -2036,7 +2037,7 @@ def update_follow_up_rule(
     return {"ok": True, "message": "Follow-up rule updated successfully."}
 
 
-@router.post("/followups/logs/{log_id}/cancel")
+@router.post("/followups/logs/{log_id}/cancel", dependencies=[Depends(require_permission("notifications.configure"))])
 def cancel_pending_follow_up(
     log_id: str,
     db: Session = Depends(get_db),
@@ -2056,7 +2057,7 @@ def cancel_pending_follow_up(
     return {"ok": True, "message": "Follow-up cancelled."}
 
 
-@router.post("/followups/process-now")
+@router.post("/followups/process-now", dependencies=[Depends(require_permission("notifications.configure"))])
 async def trigger_follow_up_processing(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -2065,6 +2066,3 @@ async def trigger_follow_up_processing(
     from app.services.ai_followup_service import process_due_follow_up_queue
     res = await process_due_follow_up_queue(db)
     return {"ok": True, "result": res}
-
-
-

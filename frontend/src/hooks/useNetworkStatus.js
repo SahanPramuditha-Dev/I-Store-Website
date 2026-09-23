@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { API_BASE_URL } from "../lib/api";
 
 // Shared channel so all open tabs reflect the same connectivity state
 const BC_CHANNEL_NAME = "istore_network_status";
@@ -20,7 +21,9 @@ const BC_CHANNEL_NAME = "istore_network_status";
 const DEBOUNCE_MS = 2_000;
 
 // Lightweight ping endpoint – HEAD request, no body needed.
-const PING_URL = "/api/health";
+// Use the API base explicitly. Relative URLs resolve against file:// in the
+// desktop build, which would make a healthy local POS service look offline.
+const PING_URL = `${API_BASE_URL}/health`;
 const PING_TIMEOUT_MS = 5_000;
 
 /**
@@ -45,9 +48,9 @@ export function useNetworkStatus({ ping = false, pingInterval = 30_000 } = {}) {
     try {
       const controller = new AbortController();
       const timeout    = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
-      await fetch(PING_URL, { method: "HEAD", signal: controller.signal, cache: "no-store" });
+      const response = await fetch(PING_URL, { method: "HEAD", signal: controller.signal, cache: "no-store" });
       clearTimeout(timeout);
-      return true;
+      return response.ok;
     } catch {
       return false;
     }
@@ -111,13 +114,20 @@ export function useNetworkStatus({ ping = false, pingInterval = 30_000 } = {}) {
   // ── Periodic ping when online ────────────────────────────────────────────
   useEffect(() => {
     if (!ping) return;
+    let active = true;
+    checkConnectivity().then((confirmed) => {
+      if (active) applyStatus(confirmed);
+    });
     pingTimerRef.current = setInterval(async () => {
       if (isOnline) {
         const confirmed = await checkConnectivity();
         if (!confirmed) applyStatus(false);
       }
     }, pingInterval);
-    return () => clearInterval(pingTimerRef.current);
+    return () => {
+      active = false;
+      clearInterval(pingTimerRef.current);
+    };
   }, [ping, pingInterval, isOnline, checkConnectivity, applyStatus]);
 
   return { isOnline, lastOnlineAt, lastOfflineAt };

@@ -87,10 +87,12 @@ function AnalyticsSection() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [warning, setWarning] = useState(null);
 
   const fetchAnalytics = async () => {
     setLoading(true);
     setError(null);
+    setWarning(null);
     try {
       const promises = [
         api.get('/api/analytics/today-sales'),
@@ -136,8 +138,20 @@ function AnalyticsSection() {
             })),
         },
       });
-      if (results.every((result) => result.status === "rejected")) {
-        setError("Business intelligence is unavailable for this account.");
+      const rejected = results.filter((result) => result.status === "rejected");
+      if (rejected.length === results.length) {
+        const statuses = rejected.map((result) => Number(result.reason?.response?.status || 0));
+        if (statuses.some((status) => status === 403)) {
+          setError("Business intelligence access was denied. Verify this staff role has reporting permissions and the active license includes analytics.");
+        } else if (statuses.some((status) => status === 401)) {
+          setError("Your session has expired. Sign in again to load business intelligence.");
+        } else if (statuses.some((status) => status === 402)) {
+          setError("The active software license could not authorize business intelligence.");
+        } else {
+          setError("Business intelligence could not reach the local service. Check the backend connection and retry.");
+        }
+      } else if (rejected.length > 0) {
+        setWarning(`${rejected.length} business insight${rejected.length === 1 ? " is" : "s are"} temporarily unavailable. Available results are shown below.`);
       }
     } catch (err) {
       setError("Failed to fetch analytics.");
@@ -157,7 +171,10 @@ function AnalyticsSection() {
           onClick={() => setIsOpen(!isOpen)} 
           className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 hover:text-slate-950 dark:hover:text-white"
         >
-          <span>📊 Live Business Intelligence</span>
+          <span className="inline-flex items-center gap-2">
+            <BarChart3 size={15} aria-hidden="true" />
+            Live Business Intelligence
+          </span>
           <span className="text-[10px] font-medium text-slate-400">({isOpen ? 'Hide' : 'Show'})</span>
         </button>
         <Button variant="ghost" size="sm" onClick={fetchAnalytics} disabled={loading} className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
@@ -174,6 +191,13 @@ function AnalyticsSection() {
           ) : error ? (
             <div className="text-xs text-rose-600 dark:text-rose-400 p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-500/20 rounded-xl">{error}</div>
           ) : (
+            <>
+            {warning ? (
+              <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200" role="status">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>{warning}</span>
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {/* Today's Sales */}
               <div className="rounded-xl border border-slate-300 bg-white p-3.5 shadow-sm hover:border-slate-400 dark:border-white/5 dark:bg-slate-950/40 transition-all flex flex-col justify-between">
@@ -265,6 +289,7 @@ function AnalyticsSection() {
                 <p className="text-[10px] text-slate-400">Busiest POS volume periods</p>
               </div>
             </div>
+            </>
           )}
         </>
       )}
@@ -501,12 +526,37 @@ export default function Dashboard() {
       to: "/inventory/suppliers",
     },
   ];
+  const dashboardPreset = useMemo(() => {
+    const normalizedRole = String(role || "").toLowerCase();
+    if (normalizedRole.includes("technician")) return { label: "Technician workspace", description: "Repair workload, turnaround, and customer devices.", cards: ["Repair Workload", "Inventory Worth"] };
+    if (normalizedRole.includes("cashier") || normalizedRole.includes("staff")) return { label: "Cashier workspace", description: "Checkout activity, available stock, and customer service.", cards: ["Today's Revenue", "Inventory Worth"] };
+    if (normalizedRole.includes("manager")) return { label: "Manager workspace", description: "Daily performance, stock, receivables, and repair workload.", cards: ["Today's Revenue", "Today's Profit", "Inventory Worth", "Credit Receivables", "Repair Workload", "Batches & Expiries"] };
+    return { label: "Executive workspace", description: "Full financial, inventory, supplier, and operational oversight.", cards: executiveKpis.map((card) => card.title) };
+  }, [executiveKpis, role]);
+  const visibleExecutiveKpis = executiveKpis.filter((card) => dashboardPreset.cards.includes(card.title));
 
   if (loading && !data) return <DashboardSkeleton />;
   if (error && !data) return <ErrorState text={error} />;
 
   const piePalette = ["#06b6d4", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#a855f7"];
   const actionCenter = data?.action_center || {};
+  const attentionItems = [
+    hasCapability("repairs_management") && Number(actionCenter.overdue_repairs || 0) > 0
+      ? { label: "overdue repairs", count: Number(actionCenter.overdue_repairs), tone: "rose", to: "/repairs" }
+      : null,
+    Number(actionCenter.low_stock_items || 0) + Number(actionCenter.out_of_stock_items || 0) > 0
+      ? { label: "stock items below minimum", count: Number(actionCenter.low_stock_items || 0) + Number(actionCenter.out_of_stock_items || 0), tone: "amber", action: () => setShowLowStockModal(true) }
+      : null,
+    Number(actionCenter.expiring_batches || 0) > 0
+      ? { label: "batches expiring soon", count: Number(actionCenter.expiring_batches), tone: "rose", to: "/inventory/products" }
+      : null,
+    !backupEnabled
+      ? { label: "backup needs configuration", count: null, tone: "amber", to: "/backup" }
+      : null,
+    pendingCount > 0
+      ? { label: "offline changes awaiting sync", count: pendingCount, tone: "indigo", to: "/settings" }
+      : null,
+  ].filter(Boolean);
 
   return (
     <PageContainer className="dashboard-page pb-4 pr-1">
@@ -539,6 +589,40 @@ export default function Dashboard() {
           }
         />
 
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 dark:border-indigo-500/20 dark:bg-indigo-500/10">
+          <div>
+            <p className="text-xs font-bold text-indigo-900 dark:text-indigo-100">{dashboardPreset.label}</p>
+            <p className="text-[11px] text-indigo-700/80 dark:text-indigo-200/70">{dashboardPreset.description}</p>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">Role-based view</span>
+        </div>
+
+        <section className={`dashboard-attention-strip ${attentionItems.length ? "has-items" : "is-clear"}`} aria-label="Operational priorities">
+          <div className="dashboard-attention-heading">
+            <AlertTriangle size={15} aria-hidden="true" />
+            <div>
+              <strong>{attentionItems.length ? "Needs attention" : "Operations are on track"}</strong>
+              <span>{attentionItems.length ? `${attentionItems.length} priority ${attentionItems.length === 1 ? "area" : "areas"} to review` : "No urgent operational issues detected."}</span>
+            </div>
+          </div>
+          {attentionItems.length ? (
+            <div className="dashboard-attention-actions">
+              {attentionItems.slice(0, 3).map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.action || (() => navigate(item.to))}
+                  className={`dashboard-attention-action tone-${item.tone}`}
+                >
+                  {item.count !== null ? <b>{item.count}</b> : null} {item.label}
+                  <ArrowRight size={13} aria-hidden="true" />
+                </button>
+              ))}
+              {attentionItems.length > 3 ? <span className="dashboard-attention-more">+{attentionItems.length - 3} more</span> : null}
+            </div>
+          ) : null}
+        </section>
+
         <div className="dashboard-health-card grid grid-cols-1 gap-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/45 p-2 sm:grid-cols-2 xl:grid-cols-4 shadow-sm">
           {health.map((h) => (
             <div key={h.label} className="dashboard-health-item flex items-center justify-between rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5">
@@ -555,7 +639,7 @@ export default function Dashboard() {
         </div>
 
         <div className="dashboard-kpi-grid grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-6">
-          {executiveKpis.map((k) => (
+          {visibleExecutiveKpis.map((k) => (
             <button
               key={k.title}
               type="button"
@@ -574,10 +658,10 @@ export default function Dashboard() {
         <div className="rounded-2xl border border-slate-300 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-              <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-              <span>Action Center (Requires Attention)</span>
+              <span className={`flex h-2 w-2 rounded-full ${attentionItems.length ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`} />
+              <span>Action Center</span>
             </div>
-            <span className="text-[10px] text-slate-400">Real-time operational alerts</span>
+            <span className="text-[10px] text-slate-400">Review operational indicators</span>
           </div>
 
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -619,7 +703,7 @@ export default function Dashboard() {
 
             {/* Supplier Payables */}
             <div
-              onClick={() => navigate("/suppliers")}
+              onClick={() => navigate("/inventory/suppliers")}
               className="flex items-center justify-between cursor-pointer rounded-xl border border-slate-300/90 bg-white hover:bg-slate-50/80 dark:border-white/10 dark:bg-slate-950/40 dark:hover:bg-slate-900 p-3 shadow-sm hover:border-slate-400 transition-all group"
             >
               <div className="flex items-center gap-2.5">

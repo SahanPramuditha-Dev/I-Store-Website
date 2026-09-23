@@ -1,6 +1,6 @@
 import api from "./api";
 import JSZip from "jszip";
-import * as XLSX from "xlsx";
+import { createWorkbookBlob } from "./workbook";
 export { parseUtcIso, parseLocalDate, formatDateTime, formatDate, formatTime } from "./dateParser";
 
 export function formatLabel(value) {
@@ -111,16 +111,10 @@ export function downloadCsv(filename, columns, rows) {
   return blob.size;
 }
 
-export function downloadXlsx(filename, columns, rows, sheetName = "Report") {
+export async function downloadXlsx(filename, columns, rows, sheetName = "Report") {
   const header = columns.map((column) => column.label);
   const body = toTabularRows(columns, rows);
-  const worksheet = XLSX.utils.aoa_to_sheet([header, ...body]);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.slice(0, 31));
-  const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
+  const blob = await createWorkbookBlob(header, body, sheetName);
   triggerDownloadBlob(filename, blob);
   return blob.size;
 }

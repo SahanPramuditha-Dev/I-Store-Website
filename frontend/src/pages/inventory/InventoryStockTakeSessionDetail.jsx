@@ -4,6 +4,7 @@ import api from "../../lib/api";
 import { useFetch } from "../../hooks/useFetch";
 import { AppCard, StickyTable } from "../../components/MuiPrimitives";
 import { Select, ProductSelect } from "../../components/UI";
+import { Smartphone } from "lucide-react";
 
 export default function InventoryStockTakeSessionDetail() {
   const navigate = useNavigate();
@@ -114,7 +115,7 @@ export default function InventoryStockTakeSessionDetail() {
         <div className="space-y-3">
           {/* Direct IMEI Audit Scanner Box */}
           <div className="flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3">
-            <span className="text-xs font-bold text-indigo-300 shrink-0">📱 Scan Physical IMEI Barcode:</span>
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-300 shrink-0"><Smartphone size={13} aria-hidden="true" /> Scan Physical IMEI Barcode:</span>
             <input
               value={scanImei}
               onChange={(e) => setScanImei(e.target.value)}

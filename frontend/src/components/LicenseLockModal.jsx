@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { KeyRound, ShieldAlert, WifiOff, CheckCircle2, RefreshCw, Laptop } from 'lucide-react';
+import { KeyRound, ShieldAlert, WifiOff, CheckCircle2, RefreshCw, Laptop, X } from 'lucide-react';
 import api from '../lib/api';
+
+const OFFLINE_BANNER_DISMISSED_KEY = 'istore_offline_license_banner_dismissed';
+
+function wasOfflineBannerDismissed() {
+  try {
+    return window.sessionStorage.getItem(OFFLINE_BANNER_DISMISSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 export default function LicenseLockModal() {
   const [licenseState, setLicenseState] = useState({
@@ -13,6 +23,16 @@ export default function LicenseLockModal() {
   const [licenseKeyInput, setLicenseKeyInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [offlineBannerDismissed, setOfflineBannerDismissed] = useState(wasOfflineBannerDismissed);
+
+  const dismissOfflineBanner = () => {
+    setOfflineBannerDismissed(true);
+    try {
+      window.sessionStorage.setItem(OFFLINE_BANNER_DISMISSED_KEY, 'true');
+    } catch {
+      // The in-memory dismissal still works when session storage is unavailable.
+    }
+  };
 
   const checkLicense = useCallback(async () => {
     // 1. Electron Desktop IPC check
@@ -203,15 +223,27 @@ export default function LicenseLockModal() {
 
   // Warning Banner for Offline Grace Period
   if (licenseState.status === 'ACTIVATED' && licenseState.is_offline_fallback) {
+    if (offlineBannerDismissed) return null;
     return (
-      <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-slate-950 px-4 py-2 text-xs font-semibold flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-2">
+      <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-slate-950 px-4 py-2 text-xs font-semibold flex items-center gap-3 shadow-lg" role="status">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <WifiOff className="w-4 h-4" />
-          <span>Offline License Mode: {licenseState.offline_grace_remaining_hours}h remaining before online check required.</span>
+          <span className="truncate">Offline License Mode: {licenseState.offline_grace_remaining_hours}h remaining before online check required.</span>
         </div>
-        <button onClick={checkLicense} className="underline hover:text-white flex items-center gap-1">
-          <RefreshCw className="w-3 h-3" /> Retry Connection
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button onClick={checkLicense} className="underline hover:text-white flex items-center gap-1">
+            <RefreshCw className="w-3 h-3" /> Retry Connection
+          </button>
+          <button
+            type="button"
+            onClick={dismissOfflineBanner}
+            className="grid h-7 w-7 place-items-center rounded-md border border-slate-950/20 bg-slate-950/5 transition hover:bg-slate-950/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-950"
+            aria-label="Dismiss offline license notification"
+            title="Dismiss"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     );
   }

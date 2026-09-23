@@ -82,8 +82,8 @@ const ROUTE_CAPABILITY_MAP = {
   "/repair": "repairs_management",
   "/r": "repairs_management",
   "/warranty": "warranty_management",
-  "/inventory/serials": "serial_tracking",
-  "/inventory/batches": "batch_tracking",
+  "/inventory/serials": ["serial_tracking", "imei_tracking"],
+  "/inventory/batches": ["batch_tracking", "expiry_tracking"],
   "/reports/repairs": "repairs_management",
   "/reports/technician-performance": "repairs_management",
 };
@@ -97,8 +97,14 @@ const ROUTE_ENTITLEMENT_MAP = {
   "/repairs": "repairs",
   "/repair": "repairs",
   "/r": "repairs",
+  "/warranty": "repairs",
   "/whatsapp": "smart_sms",
 };
+
+function hasRequiredCapability(requiredCapability, hasCapability) {
+  const required = Array.isArray(requiredCapability) ? requiredCapability : [requiredCapability];
+  return required.some((capability) => hasCapability(capability));
+}
 
 function RouteFallback() {
   return <div className="h-dvh grid place-items-center text-slate-400">Loading workspace...</div>;
@@ -108,13 +114,30 @@ function Guard({ children }) {
   const location = useLocation();
   const token = getAuthValue("token");
   const { hasCapability, hasEntitlement, isLoading } = useCapabilities();
+  const [permissionsReady, setPermissionsReady] = useState(() => loadPermissions().length > 0);
+
+  useEffect(() => {
+    let active = true;
+    if (!token) {
+      setPermissionsReady(false);
+      return () => { active = false; };
+    }
+
+    setPermissionsReady(loadPermissions().length > 0);
+    bootstrapPermissions(api)
+      .catch(() => [])
+      .finally(() => {
+        if (active) setPermissionsReady(true);
+      });
+    return () => { active = false; };
+  }, [token]);
 
   if (!token) {
     clearAuthState();
     return <Navigate to="/login" replace />;
   }
 
-  if (isLoading) return <RouteFallback />;
+  if (isLoading || !permissionsReady) return <RouteFallback />;
 
   const permissions = loadPermissions();
   const allowed = location.pathname === "/access-denied" ? true : canAccessPath(location.pathname, permissions);
@@ -128,7 +151,7 @@ function Guard({ children }) {
   );
   if (matchedEntry) {
     const requiredCapability = matchedEntry[1];
-    if (!hasCapability(requiredCapability) && location.pathname !== "/access-denied") {
+    if (!hasRequiredCapability(requiredCapability, hasCapability) && location.pathname !== "/access-denied") {
       return <Navigate to="/access-denied" replace />;
     }
   }

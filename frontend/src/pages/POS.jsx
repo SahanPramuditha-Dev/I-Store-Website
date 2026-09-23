@@ -14,6 +14,7 @@ import VariantMatrixModal from "../components/pos/VariantMatrixModal";
 import TouchPOSTerminal from "../components/pos/TouchPOSTerminal";
 import { useCapabilities } from "../context/CapabilityContext";
 import { syncQueue, offlineStorage, generateOfflineInvoiceNo } from "../lib/syncQueue";
+import { useNetworkStatus } from "../hooks/useNetworkStatus";
 
 export default function POS() {
   const { toast, confirm, prompt } = useFeedback();
@@ -29,20 +30,29 @@ export default function POS() {
   const suspendedCartStorageKey = `pos_suspended_carts:${localStorage.getItem("username") || "anonymous"}`;
   const longPressTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
-  const inventoryFetch = useFetch('/inventory?limit=50');
+  const [mode, setMode] = useState("sale"); // sale | repair | reservation
+  // The POS catalogue below provides paged product cards, avoiding a second
+  // general-inventory collection at cashier startup.
   const categoriesFetch = useFetch('/inventory/categories');
   const suppliersFetch = useFetch('/inventory/suppliers');
   const customersFetch = useFetch('/customers?limit=100');
-  const salesFetch = useFetch('/pos/sales');
+  // The cashier summary and recent-sale panel only need today's sales. Build
+  // this in local-store time rather than UTC so late-night sales are retained.
+  const localToday = new Date();
+  const localDateFrom = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, "0")}-${String(localToday.getDate()).padStart(2, "0")}`;
+  const salesFetch = useFetch(`/pos/sales?page_size=50&date_from=${localDateFrom}`);
   const { hasCapability } = useCapabilities();
+  // Browser online events do not catch a reachable Wi-Fi router with an
+  // unreachable POS service. Confirm the active (normally local) backend so
+  // checkout can choose the offline queue before a cashier waits for timeout.
+  const { isOnline: backendReachable } = useNetworkStatus({ ping: true, pingInterval: 10_000 });
   const hasRepairs = hasCapability("repairs_management");
-  const repairsFetch = useFetch(hasRepairs ? '/repairs' : null); // To link tickets
-  const reservationsFetch = useFetch('/product-reservations');
+  const repairsFetch = useFetch(hasRepairs && mode === "repair" ? '/repairs?page_size=100' : null); // To link tickets
+  const reservationsFetch = useFetch(mode === "reservation" ? '/product-reservations' : null);
 
   const [isTouchMode, setIsTouchMode] = useState(() => localStorage.getItem("pos_touch_mode") !== "false");
   const [touchPadTarget, setTouchPadTarget] = useState("cash"); // "cash" | "qty" | "discount"
   const [touchPadBuffer, setTouchPadBuffer] = useState("");
-  const [mode, setMode] = useState("sale"); // sale | repair | reservation
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [scanCode, setScanCode] = useState("");
@@ -81,6 +91,7 @@ export default function POS() {
   const [productDetail, setProductDetail] = useState(null);
   const [catalogRows, setCatalogRows] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogRevision, setCatalogRevision] = useState(0);
   const [availableAdvances, setAvailableAdvances] = useState([]);
   const [selectedAdvanceMap, setSelectedAdvanceMap] = useState({});
   const [availableCredits, setAvailableCredits] = useState([]);
@@ -89,6 +100,16 @@ export default function POS() {
   const [shiftModalOpen, setShiftModalOpen] = useState(false);
   const [currentShiftData, setCurrentShiftData] = useState(null);
   const [rightPanelTab, setRightPanelTab] = useState("checkout");
+  const [hardwareStatus, setHardwareStatus] = useState(null);
+  const [lastBarcodeReadAt, setLastBarcodeReadAt] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    window.istore?.terminal?.getHardwareStatus?.()
+      .then((status) => active && setHardwareStatus(status))
+      .catch(() => active && setHardwareStatus({ available: false, printers: [] }));
+    return () => { active = false; };
+  }, []);
 
   const fetchShiftStatus = useCallback(async () => {
     try {
@@ -221,11 +242,39 @@ export default function POS() {
   }, [cashReceived, dueAfterCredits]);
 
   const [lastSale, setLastSale] = useState(null);
+  const failedPrintStorageKey = `pos_failed_prints:${localStorage.getItem("username") || "anonymous"}`;
+  const [failedPrints, setFailedPrints] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(failedPrintStorageKey) || "[]");
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  });
   const [draftLabel, setDraftLabel] = useState("");
   const [showDraftSaveModal, setShowDraftSaveModal] = useState(false);
   const [pendingSync, setPendingSync] = useState(false);
   const autoSaveTimerRef = useRef(null);
   const searchDebounceRef = useRef(null);
+
+  // Keep the desktop shell informed about work that should not be discarded.
+  // The main process uses this for its safe-exit dialog and to keep an active
+  // till awake while a shift is open.
+  useEffect(() => {
+    const terminal = window.istore?.terminal;
+    terminal?.setExitGuard({
+      hasCart: cart.length > 0,
+      pendingSync,
+      activeShift: Boolean(currentShiftData),
+    }).catch(() => {});
+    return () => {
+      terminal?.setExitGuard({ hasCart: false, pendingSync: false, activeShift: false }).catch(() => {});
+    };
+  }, [cart.length, pendingSync, currentShiftData]);
+
+  useEffect(() => {
+    localStorage.setItem(failedPrintStorageKey, JSON.stringify(failedPrints.slice(0, 10)));
+  }, [failedPrints, failedPrintStorageKey]);
 
   useEffect(() => {
     if (saleCompleteAutoCloseTimerRef.current) {
@@ -241,11 +290,11 @@ export default function POS() {
   // Validation helpers
   const maxDiscountAllowed = useMemo(() => {
     // Compute max discount allowed from per-product limits (if present on inventory items).
-    // inventoryFetch.data is expected to contain items with optional fields:
+    // Catalogue cards include optional pricing guardrails:
     //  - max_discount_amount (absolute LKR)
     //  - max_discount_percent (percentage of the line total)
     // Fallback to 35% of the line total when no per-product limit is set.
-    const inv = inventoryFetch.data || [];
+    const inv = catalogRows;
     if (!cart.length) return 0;
     let totalAllowed = 0;
     for (const c of cart) {
@@ -269,7 +318,7 @@ export default function POS() {
       }
     }
     return totalAllowed;
-  }, [cart, inventoryFetch.data, subtotal]);
+  }, [cart, catalogRows, subtotal]);
 
   const maxDiscountPercentAllowed = useMemo(() => {
     if (!subtotal) return 0;
@@ -277,11 +326,11 @@ export default function POS() {
   }, [maxDiscountAllowed, subtotal]);
   const minSellingPrice = useMemo(() => {
     return cart.map(c => {
-      const inv = (inventoryFetch.data || []).find(x => x.id === c.item_id);
+      const inv = catalogRows.find(x => x.id === c.item_id);
       if (!inv || c.is_labor) return null;
       return { item_id: c.item_id, cost: inv.cost_price || 0 };
     }).filter(Boolean);
-  }, [cart, inventoryFetch.data]);
+  }, [cart, catalogRows]);
 
   const hasNegativeMargin = useMemo(() => {
     return minSellingPrice.some(item => {
@@ -304,11 +353,11 @@ export default function POS() {
   }, [salesFetch.data]);
 
   const inventoryAlerts = useMemo(() => {
-    const rows = inventoryFetch.data || [];
+    const rows = catalogRows;
     const out = rows.filter((row) => Number(row.quantity || 0) <= 0).slice(0, 8);
     const low = rows.filter((row) => Number(row.quantity || 0) > 0 && Number(row.quantity || 0) <= 5).slice(0, 8);
     return { out, low };
-  }, [inventoryFetch.data]);
+  }, [catalogRows]);
 
   const categoryOptions = useMemo(() => {
     const names = (categoriesFetch.data || [])
@@ -330,7 +379,7 @@ export default function POS() {
 
   const quickAddStats = useMemo(() => {
     const search = String(quickAddForm.name || "").trim().toLowerCase();
-    const rows = inventoryFetch.data || [];
+    const rows = catalogRows;
     if (!search) return { matches: 0, stockHint: null, priceHint: null };
     const match = rows.find((row) => String(row.name || "").toLowerCase().includes(search) || String(row.sku || "").toLowerCase() === search || String(row.barcode || "").toLowerCase() === search);
     return {
@@ -338,7 +387,7 @@ export default function POS() {
       stockHint: match ? Number(match.quantity || 0) : null,
       priceHint: match ? Number(match.sale_price || 0) : null,
     };
-  }, [inventoryFetch.data, quickAddForm.name]);
+  }, [catalogRows, quickAddForm.name]);
 
   const resetQuickAdd = useCallback(() => {
     setQuickAddForm({
@@ -543,7 +592,7 @@ export default function POS() {
       active = false;
       clearTimeout(searchDebounceRef.current);
     };
-  }, [searchQuery, activeCategory]);
+  }, [searchQuery, activeCategory, catalogRevision]);
 
   useEffect(() => {
     const handleKeyDown = async (e) => {
@@ -734,6 +783,7 @@ export default function POS() {
           total_stock: Number(data?.stock?.on_hand ?? data.quantity ?? 0),
           reserved_stock: Number(data?.stock?.reserved ?? 0),
         }, extractedWeight);
+        setLastBarcodeReadAt(new Date());
         setScanCode("");
         barcodeRef.current?.focus();
       }
@@ -748,6 +798,7 @@ export default function POS() {
             total_stock: Number(data?.stock?.on_hand ?? data.quantity ?? 0),
             reserved_stock: Number(data?.stock?.reserved ?? 0),
           });
+          setLastBarcodeReadAt(new Date());
           setScanCode("");
           barcodeRef.current?.focus();
           return;
@@ -820,7 +871,7 @@ export default function POS() {
   }
 
   function handleQuickAddSaved(inventoryItem) {
-    inventoryFetch.refresh();
+    setCatalogRevision((value) => value + 1);
     addItem({
       ...inventoryItem,
       quantity: 9999, // Allow selling newly created items freely
@@ -873,7 +924,7 @@ export default function POS() {
       updateItem(itemId, 'quantity', Math.max(1, item.quantity + delta));
       return;
     }
-    const inv = (inventoryFetch.data || []).find(x => x.id === itemId);
+    const inv = catalogRows.find(x => x.id === itemId);
     const max = inv?.quantity ?? Infinity;
     const next = Math.max(1, Math.min(max, item.quantity + delta));
     updateItem(itemId, 'quantity', next);
@@ -1102,7 +1153,7 @@ export default function POS() {
     }
     setCustomerId(String(hit.customer_id || ""));
     let item = (catalogRows || []).find((row) => Number(row.id) === Number(hit.product_id))
-      || (inventoryFetch.data || []).find((row) => Number(row.id) === Number(hit.product_id));
+      || catalogRows.find((row) => Number(row.id) === Number(hit.product_id));
     if (!item) {
       try {
         const { data } = await api.get(`/pos/product-search`, { params: { q: String(hit.product_name || hit.requested_product_name || hit.product_id), limit: 40 } });
@@ -1287,7 +1338,7 @@ export default function POS() {
         localStorage.removeItem("pos_current_draft");
       };
 
-      if (!navigator.onLine) {
+      if (!backendReachable) {
         await processOfflineCheckout();
         return;
       }
@@ -1304,11 +1355,10 @@ export default function POS() {
         setSelectedCreditMap({});
         setAvailableCredits([]);
         localStorage.removeItem("pos_current_draft");
-        const refreshed = await api.get('/pos/sales');
-        salesFetch.setData(refreshed.data);
-        inventoryFetch.refresh();
+        await salesFetch.refresh();
+        setCatalogRevision((value) => value + 1);
       } catch (postErr) {
-        if (!navigator.onLine || postErr?.code === "ERR_NETWORK" || !postErr.response) {
+        if (!backendReachable || !navigator.onLine || postErr?.code === "ERR_NETWORK" || !postErr.response) {
           await processOfflineCheckout();
           return;
         }
@@ -1407,9 +1457,8 @@ export default function POS() {
         setSelectedReturnItem(null);
         setReturnQuantity(1);
         setReturnNotes("");
-        const refreshed = await api.get("/pos/sales");
-        salesFetch.setData(refreshed.data);
-        inventoryFetch.refresh();
+        await salesFetch.refresh();
+        setCatalogRevision((value) => value + 1);
       } catch (err) {
         toast(err.response?.data?.detail || err.response?.data?.message || "Return failed", "error");
       } finally {
@@ -1501,9 +1550,14 @@ export default function POS() {
 
       // Write content and trigger print in the already-opened popup
       await printHtmlDocument(html, { win: popup });
+      setFailedPrints((jobs) => jobs.filter((job) => String(job.sale?.id || job.sale?.sale_id) !== String(saleId)));
       toast("Receipt sent to printer", "success");
     } catch (err) {
       if (popup && !popup.closed) popup.close();
+      setFailedPrints((jobs) => {
+        const rest = jobs.filter((job) => String(job.sale?.id || job.sale?.sale_id) !== String(saleId));
+        return [{ sale, failed_at: new Date().toISOString(), reason: err?.message || "Print failed" }, ...rest].slice(0, 10);
+      });
       toast(err?.message || "Failed to print receipt", "error");
     }
   }, [lastSale, toast]);
@@ -1559,7 +1613,7 @@ export default function POS() {
       });
       toast("Invoice voided successfully", "success");
       salesFetch.refresh();
-      inventoryFetch.refresh();
+      setCatalogRevision((value) => value + 1);
     } catch (err) {
       if (err.approvalCancelled) return;
       toast(err.response?.data?.message || err.response?.data?.detail || "Failed to void invoice", "error");
@@ -1606,7 +1660,7 @@ export default function POS() {
     const firstItemWarrantyDays = Number(firstItemObj?.warranty_days ?? firstItemObj?.warrantyDays ?? 0);
     const firstItemWarrantyMonths = firstItemWarrantyDays > 0 ? Math.round(firstItemWarrantyDays / 30) : 0;
     const portalBase = "https://i-store-customer-portal-one.vercel.app";
-    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}&name=${encodeURIComponent(custName)}&total=${totalAmt.toFixed(2)}&subtotal=${subtotalAmt.toFixed(2)}&disc=${discountAmt.toFixed(2)}&phone=${encodeURIComponent(cleanedPhone)}&method=${encodeURIComponent(payMethod)}&item=${encodeURIComponent(firstItem)}&warranty=${firstItemWarrantyMonths}&warranty_days=${firstItemWarrantyDays}`;
+    const billUrl = lastSale.customer_portal_url || (lastSale.customer_portal_cloudflare ? "https://i-store-customer-portal-api.sahan-dev-tech.workers.dev" : `${portalBase}/invoice/${invNo}?token=${token}`);
     const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(billUrl)}&format=png&margin=12`;
 
     const message = `🧾 *OFFICIAL DIGITAL RECEIPT*\n━━━━━━━━━━━━━━━━━━━━\n👋 Hello *${custName}*,\n\nThank you for shopping with *I-Store*! Your transaction has been confirmed:\n\n📋 *Invoice No:* #${invNo}\n📅 *Date:* ${dateStr}\n💳 *Payment Method:* ${payMethod}\n\n💰 *Payment Breakdown:*\n• Subtotal: LKR ${subtotalAmt.toLocaleString()}\n• Discount: LKR ${discountAmt.toLocaleString()}\n• *Grand Total: LKR ${totalAmt.toLocaleString()}*\n• Amount Paid: LKR ${paidAmt.toLocaleString()}\n• *Balance Due: LKR ${balAmt.toLocaleString()}*\n\n📄 *View & Download Digital Bill:*\n${billUrl}\n\n🛡️ *Warranty & Digital Records:*\nYour warranty coverage and device serial numbers are digitally registered with your bill.\n\n📞 *Support Hotline:* +94 77 123 4567\n━━━━━━━━━━━━━━━━━━━━\n_Thank you for choosing I-Store! Have a wonderful day!_`;
@@ -1665,7 +1719,7 @@ export default function POS() {
     const firstItemWarrantyDays = Number(firstItemObj?.warranty_days ?? firstItemObj?.warrantyDays ?? 0);
     const firstItemWarrantyMonths = firstItemWarrantyDays > 0 ? Math.round(firstItemWarrantyDays / 30) : 0;
     const portalBase = "https://i-store-customer-portal-one.vercel.app";
-    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}&name=${encodeURIComponent(custName)}&total=${totalAmt.toFixed(2)}&subtotal=${subtotalAmt.toFixed(2)}&disc=${discountAmt.toFixed(2)}&phone=${encodeURIComponent(cleanedPhone)}&method=${encodeURIComponent(payMethod)}&item=${encodeURIComponent(firstItem)}&warranty=${firstItemWarrantyMonths}&warranty_days=${firstItemWarrantyDays}`;
+    const billUrl = lastSale.customer_portal_url || (lastSale.customer_portal_cloudflare ? "https://i-store-customer-portal-api.sahan-dev-tech.workers.dev" : `${portalBase}/invoice/${invNo}?token=${token}`);
 
     const message = `🧾 *OFFICIAL DIGITAL RECEIPT*\n━━━━━━━━━━━━━━━━━━━━\n👋 Hello *${custName}*,\n\nThank you for shopping with *I-Store*! Your transaction has been confirmed:\n\n📋 *Invoice No:* #${invNo}\n📅 *Date:* ${dateStr}\n💳 *Payment Method:* ${payMethod}\n\n💰 *Payment Breakdown:*\n• Subtotal: LKR ${subtotalAmt.toLocaleString()}\n• Discount: LKR ${discountAmt.toLocaleString()}\n• *Grand Total: LKR ${totalAmt.toLocaleString()}*\n• Amount Paid: LKR ${paidAmt.toLocaleString()}\n• *Balance Due: LKR ${balAmt.toLocaleString()}*\n\n📄 *View & Download Digital Bill:*\n${billUrl}\n\n🛡️ *Warranty & Digital Records:*\nYour warranty coverage and device serial numbers are digitally registered with your bill.\n\n📞 *Support Hotline:* +94 77 123 4567\n━━━━━━━━━━━━━━━━━━━━\n_Thank you for choosing I-Store! Have a wonderful day!_`;
     const whatsappUrl = cleanedPhone ? `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}` : `https://wa.me/?text=${encodeURIComponent(message)}`;
@@ -1705,7 +1759,7 @@ export default function POS() {
     const firstItemWarrantyDays = Number(firstItemObj?.warranty_days ?? firstItemObj?.warrantyDays ?? 0);
     const firstItemWarrantyMonths = firstItemWarrantyDays > 0 ? Math.round(firstItemWarrantyDays / 30) : 0;
     const portalBase = "https://i-store-customer-portal-one.vercel.app";
-    const billUrl = `${portalBase}/invoice/${invNo}?token=${token}&name=${encodeURIComponent(custName)}&total=${totalAmt.toFixed(2)}&subtotal=${subtotalAmt.toFixed(2)}&disc=${discountAmt.toFixed(2)}&phone=${encodeURIComponent(cleanedPhone)}&method=${encodeURIComponent(payMethod)}&item=${encodeURIComponent(firstItem)}&warranty=${firstItemWarrantyMonths}&warranty_days=${firstItemWarrantyDays}`;
+    const billUrl = sale.customer_portal_url || (sale.customer_portal_cloudflare ? "https://i-store-customer-portal-api.sahan-dev-tech.workers.dev" : `${portalBase}/invoice/${invNo}?token=${token}`);
 
     const message = `🧾 *OFFICIAL DIGITAL RECEIPT*\n━━━━━━━━━━━━━━━━━━━━\n👋 Hello *${custName}*,\n\nThank you for shopping with *I-Store*! Your transaction has been confirmed:\n\n📋 *Invoice No:* #${invNo}\n📅 *Date:* ${dateStr}\n💳 *Payment Method:* ${payMethod}\n\n💰 *Payment Breakdown:*\n• Subtotal: LKR ${subtotalAmt.toLocaleString()}\n• Discount: LKR ${discountAmt.toLocaleString()}\n• *Grand Total: LKR ${totalAmt.toLocaleString()}*\n• Amount Paid: LKR ${paidAmt.toLocaleString()}\n• *Balance Due: LKR ${balAmt.toLocaleString()}*\n\n📄 *View & Download Digital Bill:*\n${billUrl}\n\n🛡️ *Warranty & Digital Records:*\nYour warranty coverage and device serial numbers are digitally registered with your bill.\n\n📞 *Support Hotline:* +94 77 123 4567\n━━━━━━━━━━━━━━━━━━━━\n_Thank you for choosing I-Store! Have a wonderful day!_`;
 
@@ -1757,9 +1811,7 @@ export default function POS() {
   };
 
   const filteredInventory = useMemo(() => {
-    if (catalogRows.length > 0) return catalogRows;
-    if ((searchQuery || "").trim() || activeCategory !== "All") return [];
-    let items = inventoryFetch.data || [];
+    let items = catalogRows;
     if (activeCategory !== "All") items = items.filter(i => i.category === activeCategory);
     
     if (searchQuery) {
@@ -1787,7 +1839,12 @@ export default function POS() {
     }
     
     return items.slice(0, 140);
-  }, [catalogRows, inventoryFetch.data, activeCategory, searchQuery]);
+  }, [catalogRows, activeCategory, searchQuery]);
+
+  const defaultPrinter = useMemo(() => {
+    const printers = hardwareStatus?.printers || [];
+    return printers.find((printer) => printer.isDefault) || printers[0] || null;
+  }, [hardwareStatus]);
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-3 text-slate-900 dark:text-slate-200 overflow-hidden">
@@ -1850,6 +1907,38 @@ export default function POS() {
               <span>Open Register Shift</span>
             </button>
           )}
+        </div>
+
+        {/* Terminal readiness is kept in the cashier's eyeline, not buried in
+            settings. USB HID scanners cannot expose a connection state to the
+            browser, so we report the last successful scanner read instead. */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => barcodeRef.current?.focus()}
+            title={lastBarcodeReadAt ? `Last successful barcode read: ${lastBarcodeReadAt.toLocaleTimeString()}` : "Focus barcode input for a scanner test"}
+            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-bold transition ${
+              lastBarcodeReadAt
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
+            }`}
+          >
+            <Barcode size={13} />
+            <span>{lastBarcodeReadAt ? "Scanner read" : "Scanner ready"}</span>
+          </button>
+          <span
+            title={defaultPrinter ? `Default printer: ${defaultPrinter.name}` : "No Windows printer was detected. Configure one before printing receipts."}
+            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-bold ${
+              hardwareStatus === null
+                ? "border-slate-300 bg-slate-50 text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400"
+                : defaultPrinter
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                  : "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+            }`}
+          >
+            <Printer size={13} />
+            <span>{hardwareStatus === null ? "Checking printer" : defaultPrinter ? "Printer ready" : "Printer unavailable"}</span>
+          </span>
         </div>
         
         <div className="flex items-center shrink-0 gap-4 2xl:gap-6 px-3 2xl:px-5">
@@ -2328,7 +2417,7 @@ export default function POS() {
                    </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                     {cart.map((c, idx) => {
-                    const inv = (inventoryFetch.data || []).find(x => x.id === c.item_id);
+                    const inv = catalogRows.find(x => x.id === c.item_id);
                     const margin = inv ? (c.price - inv.cost_price) : 0;
                     const isNegativeMargin = !c.is_labor && margin < 0;
                     return (
@@ -2632,6 +2721,16 @@ export default function POS() {
               <button onClick={printReceipt} disabled={!lastSale} className={`p-3 rounded-xl transition-colors shrink-0 ${lastSale ? 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20' : 'bg-white/5 text-slate-500 cursor-not-allowed'}`} title="Print Last Receipt (Ctrl+P)">
                 <Printer size={20} />
               </button>
+              {failedPrints.length > 0 && (
+                <button
+                  onClick={() => directPrintReceipt(failedPrints[0].sale)}
+                  className="relative p-3 rounded-xl bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition-colors shrink-0"
+                  title={`Retry ${failedPrints.length} failed receipt print${failedPrints.length === 1 ? "" : "s"}`}
+                >
+                  <RefreshCw size={20} />
+                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-amber-500 px-1 text-[10px] font-black text-slate-950">{failedPrints.length}</span>
+                </button>
+              )}
               <button onClick={suspendCurrentCart} className="p-3 rounded-xl transition-colors shrink-0 bg-white/5 text-slate-300 hover:bg-white/10 relative" title="Suspend Cart">
                 <Save size={20} />
                 {pendingSync && <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full animate-pulse" title="Auto-saving..." />}

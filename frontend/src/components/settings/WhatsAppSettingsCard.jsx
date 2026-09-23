@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../lib/api';
+import { AlertTriangle, CheckCircle2, MessageCircle, ReceiptText, RefreshCw, ShieldCheck, Smartphone, WalletCards, Wrench } from 'lucide-react';
 
 export default function WhatsAppSettingsCard() {
     const navigate = useNavigate();
@@ -47,13 +48,13 @@ export default function WhatsAppSettingsCard() {
             });
             const data = res.data;
             if (data.success || data.message_id) {
-                setFeedback('✅ Message sent successfully!');
+                setFeedback({ type: 'success', message: 'Message sent successfully!' });
             } else {
                 const errText = typeof data.error === 'object' ? (data.error.message || JSON.stringify(data.error)) : String(data.error || 'Failed to send message');
-                setFeedback(`❌ Failed: ${errText}`);
+                setFeedback({ type: 'error', message: `Failed: ${errText}` });
             }
         } catch (err) {
-            setFeedback('❌ Error connecting to WhatsApp service.');
+            setFeedback({ type: 'error', message: 'Error connecting to WhatsApp service.' });
         } finally {
             setSending(false);
         }
@@ -71,7 +72,7 @@ export default function WhatsAppSettingsCard() {
         }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '24px' }}>💬</span>
+                    <MessageCircle size={24} color="#059669" aria-hidden="true" />
                     <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#111827' }}>
                         WhatsApp Integration (No API)
                     </h3>
@@ -137,14 +138,16 @@ export default function WhatsAppSettingsCard() {
                     gap: '8px'
                 }}
             >
-                💬 Launch WhatsApp Manager & Customizer Module →
+                <MessageCircle size={17} aria-hidden="true" />
+                <span>Launch WhatsApp Manager &amp; Customizer Module</span>
             </button>
 
             {/* UNPAIRED STATE: DISPLAY QR CODE */}
             {status === 'UNPAIRED' && (
                 <div style={{ textAlign: 'center', padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px dashed #d1d5db' }}>
-                    <p style={{ fontWeight: '500', color: '#374151', margin: '0 0 12px 0' }}>
-                        📱 Scan this QR Code with WhatsApp on your phone:
+                    <p style={{ fontWeight: '500', color: '#374151', margin: '0 0 12px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+                        <Smartphone size={16} aria-hidden="true" />
+                        <span>Scan this QR Code with WhatsApp on your phone:</span>
                     </p>
                     {qrCodeUrl ? (
                         <img 
@@ -159,7 +162,7 @@ export default function WhatsAppSettingsCard() {
                                 onClick={fetchStatus}
                                 style={{ padding: '4px 12px', fontSize: '12px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
                             >
-                                🔄 Refresh QR
+                                <RefreshCw size={13} aria-hidden="true" /> Refresh QR
                             </button>
                         </div>
                     )}
@@ -179,8 +182,9 @@ export default function WhatsAppSettingsCard() {
                         border: '1px solid #bbf7d0',
                         marginBottom: '20px'
                     }}>
-                        <p style={{ margin: 0, fontWeight: '600', color: '#166534' }}>
-                            ✅ Connected as: {user?.pushname || 'WhatsApp Account'}
+                        <p style={{ margin: 0, fontWeight: '600', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <CheckCircle2 size={16} aria-hidden="true" />
+                            <span>Connected as: {user?.pushname || 'WhatsApp Account'}</span>
                         </p>
                         {user?.wid && (
                             <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#15803d' }}>
@@ -241,8 +245,9 @@ export default function WhatsAppSettingsCard() {
                         </button>
                     </form>
                     {feedback && (
-                        <p style={{ fontSize: '13px', marginTop: '12px', color: feedback.startsWith('✅') ? '#166534' : '#b91c1c' }}>
-                            {feedback}
+                        <p style={{ fontSize: '13px', marginTop: '12px', color: feedback.type === 'success' ? '#166534' : '#b91c1c', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {feedback.type === 'success' ? <CheckCircle2 size={15} aria-hidden="true" /> : <AlertTriangle size={15} aria-hidden="true" />}
+                            <span>{feedback.message}</span>
                         </p>
                     )}
 
@@ -252,16 +257,16 @@ export default function WhatsAppSettingsCard() {
                         </h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#374151' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input type="checkbox" defaultChecked /> 🧾 POS Sales Receipt (Automatic on Checkout)
+                                <input type="checkbox" defaultChecked /> <ReceiptText size={15} aria-hidden="true" /> POS Sales Receipt (Automatic on Checkout)
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input type="checkbox" defaultChecked /> 🔧 Repair Status Update (Automatic on Status Change)
+                                <input type="checkbox" defaultChecked /> <Wrench size={15} aria-hidden="true" /> Repair Status Update (Automatic on Status Change)
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input type="checkbox" defaultChecked /> 🛡️ Warranty Expiry Notice (7 Days Prior Cron)
+                                <input type="checkbox" defaultChecked /> <ShieldCheck size={15} aria-hidden="true" /> Warranty Expiry Notice (7 Days Prior Cron)
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input type="checkbox" defaultChecked /> 💰 Payment Confirmation (On Payment Logged)
+                                <input type="checkbox" defaultChecked /> <WalletCards size={15} aria-hidden="true" /> Payment Confirmation (On Payment Logged)
                             </label>
                         </div>
                     </div>
@@ -280,7 +285,10 @@ export default function WhatsAppSettingsCard() {
             {/* OFFLINE STATE */}
             {status === 'OFFLINE' && (
                 <div style={{ padding: '16px', backgroundColor: '#fef2f2', borderRadius: '8px', color: '#991b1b', fontSize: '14px' }}>
-                    <p style={{ margin: 0, fontWeight: '600' }}>⚠️ Microservice is offline</p>
+                    <p style={{ margin: 0, fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <AlertTriangle size={16} aria-hidden="true" />
+                        <span>Microservice is offline</span>
+                    </p>
                     <p style={{ margin: '4px 0 0 0', fontSize: '13px' }}>
                         Start the service by running <code>cd whatsapp_service &amp;&amp; npm start</code> in your terminal.
                     </p>

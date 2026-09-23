@@ -626,7 +626,7 @@ export default function AIAssistant() {
   const handleExportChat = () => {
     const exportText = messages
       .map((m) => {
-        const author = m.role === "user" ? "👤 User" : "🤖 E Store AI";
+        const author = m.role === "user" ? "User" : "E Store AI";
         const dateStr = m.timestamp ? new Date(m.timestamp).toLocaleString() : "";
         return `### ${author} [${dateStr}]\n${m.content}\n`;
       })

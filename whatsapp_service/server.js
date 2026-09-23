@@ -10,6 +10,7 @@
  */
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+require('dotenv').config({ path: process.env.ISTORE_WHATSAPP_CONFIG_FILE || require('path').resolve(__dirname, '.portal-bridge.env') });
 
 const express = require('express');
 const cors    = require('cors');
@@ -23,6 +24,11 @@ const QRCodeImage = require('qrcode');
 
 const PORT = process.env.WHATSAPP_SERVICE_PORT || 3001;
 const INTERNAL_SECRET = process.env.WHATSAPP_SERVICE_SECRET;
+const IS_PRODUCTION = String(process.env.APP_ENV || '').toLowerCase() === 'production';
+
+if (IS_PRODUCTION && (!INTERNAL_SECRET || INTERNAL_SECRET.length < 32)) {
+    throw new Error('Production WHATSAPP_SERVICE_SECRET must be a unique value of at least 32 characters.');
+}
 
 if (!INTERNAL_SECRET) {
     console.warn('[WhatsApp][WARN] WHATSAPP_SERVICE_SECRET is not set in environment. Endpoint authentication is disabled.');
@@ -165,7 +171,7 @@ const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || findBrowserPath(
 const client = new Client({
     authStrategy: new LocalAuth({
         clientId: 'istore-whatsapp-session',
-        dataPath: path.join(__dirname, '.wwebjs_auth')
+        dataPath: process.env.ISTORE_WHATSAPP_AUTH_DATA_PATH || path.join(__dirname, '.wwebjs_auth')
     }),
     puppeteer: {
         headless: true,
@@ -525,7 +531,7 @@ function waitForAck(msgId, timeoutMs = 8000) {
 /**
  * sendWhatsAppMessage
  */
-async function sendWhatsAppMessage(rawPhone, message) {
+async function sendWhatsAppMessage(rawPhone, message, options = {}) {
     const cleanPhone = normalizeSriLankanPhone(rawPhone) || String(rawPhone).replace(/[^\d]/g, '');
     if (!cleanPhone) {
         return { success: false, error: `Invalid phone number format: "${rawPhone}"` };
@@ -566,6 +572,7 @@ async function sendWhatsAppMessage(rawPhone, message) {
         }
     }
 
+    if (options.expiresAt && Date.now() >= options.expiresAt - 10000) return { success: false, status: 'EXPIRED' };
     lastSentAt.set(cleanPhone, Date.now());
 
     try {
@@ -620,6 +627,10 @@ async function sendWhatsAppMessage(rawPhone, message) {
         };
 
     } catch (err) {
+        if (options.allowFallback === false) {
+            log.warn('Portal code send outcome is uncertain; no automatic resend.');
+            return { success: false, status: 'UNKNOWN' };
+        }
         log.error(`sendMessage failed → chatId=${chatId} error=${err.message}`);
 
         // Fallback attempt: try via getChatById then chat.sendMessage()
@@ -675,6 +686,7 @@ function requireSecret(req, res, next) {
 // ─── Express App ─────────────────────────────────────────────────────────────
 
 const app = express();
+let portalBridgeStatus = { state: 'starting' };
 
 // CORS: allow localhost origins only
 app.use(cors({
@@ -695,10 +707,9 @@ app.get('/status', (req, res) => {
         success:       true,
         status:        clientStatus,
         ready:         clientStatus === 'CONNECTED',
+        portalBridge:  portalBridgeStatus,
         authenticated: isAuthenticated,
         qrCodeAvailable: !!qrCodeText,
-        qrCodeUrl:     qrCodeDataUrl || null,
-        user:          connectedUser,
         queueSize:     messageQueue.length
     });
 });
@@ -707,7 +718,7 @@ app.get('/status', (req, res) => {
  * GET /api/debug-pic/:phone
  * Debug: inspect contact profile pic availability via Puppeteer session store.
  */
-app.get('/api/debug-pic/:phone', async (req, res) => {
+app.get('/api/debug-pic/:phone', requireSecret, async (req, res) => {
     const rawPhone = (req.params.phone || '').replace(/\D/g, '');
     if (clientStatus !== 'CONNECTED') return res.json({ error: 'Not connected' });
     try {
@@ -740,7 +751,7 @@ app.get('/api/debug-pic/:phone', async (req, res) => {
  * GET /api/qr
  * Returns the current QR code as Base64 for web UI display.
  */
-app.get('/api/qr', (req, res) => {
+app.get('/api/qr', requireSecret, (req, res) => {
     if (clientStatus === 'CONNECTED') {
         return res.json({ success: true, status: 'CONNECTED', message: 'WhatsApp is already connected.' });
     }
@@ -754,7 +765,7 @@ app.get('/api/qr', (req, res) => {
  * POST /api/reconnect
  * Triggers re-initialization of WhatsApp client to re-establish session or generate new QR.
  */
-app.post('/api/reconnect', async (req, res) => {
+app.post('/api/reconnect', requireSecret, async (req, res) => {
     log.info('Manual reconnect / re-pair requested via API.');
     try {
         clientStatus = 'INITIALIZING';
@@ -775,7 +786,7 @@ app.post('/api/reconnect', async (req, res) => {
  * POST /api/logout
  * Logs out of active session, clears credentials, and emits fresh QR code.
  */
-app.post('/api/logout', async (req, res) => {
+app.post('/api/logout', requireSecret, async (req, res) => {
     log.info('Unlink / Logout requested via API.');
     try {
         if (clientStatus === 'CONNECTED') {
@@ -805,7 +816,7 @@ app.post('/api/logout', async (req, res) => {
  * GET /api/diagnostics/whatsapp
  * Full system diagnostic without exposing secrets.
  */
-app.get('/api/diagnostics/whatsapp', async (req, res) => {
+app.get('/api/diagnostics/whatsapp', requireSecret, async (req, res) => {
     let wwebVersion = null;
     try {
         wwebVersion = require('./node_modules/whatsapp-web.js/package.json').version;
@@ -851,7 +862,7 @@ app.get('/api/diagnostics/whatsapp', async (req, res) => {
  * GET /api/check-number/:phone
  * Check whether a phone number is registered on WhatsApp.
  */
-app.get('/api/check-number/:phone', async (req, res) => {
+app.get('/api/check-number/:phone', requireSecret, async (req, res) => {
     if (clientStatus !== 'CONNECTED') {
         return res.status(503).json({ success: false, error: 'WhatsApp client not connected.', status: clientStatus });
     }
@@ -886,7 +897,7 @@ const profilePicCache = new Map();
  * GET /api/contact-profile/:phone
  * Returns the contact's public WhatsApp profile picture URL.
  */
-app.get('/api/contact-profile/:phone', async (req, res) => {
+app.get('/api/contact-profile/:phone', requireSecret, async (req, res) => {
     const rawPhone = (req.params.phone || '').replace(/\D/g, '');
     if (!rawPhone) {
         return res.status(400).json({ success: false, error: 'Phone parameter required' });
@@ -987,7 +998,7 @@ app.post('/api/send-message', requireSecret, async (req, res) => {
  * GET /api/message-status/:id
  * Check delivery/ACK status of a previously sent message.
  */
-app.get('/api/message-status/:id', (req, res) => {
+app.get('/api/message-status/:id', requireSecret, (req, res) => {
     const tracker = messageTracker.get(req.params.id);
     if (!tracker) {
         return res.status(404).json({ success: false, error: 'Message ID not found in tracker.' });
@@ -1044,6 +1055,10 @@ app.post('/api/send-media', requireSecret, async (req, res) => {
         } else if (mediaBase64) {
             media = new MessageMedia(mimetype || 'image/png', mediaBase64, filename || 'media.png');
         } else if (mediaUrl) {
+            const parsedMediaUrl = new URL(mediaUrl);
+            if (parsedMediaUrl.protocol !== 'https:' || !['api.qrserver.com', 'api.qr-code-generator.com'].includes(parsedMediaUrl.hostname)) {
+                return res.status(400).json({ success: false, error: 'Media URL host is not permitted. Use mediaBase64 for other assets.' });
+            }
             if (mediaUrl.includes('api.qrserver.com') || mediaUrl.includes('create-qr-code')) {
                 try {
                     const match = mediaUrl.match(/data=([^&]+)/);
@@ -1056,10 +1071,10 @@ app.post('/api/send-media', requireSecret, async (req, res) => {
                     });
                     media = new MessageMedia('image/png', qrBuffer.toString('base64'), filename || 'receipt_qr.png');
                 } catch (qrErr) {
-                    media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true, reqOptions: { rejectUnauthorized: false } });
+                    media = await MessageMedia.fromUrl(mediaUrl);
                 }
             } else {
-                media = await MessageMedia.fromUrl(mediaUrl, { unsafeMime: true, reqOptions: { rejectUnauthorized: false } });
+                media = await MessageMedia.fromUrl(mediaUrl);
             }
         }
 
@@ -1087,7 +1102,37 @@ app.post('/api/send-media', requireSecret, async (req, res) => {
 // ─── Start ───────────────────────────────────────────────────────────────────
 
 log.info('Starting WhatsApp Web Client...');
-client.initialize();
+client.initialize().catch(() => {
+    clientStatus = 'DISCONNECTED';
+    log.warn('WhatsApp initialization failed. Use Reconnect in the POS WhatsApp screen to retry.');
+});
+const stopPortalBridge = require('./portal-bridge').startPortalBridge({
+    onStatus: status => { portalBridgeStatus = status; },
+    connected: () => clientStatus === 'CONNECTED',
+    send: (phone, message, expires) => enqueueMessage(() => {
+        if (Date.now() >= expires || clientStatus !== 'CONNECTED') return { success: false };
+        return sendWhatsAppMessage(phone, message, { allowFallback: false, expiresAt: expires });
+    }),
+    log,
+});
+const stopSenderWatchdog = require('./sender-watchdog').startSenderWatchdog({
+    state: () => clientStatus,
+    restart: restartWhatsAppClient,
+    log,
+});
+
+// Electron uses a unique per-launch secret to request graceful shutdown. The
+// endpoint is loopback-only and unavailable to callers without that secret.
+app.post('/internal/lifecycle/shutdown', (req, res) => {
+    const expected = process.env.ISTORE_WHATSAPP_LIFECYCLE_TOKEN || '';
+    const provided = String(req.get('x-istore-lifecycle-token') || '');
+    if (expected.length < 32 || provided.length !== expected.length) return res.sendStatus(403);
+    const expectedBytes = Buffer.from(expected);
+    const providedBytes = Buffer.from(provided);
+    if (!require('crypto').timingSafeEqual(expectedBytes, providedBytes)) return res.sendStatus(403);
+    res.status(202).json({ success: true, status: 'SHUTTING_DOWN' });
+    setImmediate(() => shutdown('E_STORE_EXIT'));
+});
 
 app.listen(PORT, '127.0.0.1', () => {
     log.info(`REST API listening on http://127.0.0.1:${PORT}`);
@@ -1098,6 +1143,8 @@ process.on('SIGINT',  () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 async function shutdown(signal) {
+    stopSenderWatchdog();
+    stopPortalBridge();
     log.info(`Received ${signal} — shutting down gracefully...`);
     try { await client.destroy(); } catch (_) {}
     process.exit(0);

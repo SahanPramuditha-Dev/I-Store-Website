@@ -9,6 +9,18 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+class CustomerPortalOtp(Base):
+    __tablename__ = "customer_portal_otps_local"
+    id = Column(Integer, primary_key=True)
+    phone = Column(String(32), nullable=False, index=True)
+    store_id = Column(String(100), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    consumed_at = Column(DateTime, nullable=True)
+
+
 class BaseHybridModel:
     """Hybrid Local-First Base Mixin introducing UUID primary keys, tenant scoping, and sync metadata."""
     uuid = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))

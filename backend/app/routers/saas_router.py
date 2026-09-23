@@ -191,6 +191,8 @@ def get_organization_branches(
     user: User = Depends(get_current_user)
 ):
     """List all branches/outlets under an organization."""
+    if user.organization_id is not None and int(user.organization_id) != int(org_id):
+        raise HTTPException(status_code=403, detail="Cross-organization access denied")
     branches = saas_service.list_branches(db, organization_id=org_id)
     return [
         {
@@ -505,25 +507,25 @@ def activate_by_license_key(payload: LicenseKeyActivationRequest):
             cb_posix = Path(control_backend_path).as_posix()
             gen_code = (
                 "import sys, os, json\n"
-                f"sys.path.insert(0, '{cb_posix}')\n"
+                "sys.path.insert(0, sys.argv[1])\n"
                 "from sqlalchemy import create_engine\n"
                 "from sqlalchemy.orm import sessionmaker\n"
-                f"sqlite_engine = create_engine('sqlite:///{db_file_posix}')\n"
+                "sqlite_engine = create_engine('sqlite:///' + sys.argv[2])\n"
                 "LocalSession = sessionmaker(bind=sqlite_engine)\n"
                 "from app.models import License\n"
                 "from app.licensing.service import LicenseService\n"
                 "db = LocalSession()\n"
-                f"lic = db.query(License).filter(License.license_key == '{clean_key}').first()\n"
+                "lic = db.query(License).filter(License.license_key == sys.argv[3]).first()\n"
                 "if lic:\n"
-                f"    token = LicenseService.generate_signed_token_for_license(db, lic, machine_fingerprint='{fp}')\n"
+                "    token = LicenseService.generate_signed_token_for_license(db, lic, machine_fingerprint=sys.argv[4])\n"
                 "    print('___TOKEN_START___')\n"
                 "    print(token.model_dump_json())\n"
                 "    print('___TOKEN_END___')\n"
                 "else:\n"
-                f"    print('ERROR: License key {clean_key} not found in database', file=sys.stderr)\n"
+                "    print('ERROR: License key not found in database', file=sys.stderr)\n"
                 "db.close()\n"
             )
-            res = subprocess.run([sys.executable, "-c", gen_code], cwd=control_backend_path, capture_output=True, text=True, timeout=5)
+            res = subprocess.run([sys.executable, "-c", gen_code, cb_posix, db_file_posix, clean_key, fp], cwd=control_backend_path, capture_output=True, text=True, timeout=5)
             if "___TOKEN_START___" in res.stdout:
                 raw_json = res.stdout.split("___TOKEN_START___")[1].split("___TOKEN_END___")[0].strip()
                 token_data = json.loads(raw_json)
@@ -695,14 +697,14 @@ def transfer_license_to_current_machine(payload: MachineTransferClientRequest):
             old_fp_val = payload.old_machine_fingerprint or ""
             gen_code = (
                 "import sys, os, json\n"
-                f"sys.path.insert(0, '{cb_posix}')\n"
+                "sys.path.insert(0, sys.argv[1])\n"
                 "from sqlalchemy import create_engine\n"
                 "from sqlalchemy.orm import sessionmaker\n"
-                f"sqlite_engine = create_engine('sqlite:///{db_file_posix}')\n"
+                "sqlite_engine = create_engine('sqlite:///' + sys.argv[2])\n"
                 "LocalSession = sessionmaker(bind=sqlite_engine)\n"
                 "from app.licensing.service import LicenseService\n"
                 "db = LocalSession()\n"
-                f"success, msg, token = LicenseService.transfer_machine(db, '{clean_key}', '{payload.new_machine_fingerprint}', '{old_fp_val}', '{payload.new_machine_name}')\n"
+                "success, msg, token = LicenseService.transfer_machine(db, sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6])\n"
                 "if success and token:\n"
                 "    print('___TOKEN_START___')\n"
                 "    print(token.model_dump_json())\n"
@@ -711,7 +713,7 @@ def transfer_license_to_current_machine(payload: MachineTransferClientRequest):
                 "    print(f'ERROR: {msg}', file=sys.stderr)\n"
                 "db.close()\n"
             )
-            res = subprocess.run([sys.executable, "-c", gen_code], cwd=control_backend_path, capture_output=True, text=True, timeout=5)
+            res = subprocess.run([sys.executable, "-c", gen_code, cb_posix, db_file_posix, clean_key, payload.new_machine_fingerprint, old_fp_val, payload.new_machine_name or "Replacement POS"], cwd=control_backend_path, capture_output=True, text=True, timeout=5)
             if "___TOKEN_START___" in res.stdout:
                 raw_json = res.stdout.split("___TOKEN_START___")[1].split("___TOKEN_END___")[0].strip()
                 token_data = json.loads(raw_json)
@@ -828,4 +830,3 @@ def trigger_terminal_heartbeat(
     from app.services.saas_service import send_terminal_heartbeat
     res = send_terminal_heartbeat(db)
     return res
-

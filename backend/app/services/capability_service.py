@@ -165,7 +165,7 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int] = Non
     """
     # 1. Check local cryptographic license
     try:
-        from app.core.license_guard import get_cached_license, verify_license_token
+        from app.core.license_guard import get_cached_license, resolve_effective_entitlements, verify_license_token
         cached = get_cached_license()
         if cached:
             is_valid, msg, payload = verify_license_token(cached)
@@ -186,7 +186,7 @@ def get_effective_capabilities(db: Session, organization_id: Optional[int] = Non
                     "tenant_code": payload.get("tenant_code"),
                     "industry_type": ind,
                     "configuration_version": payload.get("configuration_version", 1),
-                    "entitlements": payload.get("entitlements", []),
+                    "entitlements": sorted(resolve_effective_entitlements(payload)),
                     "package_code": payload.get("package_code"),
                     "feature_flags": payload.get("feature_flags", []),
                     "limits": resolve_license_limits(payload),

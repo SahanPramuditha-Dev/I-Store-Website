@@ -1,6 +1,6 @@
 import { Children, forwardRef, isValidElement, useState, useMemo, useRef } from "react";
 import { FormControl, MenuItem, Select as MuiSelect } from "@mui/material";
-import { Boxes, AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { Boxes, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import { isOwnerOrAdmin } from "../lib/rbac";
 
 export function PageTitle({ title, subtitle, action, className = "" }) {
@@ -766,7 +766,7 @@ export function SearchableSelect({
                   flexShrink: 0,
                 }}
               >
-                ✕
+                <X size={11} aria-hidden="true" />
               </button>
             )}
           </div>

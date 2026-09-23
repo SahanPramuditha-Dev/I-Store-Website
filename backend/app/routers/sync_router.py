@@ -45,14 +45,14 @@ def get_failed_sync_records(db: Session = Depends(get_db), _=Depends(get_current
     } for r in failed_records]
 
 
-@router.post("/outbox/flush")
+@router.post("/outbox/flush", dependencies=[Depends(require_permission("backup.configure"))])
 def trigger_outbox_flush(background_tasks: BackgroundTasks, db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Triggers immediate flush of pending/failed transactional outbox events to cloud."""
     result = process_offline_outbox_queue(db_session=db)
     return {"status": "success", "result": result}
 
 
-@router.post("/portal/pull")
+@router.post("/portal/pull", dependencies=[Depends(require_permission("backup.configure"))])
 def trigger_portal_pull(db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Polls Supabase Cloud for new online customer claims and repair bookings."""
     result = pull_customer_portal_events(db_session=db)
@@ -77,7 +77,7 @@ def receive_portal_webhook(
     return result
 
 
-@router.delete("/clear-completed", dependencies=[Depends(require_permission("backup.manage"))])
+@router.delete("/clear-completed", dependencies=[Depends(require_permission("backup.configure"))])
 def clear_old_completed(db: Session = Depends(get_db), _=Depends(get_current_user)):
     # Delete completed records older than 7 days
     cutoff_date = datetime.utcnow() - timedelta(days=7)
@@ -87,4 +87,3 @@ def clear_old_completed(db: Session = Depends(get_db), _=Depends(get_current_use
     ).delete()
     db.commit()
     return {"status": "success", "deleted_count": deleted_count}
-

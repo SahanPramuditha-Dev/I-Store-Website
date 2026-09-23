@@ -10,7 +10,10 @@ import os
 import json
 import logging
 import urllib.request
+import urllib.error
 import ssl
+import hmac
+import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from urllib.parse import quote
@@ -25,17 +28,12 @@ CUSTOMER_PORTAL_BASE_URL = os.getenv("CUSTOMER_PORTAL_BASE_URL", "https://i-stor
 
 def generate_invoice_token(invoice_id: str) -> str:
     """
-    Generates deterministic 12-char security token for public invoice links
-    with salted hash verification.
+    Generate a keyed, unguessable token for a public invoice link.
     """
-    _salt = os.getenv("INVOICE_SECURITY_SALT", "istore_secure_salt_2026")
-    _s = f"{str(invoice_id).strip().upper()}{_salt}"
-    _hash_val = 0
-    for _char in _s:
-        _hash_val = (_hash_val << 5) - _hash_val + ord(_char)
-        # Force 32-bit integer range
-        _hash_val = (_hash_val + 2**31) % 2**32 - 2**31
-    return f"sec_{abs(_hash_val):08x}"[:12]
+    from app.config import settings
+    secret = os.getenv("INVOICE_SECURITY_SALT") or settings.secret_key
+    message = str(invoice_id).strip().upper().encode("utf-8")
+    return "sec_" + hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
 def enqueue_outbox_event(
@@ -97,7 +95,8 @@ def sync_checkout_invoice_to_cloud(
     loyalty_rate: int = 1000,
     db: Optional[Any] = None,
     organization_id: Optional[int] = None,
-    branch_id: Optional[int] = None
+    branch_id: Optional[int] = None,
+    created_at: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Syncs a POS checkout transaction to the cloud Supabase database.
@@ -146,6 +145,28 @@ def sync_checkout_invoice_to_cloud(
         ]
     }
 
+    if created_at:
+        invoice_payload["created_at"] = created_at
+
+    # Cloudflare mode is opt-in until the complete customer flow is verified.
+    # The outbox retains one immutable retry payload including its source version.
+    from app.services.cloudflare_portal_sync import enabled as cloudflare_enabled, build_payload, portal_url
+    if cloudflare_enabled():
+        configured_org = os.getenv("CLOUDFLARE_PORTAL_ORGANIZATION_ID", "")
+        configured_branch = os.getenv("CLOUDFLARE_PORTAL_BRANCH_ID", "")
+        if not configured_org.isdigit() or organization_id != int(configured_org) or (configured_branch and str(branch_id) != configured_branch):
+            raise ValueError("Portal sync requires the configured POS tenant/branch")
+        cloud_payload = build_payload(invoice_payload)
+        if db is None:
+            raise ValueError("A local outbox transaction is required for Cloudflare bill sync")
+        entry = enqueue_outbox_event(db, "cloudflare_invoice", invoice_id, "UPSERT", cloud_payload, organization_id, branch_id)
+        if entry is None:
+            raise ValueError("Could not persist the portal bill outbox entry")
+        entry.max_retries = 1440  # Keep offline work retryable; no rapid retry loop.
+        public_link = portal_url(cloud_payload)
+        return {"invoice_id": invoice_id, "token": cloud_payload["receiptToken"], "public_link": public_link,
+                "whatsapp_link": f"https://wa.me/{cloud_payload['customerPhone'].lstrip('+')}?text={quote(public_link)}"}
+
     # 1. Enqueue to Transactional Outbox (immediate, local persistence)
     if db is not None:
         enqueue_outbox_event(
@@ -158,9 +179,10 @@ def sync_checkout_invoice_to_cloud(
             branch_id=branch_id
         )
 
-    # 2. Build Store-Scoped Smart Bill Links
-    store_query = f"&store={resolved_store_id}" if resolved_store_id != "default" else ""
-    public_link = f"{CUSTOMER_PORTAL_BASE_URL}/invoice/{invoice_id}?token={token}{store_query}"
+    # 2. Build a tenant-scoped Smart Bill link.  The branch identity belongs in
+    # the route, not in a customer-editable query parameter.
+    portal_prefix = f"/store/{quote(resolved_store_id, safe='-')}" if resolved_store_id != "default" else ""
+    public_link = f"{CUSTOMER_PORTAL_BASE_URL}{portal_prefix}/invoice/{quote(str(invoice_id), safe='-')}?token={token}"
     whatsapp_text = quote(
         f"Thank you for shopping at {display_shop_name}! 🛍️\n"
         f"View your official digital receipt & warranty details here:\n{public_link}"
@@ -222,8 +244,8 @@ def sync_repair_ticket_to_cloud(
             branch_id=branch_id
         )
 
-    store_query = f"?store={resolved_store_id}" if resolved_store_id != "default" else ""
-    portal_link = f"{CUSTOMER_PORTAL_BASE_URL}/repair/{ticket_no}{store_query}"
+    portal_prefix = f"/store/{quote(resolved_store_id, safe='-')}" if resolved_store_id != "default" else ""
+    portal_link = f"{CUSTOMER_PORTAL_BASE_URL}{portal_prefix}/repair/{quote(str(ticket_no), safe='-')}"
     return {"ticket_no": ticket_no, "portal_link": portal_link}
 
 
@@ -231,6 +253,10 @@ def _push_payload_to_supabase(entity_type: str, payload: Dict[str, Any]) -> None
     """
     Direct HTTPS REST dispatcher to Cloud Supabase using SSL verification.
     """
+    if entity_type == "cloudflare_invoice":
+        from app.services.cloudflare_portal_sync import push_bill
+        push_bill(payload)
+        return
     if not SUPABASE_SERVICE_ROLE_KEY:
         raise ValueError("SUPABASE_SERVICE_ROLE_KEY is not configured")
 
@@ -302,7 +328,7 @@ def _push_payload_to_supabase(entity_type: str, payload: Dict[str, Any]) -> None
             pass
 
 
-def process_offline_outbox_queue(db_session=None, batch_size: int = 50) -> Dict[str, Any]:
+def process_offline_outbox_queue(db_session=None, batch_size: int = 50, entity_type: Optional[str] = None) -> Dict[str, Any]:
     """
     Background worker that flushes pending/failed outbox sync jobs to Supabase Cloud
     with exponential backoff and dead-letter protection.
@@ -329,6 +355,7 @@ def process_offline_outbox_queue(db_session=None, batch_size: int = 50) -> Dict[
                 (SyncOutbox.next_retry_at.is_(None) | (SyncOutbox.next_retry_at <= now)),
                 SyncOutbox.retry_count < SyncOutbox.max_retries
             )
+            .filter(SyncOutbox.entity_type == entity_type if entity_type else True)
             .order_by(SyncOutbox.created_at.asc())
             .limit(batch_size)
             .all()
@@ -353,9 +380,10 @@ def process_offline_outbox_queue(db_session=None, batch_size: int = 50) -> Dict[
             except Exception as exc:
                 rec.retry_count += 1
                 rec.last_error = str(exc)
-                if rec.retry_count >= (rec.max_retries or 5):
+                permanent_portal_error = rec.entity_type == "cloudflare_invoice" and isinstance(exc, urllib.error.HTTPError) and exc.code in (400,401,403,409,413)
+                if permanent_portal_error or rec.retry_count >= (rec.max_retries or 5):
                     rec.status = "dead_letter"
-                    logger.error(f"Outbox {rec.id} ({rec.entity_type} {rec.entity_id}) reached max retries. Moved to dead_letter.")
+                    logger.error(f"Outbox {rec.id} needs review (permanent rejection or exhausted retries). Moved to dead_letter.")
                 else:
                     rec.status = "failed"
                     backoff_delay = min(3600, 2 ** rec.retry_count * 5)
@@ -384,6 +412,16 @@ def process_offline_outbox_queue(db_session=None, batch_size: int = 50) -> Dict[
             db_session.close()
 
 
+def process_cloudflare_outbox():
+    from app.services.cloudflare_portal_sync import enabled
+    if enabled():
+        from app.database import SessionLocal
+        from app.services.portal_reconciliation import reconcile_customer_bills
+        with SessionLocal() as db:
+            reconcile_customer_bills(db)
+        return process_offline_outbox_queue(batch_size=10, entity_type="cloudflare_invoice")
+
+
 def sync_staff_pin_to_cloud(username: str, role: str, pin_hash: str, db: Optional[Any] = None) -> None:
     """
     Syncs staff PIN hash to Supabase staff_pins table via Outbox.
@@ -401,4 +439,3 @@ def sync_staff_pin_to_cloud(username: str, role: str, pin_hash: str, db: Optiona
             action="UPSERT",
             payload=payload
         )
-

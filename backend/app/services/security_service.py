@@ -606,7 +606,9 @@ def _ensure_default_role_permissions(db: Session, role_map: dict[str, Role], per
             if not row:
                 row = RolePermission(role_id=role.id, permission_id=perm.id, allowed=allowed)
                 db.add(row)
-            elif role_name in {"owner", "admin", "cashier", "storekeeper", "technician", "accountant"}:
+            # Preserve administrator customizations and user-level RBAC changes
+            # across restarts; newly introduced permissions are inserted above.
+            elif role_name in {"owner", "cashier", "storekeeper", "technician", "accountant"}:
                 row.allowed = allowed
 
 
@@ -897,7 +899,9 @@ def list_permissions(db: Session) -> list[Permission]:
 
 def get_effective_permission_codes(db: Session, user: User) -> set[str]:
     role = _role_for_user(db, user)
-    if role and role.name in {"owner", "admin"}:
+    # Owner is the sole break-glass role. Administrators remain subject to
+    # role permissions and explicit user denies.
+    if role and role.name == "owner":
         return {p.code for p in list_permissions(db)}
 
     allowed_codes: set[str] = set()
@@ -930,7 +934,7 @@ def get_effective_permission_codes(db: Session, user: User) -> set[str]:
 
 def has_permission(db: Session, user: User, permission: str) -> bool:
     role = _role_for_user(db, user)
-    if role and role.name in {"owner", "admin"}:
+    if role and role.name == "owner":
         return True
     effective = get_effective_permission_codes(db, user)
     if permission in effective:
@@ -1669,7 +1673,7 @@ def get_role_permissions_payload(db: Session, role_id: int) -> dict[str, Any]:
                 "action": perm.action,
                 "description": perm.description,
                 "is_sensitive": bool(perm.is_sensitive),
-                "allowed": bool(state.get(int(perm.id), False) or role.name in {"owner", "admin"}),
+                "allowed": bool(state.get(int(perm.id), False) or role.name == "owner"),
             }
         )
     return {

@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import AppSetting, Role, User
 from app.schemas import TokenResponse, UserOut
 from app.models import AuthSession, LoginAttempt
+from app.core.tenant_guard import scope_query
 import hashlib
 from datetime import datetime
 from app.services.security_service import (
@@ -61,6 +62,10 @@ class BootstrapOwnerIn(BaseModel):
     password: str
     phone_number: str | None = None
     email: str | None = None
+
+
+class RecoveryHelpIn(BaseModel):
+    username_hint: str | None = None
 
 
 def _owner_exists(db: Session) -> bool:
@@ -264,6 +269,24 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 
     record_login_success(db, user, request, login_method="password")
     return {"access_token": token, "token_type": "bearer", "expires_at": expires_at, "session_id": session_code}
+
+
+@router.post("/recovery-help")
+@limiter.limit("5/hour")
+def request_recovery_help(payload: RecoveryHelpIn, request: Request, db: Session = Depends(get_db)):
+    """Record a recovery-support request without disclosing account existence."""
+    username_hint = str(payload.username_hint or "").strip()[:80] or None
+    record_security_audit(
+        db,
+        action="password_recovery_help_requested",
+        target_type="authentication",
+        target_ref=username_hint,
+        detail="Password recovery help requested from the sign-in screen",
+        ip_address=get_request_ip(request),
+        device_info=get_request_device_info(request),
+        result="requested",
+    )
+    return {"ok": True, "message": "Your request has been recorded."}
 
 
 @router.post("/login-pin", response_model=TokenResponse)
@@ -519,6 +542,11 @@ def set_user_pin(payload: SetPinIn, db: Session = Depends(get_db), current_user:
     pin_len = int(security.get("pin_length", 4) or 4)
     if not validate_pin(pin_value, pin_len):
         raise HTTPException(status_code=400, detail=f"PIN must be numeric and {pin_len} digits")
+    if pin_len == 4 and (
+        len(set(pin_value)) == 1
+        or pin_value in {"0123", "1234", "2345", "3456", "4567", "5678", "6789", "9876", "8765", "7654", "6543", "5432", "4321", "3210"}
+    ):
+        raise HTTPException(status_code=400, detail="Choose a PIN that is not repeated or sequential")
     current_user.pin_hash = hash_password(pin_value)
     db.commit()
     return {"ok": True, "message": "PIN updated successfully"}
@@ -539,7 +567,7 @@ def reset_password(
 ):
     if not has_permission(db, current_user, "settings.manage_settings"):
         raise HTTPException(status_code=403, detail="Access denied")
-    target = db.query(User).filter(User.id == user_id).first()
+    target = scope_query(db.query(User).filter(User.id == user_id), User, request).first()
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     new_password = str(payload.get("new_password") or "").strip()

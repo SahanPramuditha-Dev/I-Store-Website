@@ -282,6 +282,11 @@ export default function PermissionManagement() {
       toast("Sensitive permission changes require confirmation", "warning");
       return;
     }
+    if (Number(selectedRoleId) === Number(localStorage.getItem("role_id") || 0) &&
+        changedRows.some((row) => permissionCode(row) === "access.manage_permissions" && !row.new_allowed)) {
+      toast("Ask another authorized administrator to remove your role's permission management access", "warning");
+      return;
+    }
     if (!reviewed) {
       setReviewOpen(true);
       return;
@@ -325,6 +330,10 @@ export default function PermissionManagement() {
     if (!selectedRoleId) return;
     if ((selectedRole?.is_locked || selectedRole?.name === "owner") && action !== "copy") {
       toast("Locked role cannot be modified", "warning");
+      return;
+    }
+    if (Number(selectedRoleId) === Number(localStorage.getItem("role_id") || 0) && action !== "grant") {
+      toast("Ask another authorized administrator to replace or revoke your role permissions", "warning");
       return;
     }
     if (String(changeReason || "").trim().length < 3) {

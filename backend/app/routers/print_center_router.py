@@ -6,7 +6,7 @@ from app.auth import get_current_user, require_permission
 from app.database import get_db
 from app.models import Customer, InvoicePayment, RepairPartUsage, RepairTicket, Sale, WarrantyRecord
 from app.routers.advance_router import get_advance_payment_receipt
-from app.routers.invoices_router import _invoice_detail
+from app.routers.invoices_router import _invoice_detail, _tenant_query
 from app.routers.labels_router import print_label_document
 from app.routers.returns_router import get_return_case_or_404, serialize_return_case
 from app.routers.warranty_router import _serialize_record
@@ -260,9 +260,9 @@ def render_print_center_document(
     if doc_key in {"invoice", "sales_receipt"}:
         sale = None
         if token.isdigit():
-            sale = db.query(Sale).filter(Sale.id == int(token)).first()
+            sale = _tenant_query(db.query(Sale), Sale, user).filter(Sale.id == int(token)).first()
         if not sale:
-            sale = db.query(Sale).filter(Sale.invoice_no == token).first()
+            sale = _tenant_query(db.query(Sale), Sale, user).filter(Sale.invoice_no == token).first()
         if not sale:
             raise HTTPException(status_code=404, detail="Invoice not found")
         invoice = _invoice_detail(db, sale)

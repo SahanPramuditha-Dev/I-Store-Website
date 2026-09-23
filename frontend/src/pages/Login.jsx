@@ -1,4 +1,4 @@
-import { Eye, EyeOff, AlertTriangle, CheckCircle2, Loader2, Sun, Moon } from "lucide-react";
+import { Eye, EyeOff, AlertTriangle, CheckCircle2, KeyRound, Loader2, LockKeyhole, ShieldCheck, Sun, Moon, Database, Server } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api";
@@ -86,6 +86,7 @@ export default function Login() {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [capsLockActive, setCapsLockActive] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
+  const [setupStep, setSetupStep] = useState(1);
   const [loginMode, setLoginMode] = useState("password");
   const [pin, setPin] = useState("");
   const [setupLoading, setSetupLoading] = useState(true);
@@ -98,14 +99,28 @@ export default function Login() {
     phone_number: "",
     email: "",
   });
-  const [appVersion, setAppVersion] = useState("v1.1.104");
+  const [appVersion, setAppVersion] = useState("v1.1.124");
   const [pinSetupModal, setPinSetupModal] = useState(false);
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [pendingLoginData, setPendingLoginData] = useState(null);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoverySubmitting, setRecoverySubmitting] = useState(false);
+  const [recoveryRequested, setRecoveryRequested] = useState(false);
 
   const [showSetupPassword, setShowSetupPassword] = useState(false);
   const [showSetupConfirmPassword, setShowSetupConfirmPassword] = useState(false);
+  const particles = useMemo(() => Array.from({ length: 10 }, () => ({
+    left: `${Math.random() * 100}%`,
+    top: `${Math.random() * 100}%`,
+    animationDelay: `${Math.random() * 5}s`,
+    animationDuration: `${15 + Math.random() * 25}s`,
+  })), []);
+  const deviceContext = useMemo(() => {
+    const platform = navigator.userAgentData?.platform || navigator.platform || "This device";
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local timezone";
+    return `${platform} · ${timezone}`;
+  }, []);
 
   const pwdChecks = useMemo(() => {
     const pwd = setupForm.password || "";
@@ -135,7 +150,12 @@ export default function Login() {
   }, [strengthScore]);
 
   const canSubmit = useMemo(() => Boolean(String(username || "").trim() && password && !submitting), [username, password, submitting]);
-  const canPinSubmit = useMemo(() => Boolean(pin.length === 4 && !submitting), [pin, submitting]);
+  const pinEntryReady = activeStaff.length <= 1 || Boolean(selectedStaffId);
+  const canPinSubmit = useMemo(() => Boolean(pin.length === 4 && pinEntryReady && !submitting), [pin, pinEntryReady, submitting]);
+  const canContinueSetup = useMemo(
+    () => Boolean(String(setupForm.full_name || "").trim() && String(setupForm.username || "").trim()),
+    [setupForm.full_name, setupForm.username],
+  );
   const canSetupSubmit = useMemo(
     () => Boolean(
       String(setupForm.full_name || "").trim()
@@ -256,7 +276,7 @@ export default function Login() {
 
       if (isStandardDigit || isNumpadDigit) {
         e.preventDefault();
-        if (!submitting) {
+        if (!submitting && pinEntryReady) {
           setPin((prev) => {
             if (prev.length >= 4) return prev;
             return prev + e.key;
@@ -282,7 +302,7 @@ export default function Login() {
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [loginMode, setupRequired, pinSetupModal, loginSuccess, pin, submitting]);
+  }, [loginMode, setupRequired, pinSetupModal, loginSuccess, pin, submitting, pinEntryReady]);
 
   const handleDotClick = (index) => {
     if (index === currentSlideIndex) return;
@@ -309,11 +329,25 @@ export default function Login() {
   };
 
   const handlePinClick = (num) => {
-    if (!submitting && pin.length < 4) setPin((prev) => prev + num);
+    if (!submitting && pinEntryReady && pin.length < 4) setPin((prev) => prev + num);
   };
 
   const handlePinDelete = () => {
     if (!submitting) setPin((prev) => prev.slice(0, -1));
+  };
+
+  const handleRecoveryHelpRequest = async () => {
+    if (recoverySubmitting || recoveryRequested) return;
+    setRecoverySubmitting(true);
+    try {
+      await api.post("/auth/recovery-help", { username_hint: String(username || "").trim() || null });
+      setRecoveryRequested(true);
+    } catch (_err) {
+      // Keep the response intentionally neutral so this flow cannot reveal account information.
+      setRecoveryRequested(true);
+    } finally {
+      setRecoverySubmitting(false);
+    }
   };
 
   const completeLoginNavigation = (meRes, permissionRes, fallbackUsername) => {
@@ -372,6 +406,10 @@ export default function Login() {
     }
     if (newPin !== confirmPin) {
       setError("PINs do not match");
+      return;
+    }
+    if (/^(\d)\1{3}$/.test(newPin) || newPin === "1234" || newPin === "4321") {
+      setError("Choose a PIN that is not repeated or sequential.");
       return;
     }
 
@@ -503,12 +541,12 @@ export default function Login() {
   return (
     <div className="exact-login-shell">
       <div className="login-particles">
-        {Array.from({ length: 10 }).map((_, i) => (
+        {particles.map((particle, i) => (
           <div key={i} className="login-particle" style={{
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            animationDelay: `${Math.random() * 5}s`,
-            animationDuration: `${15 + Math.random() * 25}s`
+            left: particle.left,
+            top: particle.top,
+            animationDelay: particle.animationDelay,
+            animationDuration: particle.animationDuration,
           }} />
         ))}
       </div>
@@ -535,15 +573,18 @@ export default function Login() {
             <p>{slides[currentSlideIndex].text}</p>
           </div>
 
-          <div className="exact-login-dots" aria-hidden="true">
+          <div className="exact-login-dots" aria-label="Product feature slides">
             {slides.map((_, idx) => (
-              <span
+              <button
+                type="button"
                 key={idx}
                 className={idx === currentSlideIndex ? "active" : ""}
                 onClick={() => handleDotClick(idx)}
+                aria-label={`Show feature ${idx + 1}`}
+                aria-current={idx === currentSlideIndex ? "true" : undefined}
               >
                 {idx === currentSlideIndex && <span className="dot-progress" />}
-              </span>
+              </button>
             ))}
           </div>
         </div>
@@ -602,49 +643,65 @@ export default function Login() {
                 </div>
                 <div className="login-success-headline">Access Granted!</div>
                 <div className="login-success-subtext">Welcome back, {username || "User"}! Launching store workspace...</div>
+                <div className="login-success-device">Signed in from {deviceContext}</div>
                 <div className="login-success-progress-track">
                   <div className="login-success-progress-bar-inner" />
                 </div>
               </div>
             ) : setupLoading ? (
-              <div className="exact-login-form animate-slide-up">
-                <div className="exact-login-checking"><Loader2 size={16} className="animate-spin" /> Checking system setup status...</div>
+              <div className="exact-login-loading-wrap animate-slide-up" role="status" aria-live="polite">
+                <div className="exact-login-loading-card">
+                  <div className="exact-login-loading-icon"><Loader2 size={24} className="animate-spin" aria-hidden="true" /></div>
+                  <div className="exact-login-loading-copy">
+                    <strong>Preparing your workspace</strong>
+                    <span>Verifying local services and secure store data.</span>
+                  </div>
+                </div>
+                <div className="exact-login-loading-steps" aria-hidden="true">
+                  <span><Server size={14} /> Local API</span>
+                  <span><Database size={14} /> Store database</span>
+                  <span><ShieldCheck size={14} /> Secure session</span>
+                </div>
+                <p className="exact-login-loading-note">This normally takes only a few seconds.</p>
               </div>
             ) : !setupRequired && loginMode === "password" ? (
             <form className={`exact-login-form animate-slide-up stagger-1 ${shakeError ? "error-shake" : ""}`} onSubmit={onSubmit}>
               <label className="exact-login-field animate-slide-up stagger-2">
-                <span className="sr-only">Username</span>
+                <span className="exact-login-field-label">Username or staff ID</span>
                 <input
                   type="text"
-                  placeholder="Username or Staff ID"
+                  placeholder="Enter your username"
                   value={username}
-                  onChange={(event) => setUsername(event.target.value)}
+                  onChange={(event) => { setUsername(event.target.value); if (error) setError(""); }}
                   onKeyDown={handleKeyDown}
                   disabled={submitting}
                   autoFocus
+                  autoComplete="username"
                 />
               </label>
 
               <label className="exact-login-field animate-slide-up stagger-3">
-                <span className="sr-only">Password</span>
+                <span className="exact-login-field-label">Password</span>
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Password"
+                  placeholder="Enter your password"
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => { setPassword(event.target.value); if (error) setError(""); }}
                   onKeyDown={handleKeyDown}
                   disabled={submitting}
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
                   className="exact-login-eye"
                   onClick={() => setShowPassword(!showPassword)}
-                  tabIndex="-1"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                 </button>
               </label>
+
+              {capsLockActive ? <div className="caps-lock-notice" role="status">Caps Lock is on</div> : null}
 
               <label className="exact-login-remember animate-slide-up stagger-4">
                 <input
@@ -661,7 +718,12 @@ export default function Login() {
                 </span>
               </label>
 
-              {error ? <div className="exact-login-error">{error}</div> : null}
+              {error ? (
+                <div className="exact-login-error" role="alert">
+                  <AlertTriangle size={16} aria-hidden="true" />
+                  <span>{error}</span>
+                </div>
+              ) : null}
 
               <div className="exact-login-actions animate-slide-up stagger-5">
                 <button type="submit" className={`exact-login-submit ${loginSuccess ? "success-morph" : ""}`} disabled={!canSubmit || loginSuccess}>
@@ -676,10 +738,16 @@ export default function Login() {
                     "Sign in to account"
                   )}
                 </button>
-                <button type="button" className="exact-login-toggle-mode" onClick={() => { setLoginMode("pin"); setError(""); setPin(""); }}>
-                  Use Staff PIN
-                </button>
+                <div className="exact-login-secondary-actions">
+                  <button type="button" className="exact-login-toggle-mode" onClick={() => { setLoginMode("pin"); setError(""); setPin(""); }}>
+                    Use Staff PIN
+                  </button>
+                  <button type="button" className="exact-login-recovery" onClick={() => { setRecoveryRequested(false); setRecoveryOpen(true); }}>
+                    Forgot password?
+                  </button>
+                </div>
               </div>
+              <p className="exact-login-security-note"><ShieldCheck size={13} aria-hidden="true" />Your sign-in is protected with encrypted local sessions.</p>
 
             </form>
             ) : !setupRequired && loginMode === "pin" ? (
@@ -719,6 +787,9 @@ export default function Login() {
                         </button>
                       ))}
                     </div>
+                    {activeStaff.length > 1 && !selectedStaffId ? (
+                      <p className="pin-selection-note" role="status">Choose your profile before entering a PIN.</p>
+                    ) : null}
                   </div>
                 )}
 
@@ -736,15 +807,15 @@ export default function Login() {
                       key={num}
                       type="button"
                       onClick={() => handlePinClick(String(num))}
-                      disabled={submitting}
+                      disabled={submitting || !pinEntryReady}
                     >
                       {num}
                     </button>
                   ))}
-                  <button type="button" onClick={handlePinDelete} disabled={submitting || pin.length === 0}>
+                  <button type="button" onClick={handlePinDelete} disabled={submitting || !pinEntryReady || pin.length === 0}>
                     ⌫
                   </button>
-                  <button type="button" onClick={() => handlePinClick("0")} disabled={submitting}>
+                  <button type="button" onClick={() => handlePinClick("0")} disabled={submitting || !pinEntryReady}>
                     0
                   </button>
                   <button
@@ -764,48 +835,78 @@ export default function Login() {
               </div>
             ) : (
               <form className={`exact-login-form animate-slide-up stagger-1 ${shakeError ? "error-shake" : ""}`} onSubmit={handleOwnerSetupSubmit}>
+                <div className="setup-progress" aria-label={`Owner setup: step ${setupStep} of 2`}>
+                  <span className={setupStep === 1 ? "active" : "complete"}>1. Account</span>
+                  <span className={setupStep === 2 ? "active" : ""}>2. Security</span>
+                </div>
+
+                {setupStep === 1 ? <>
                 <label className="exact-login-field animate-slide-up stagger-2">
-                  <span className="sr-only">Full Name</span>
+                  <span className="exact-login-field-label">Owner name</span>
                   <input
                     type="text"
-                    placeholder="Owner Full Name"
+                    placeholder="Enter full name"
                     value={setupForm.full_name}
                     onChange={(event) => setSetupForm((prev) => ({ ...prev, full_name: event.target.value }))}
                     disabled={submitting}
                     autoFocus
+                    autoComplete="name"
                   />
                 </label>
 
                 <label className="exact-login-field animate-slide-up stagger-3">
-                  <span className="sr-only">Username</span>
+                  <span className="exact-login-field-label">Username</span>
                   <input
                     type="text"
-                    placeholder="Owner Username"
+                    placeholder="Choose a username"
                     value={setupForm.username}
                     onChange={(event) => setSetupForm((prev) => ({ ...prev, username: event.target.value }))}
                     disabled={submitting}
+                    autoComplete="username"
                   />
                 </label>
 
+                <label className="exact-login-field animate-slide-up stagger-4">
+                  <span className="exact-login-field-label">Recovery email <em>optional</em></span>
+                  <input
+                    type="email"
+                    placeholder="name@company.com"
+                    value={setupForm.email}
+                    onChange={(event) => setSetupForm((prev) => ({ ...prev, email: event.target.value }))}
+                    disabled={submitting}
+                    autoComplete="email"
+                  />
+                </label>
+
+                <div className="exact-login-actions animate-slide-up stagger-5">
+                  <button type="button" className="exact-login-submit" disabled={!canContinueSetup} onClick={() => setSetupStep(2)}>
+                    Continue to security
+                  </button>
+                </div>
+                </> : <>
+
                 <label className="exact-login-field exact-login-password animate-slide-up stagger-4">
-                  <span className="sr-only">Password</span>
+                  <span className="exact-login-field-label">Create password</span>
                   <input
                     type={showSetupPassword ? "text" : "password"}
-                    placeholder="Password (min 8 chars, 1 uppercase, 1 symbol)"
+                    placeholder="At least 8 characters"
                     value={setupForm.password}
                     onChange={(event) => setSetupForm((prev) => ({ ...prev, password: event.target.value }))}
+                    onKeyDown={handleKeyDown}
                     disabled={submitting}
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"
                     className="exact-login-eye"
                     onClick={() => setShowSetupPassword(!showSetupPassword)}
-                    tabIndex="-1"
                     aria-label={showSetupPassword ? "Hide password" : "Show password"}
                   >
                     {showSetupPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                   </button>
                 </label>
+
+                {capsLockActive ? <div className="caps-lock-notice" role="status">Caps Lock is on</div> : null}
 
                 {setupForm.password ? (
                   <div className="password-strength-box animate-fadeIn">
@@ -818,35 +919,40 @@ export default function Login() {
                     </div>
                     <div className="password-rules-grid">
                       <div className={`rule-item ${pwdChecks.length ? "met" : "unmet"}`}>
-                        {pwdChecks.length ? "✓" : "○"} At least 8 characters
+                        {pwdChecks.length ? <CheckCircle2 size={12} aria-hidden="true" /> : <span className="rule-dot" aria-hidden="true" />}
+                        <span>At least 8 characters</span>
                       </div>
                       <div className={`rule-item ${pwdChecks.uppercase ? "met" : "unmet"}`}>
-                        {pwdChecks.uppercase ? "✓" : "○"} 1 Uppercase letter (A-Z)
+                        {pwdChecks.uppercase ? <CheckCircle2 size={12} aria-hidden="true" /> : <span className="rule-dot" aria-hidden="true" />}
+                        <span>1 Uppercase letter (A-Z)</span>
                       </div>
                       <div className={`rule-item ${pwdChecks.lowercase ? "met" : "unmet"}`}>
-                        {pwdChecks.lowercase ? "✓" : "○"} 1 Lowercase letter (a-z)
+                        {pwdChecks.lowercase ? <CheckCircle2 size={12} aria-hidden="true" /> : <span className="rule-dot" aria-hidden="true" />}
+                        <span>1 Lowercase letter (a-z)</span>
                       </div>
                       <div className={`rule-item ${pwdChecks.symbol ? "met" : "unmet"}`}>
-                        {pwdChecks.symbol ? "✓" : "○"} 1 Special symbol (@!#$%)
+                        {pwdChecks.symbol ? <CheckCircle2 size={12} aria-hidden="true" /> : <span className="rule-dot" aria-hidden="true" />}
+                        <span>1 Special symbol (@!#$%)</span>
                       </div>
                     </div>
                   </div>
                 ) : null}
 
                 <label className="exact-login-field exact-login-password animate-slide-up stagger-5">
-                  <span className="sr-only">Confirm Password</span>
+                  <span className="exact-login-field-label">Confirm password</span>
                   <input
                     type={showSetupConfirmPassword ? "text" : "password"}
-                    placeholder="Confirm Password"
+                    placeholder="Re-enter your password"
                     value={setupForm.confirm_password}
                     onChange={(event) => setSetupForm((prev) => ({ ...prev, confirm_password: event.target.value }))}
+                    onKeyDown={handleKeyDown}
                     disabled={submitting}
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"
                     className="exact-login-eye"
                     onClick={() => setShowSetupConfirmPassword(!showSetupConfirmPassword)}
-                    tabIndex="-1"
                     aria-label={showSetupConfirmPassword ? "Hide password" : "Show password"}
                   >
                     {showSetupConfirmPassword ? <EyeOff size={19} /> : <Eye size={19} />}
@@ -855,30 +961,38 @@ export default function Login() {
 
                 {setupForm.confirm_password && setupForm.password !== setupForm.confirm_password ? (
                   <div className="password-mismatch-warning animate-fadeIn">
-                    ⚠️ Passwords do not match
+                    <AlertTriangle size={14} aria-hidden="true" />
+                    <span>Passwords do not match</span>
                   </div>
                 ) : null}
 
-                {error ? <div className="exact-login-error">{error}</div> : null}
+                {error ? <div className="exact-login-error" role="alert">{error}</div> : null}
 
                 <div className="exact-login-actions animate-slide-up stagger-6">
+                  <button type="button" className="exact-login-back" onClick={() => setSetupStep(1)} disabled={submitting}>
+                    Back
+                  </button>
                   <button type="submit" className="exact-login-submit" disabled={!canSetupSubmit}>
                     {submitting ? "Activating..." : "Create Owner Account"}
                   </button>
                 </div>
+                </>}
               </form>
             )}
 
             {/* NEXUSIS Corporate Brand Anchor */}
-            <div className="mt-8 pt-4 border-t border-slate-200/50 dark:border-slate-800/60 flex flex-col items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
-              <img src={`${import.meta.env.BASE_URL}nexusis-lockup.svg`} alt="NEXUSIS" className="h-4 w-auto object-contain dark:invert" />
-              <p className="text-[9.5px] text-slate-400 dark:text-slate-500 text-center font-medium">
+            <footer className="exact-login-footer">
+              <div className="exact-login-footer-mark" aria-label="NEXUSIS">
+                <ShieldCheck size={14} aria-hidden="true" />
+                <span>NEXUSIS</span>
+              </div>
+              <p className="exact-login-footer-tagline">
                 Network Engineering, X-Platform Utilities, Software, &amp; Interface Systems
               </p>
-              <p className="text-[9px] text-slate-400 dark:text-slate-500">
+              <p className="exact-login-footer-copyright">
                 &copy; {new Date().getFullYear()} NEXUSIS. All rights reserved.
               </p>
-            </div>
+            </footer>
           </div>
         </div>
       </section>
@@ -888,7 +1002,7 @@ export default function Login() {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
             <div className="text-center space-y-1">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-2">
-                🔒
+                <LockKeyhole size={24} aria-hidden="true" />
               </div>
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Set Up Your Quick PIN</h3>
               <p className="text-xs text-slate-600 dark:text-slate-400">
@@ -948,6 +1062,35 @@ export default function Login() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {recoveryOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+            <div className="text-center space-y-2">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <KeyRound size={24} aria-hidden="true" />
+              </div>
+              <h3 id="recovery-title" className="text-lg font-bold text-slate-900 dark:text-slate-100">Need help signing in?</h3>
+              <p className="text-sm leading-6 text-slate-600 dark:text-slate-400">
+                {recoveryRequested
+                  ? "Your request has been recorded. An Owner or system administrator can reset passwords from the staff settings area."
+                  : "For security, an Owner or system administrator resets passwords from the staff settings area."}
+              </p>
+              {(identity?.phone || identity?.email) && (
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Contact {identity.phone || identity.email}
+                </p>
+              )}
+            </div>
+            {!recoveryRequested && <button type="button" className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors" onClick={handleRecoveryHelpRequest} disabled={recoverySubmitting}>
+              {recoverySubmitting ? "Recording request..." : "Request sign-in help"}
+            </button>}
+            <button type="button" className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold transition-colors" onClick={() => setRecoveryOpen(false)}>
+              Back to sign in
+            </button>
           </div>
         </div>
       )}

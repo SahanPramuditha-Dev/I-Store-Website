@@ -107,13 +107,41 @@ jobs:
           cd electron
           npm ci
 
+      - name: Install WhatsApp Service Dependencies
+        run: |
+          cd whatsapp_service
+          npm ci
+
       - name: Build & Upload Draft Release
+        id: signing
         env:
           EP_DRAFT: "true"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.WINDOWS_CODE_SIGNING_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD }}
         run: |
+          $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:CSC_LINK)
+          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)
+          if ($hasCertificate -xor $hasPassword) {
+            throw "Set both Windows code-signing secrets or neither."
+          }
+          if (-not $hasCertificate) {
+            Write-Warning "Publishing an unsigned installer. Windows SmartScreen may warn or block customers from running it."
+          }
+          "enabled=$($hasCertificate.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           cd electron
           npm run release:ci
+
+      - name: Verify installer signatures
+        if: steps.signing.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem "dist-electron" -Filter "*.exe" -File
+          if (-not $installers) { throw "No installer executable was produced." }
+          foreach ($installer in $installers) {
+            $signature = Get-AuthenticodeSignature $installer.FullName
+            if ($signature.Status -ne "Valid") { throw "Installer signature is not valid: $($installer.Name) ($($signature.Status))" }
+          }
 
       - name: Verify updater release assets
         shell: pwsh

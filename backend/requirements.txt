@@ -17,3 +17,4 @@ firebase-admin>=6.5,<8
 truststore>=0.10,<1
 slowapi==0.1.10
 pyinstaller==6.21.0
+qrcode==8.2

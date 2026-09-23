@@ -196,7 +196,9 @@ def _invoice_detail(db: Session, sale: Sale) -> dict:
         for row in audit_rows
     ]
 
+    from app.services.cloudflare_portal_sync import printable_portal_url
     return {
+        "customer_portal_url": printable_portal_url(db, sale),
         "id": sale.id,
         "invoice_number": _invoice_label(sale),
         "invoice_type": sale.invoice_type or ("repair_invoice" if sale.repair_ticket_id else "product_sale"),
@@ -462,10 +464,11 @@ def print_invoice_thermal(
 
 @router.get("/invoices/public/{invoice_no}")
 def get_public_invoice(invoice_no: str, token: str = Query(""), db: Session = Depends(get_db)):
+    import hmac
     from app.services.supabase_pos_sync import generate_invoice_token
     clean_no = invoice_no.strip().upper()
     expected_token = generate_invoice_token(clean_no)
-    if token != expected_token:
+    if not hmac.compare_digest(token, expected_token):
         raise HTTPException(status_code=403, detail="Invalid security token")
 
     sale = db.query(Sale).filter(Sale.invoice_no == clean_no, Sale.is_deleted == False).first()

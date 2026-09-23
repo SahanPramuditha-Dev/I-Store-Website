@@ -698,12 +698,14 @@ export default function CustomerDetail() {
                           </td>
                           <td>
                             {isActive ? (
-                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-extrabold">
-                                🟢 {w.remaining_days} days left
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-extrabold">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+                                {w.remaining_days} days left
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-md bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10px] font-extrabold">
-                                🔴 Expired
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[10px] font-extrabold">
+                                <span className="h-1.5 w-1.5 rounded-full bg-rose-400" aria-hidden="true" />
+                                Expired
                               </span>
                             )}
                           </td>

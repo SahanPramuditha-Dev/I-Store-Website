@@ -29,7 +29,7 @@ from app.models import WhatsAppTemplate, WhatsAppMessageLog, WhatsAppQueue, Cust
 logger = logging.getLogger("whatsapp_engine")
 
 WHATSAPP_SERVICE_URL    = os.getenv("WHATSAPP_SERVICE_URL", "http://127.0.0.1:3001")
-WHATSAPP_SERVICE_SECRET = os.getenv("WHATSAPP_SERVICE_SECRET", "istore_whatsapp_secret_change_this_in_production")
+WHATSAPP_SERVICE_SECRET = os.getenv("WHATSAPP_SERVICE_SECRET", "").strip()
 
 
 # ─── Template Catalog & Metadata ──────────────────────────────────────────────
@@ -603,8 +603,13 @@ class LocalWebWhatsAppProvider(BaseWhatsAppProvider):
         url = f"{self.service_url}/status"
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                res = await client.get(url)
-                return res.json()
+                res = await client.get(url, headers=self._get_headers())
+                data = res.json()
+                if data.get("status") != "CONNECTED":
+                    qr = await client.get(f"{self.service_url}/api/qr", headers=self._get_headers())
+                    if qr.status_code == 200:
+                        data["qrCodeUrl"] = qr.json().get("qrCodeUrl")
+                return data
         except Exception as e:
             return {"success": False, "status": "OFFLINE", "error": str(e)}
 
@@ -831,4 +836,3 @@ def log_and_send_whatsapp(event_type: str, phone: str, variables: Dict[str, Any]
         ))
     except Exception as err:
         logger.warning(f"[WhatsApp] log_and_send_whatsapp error: {err}")
-
