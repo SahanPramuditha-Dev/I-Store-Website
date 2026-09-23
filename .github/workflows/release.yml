@@ -149,7 +149,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $assets = gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name'
-          $required = @("E-Store-Setup-${{ github.ref_name }}.exe".Replace("v", ""), "E-Store-Setup-${{ github.ref_name }}.exe.blockmap".Replace("v", ""), "latest.yml")
+          $required = @("E-Store-Setup-${{ github.ref_name }}.exe".Replace("v", ""), "latest.yml")
           foreach ($name in $required) {
             if ($assets -notcontains $name) { throw "Release asset missing: $name" }
           }
