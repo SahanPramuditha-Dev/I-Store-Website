@@ -27,7 +27,7 @@ const ALLOWED_INVOKE = new Set([
   "license:status", "license:activate", "license:getFingerprint",
   "updater:check", "updater:download", "updater:install", "updater:setOperationsActive", "updater:getVersion", "updater:getState",
   "updater:snooze", "updater:getUpdateLog",
-  "app:getAutoLaunch", "app:setAutoLaunch", "app:setExitGuard", "terminal:hardwareStatus",
+  "app:getAutoLaunch", "app:setAutoLaunch", "app:setExitGuard", "app:getBackendIdentity", "terminal:hardwareStatus",
   "whatsapp:start", "whatsapp:stop", "whatsapp:status",
 ]);
 
@@ -103,6 +103,9 @@ contextBridge.exposeInMainWorld("istore", {
   terminal: {
     setExitGuard: (state) => safeInvoke("app:setExitGuard", state),
     getHardwareStatus: () => safeInvoke("terminal:hardwareStatus"),
+  },
+  desktop: {
+    getBackendIdentity: () => safeInvoke("app:getBackendIdentity"),
   },
 
   // ── WhatsApp service lifecycle ──────────────────────────────────────

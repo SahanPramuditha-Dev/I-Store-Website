@@ -22,6 +22,7 @@ export default function LicenseLockModal() {
   });
   const [licenseKeyInput, setLicenseKeyInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [offlineBannerDismissed, setOfflineBannerDismissed] = useState(wasOfflineBannerDismissed);
 
@@ -144,6 +145,8 @@ export default function LicenseLockModal() {
       if (window.istore?.license?.activate) {
         const res = await window.istore.license.activate(key);
         if (res.success) {
+          setLicenseKeyInput('');
+          if (res.restarting) setIsRestarting(true);
           setFeedback({
             type: 'success',
             message: res.restarting
@@ -216,6 +219,19 @@ export default function LicenseLockModal() {
             <p className="text-sm font-semibold text-slate-100">Starting E Store</p>
             <p className="mt-1 text-xs text-slate-500">Verifying this terminal licence…</p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isRestarting) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950 p-4" role="status" aria-live="polite">
+        <div className="w-full max-w-md rounded-2xl border border-emerald-500/25 bg-slate-900 p-8 text-center text-white shadow-2xl">
+          <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-emerald-400" aria-hidden="true" />
+          <h2 className="text-xl font-bold">Terminal activated</h2>
+          <p className="mt-2 text-sm text-slate-300">Opening your licensed store and checking its saved accounts…</p>
+          <RefreshCw className="mx-auto mt-6 h-5 w-5 animate-spin text-emerald-400" aria-hidden="true" />
         </div>
       </div>
     );

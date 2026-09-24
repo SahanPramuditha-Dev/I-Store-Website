@@ -1,4 +1,5 @@
 import uuid
+import os
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -96,7 +97,17 @@ def _owner_exists(db: Session) -> bool:
 @router.get("/bootstrap/status")
 def bootstrap_status(db: Session = Depends(get_db)):
     ensure_security_defaults(db)
-    return {"setup_required": not _owner_exists(db), "owner_exists": _owner_exists(db)}
+    owner_exists = _owner_exists(db)
+    has_users = db.query(User.id).first() is not None
+    completed = db.query(AppSetting.id).filter(AppSetting.key == "bootstrap_owner_completed_at").first() is not None
+    recovery_required = not owner_exists and (has_users or completed)
+    return {
+        "setup_required": not owner_exists and not recovery_required,
+        "owner_exists": owner_exists,
+        "recovery_required": recovery_required,
+        "tenant_code": os.getenv("ISTORE_TENANT_CODE", ""),
+        "desktop_instance_id": os.getenv("ISTORE_DESKTOP_INSTANCE_ID", ""),
+    }
 
 
 @router.post("/bootstrap/owner")
@@ -105,6 +116,8 @@ def bootstrap_owner(payload: BootstrapOwnerIn, request: Request, db: Session = D
     ensure_security_defaults(db)
     if _owner_exists(db):
         raise HTTPException(status_code=409, detail="Owner account already exists")
+    if db.query(User.id).first() is not None or db.query(AppSetting.id).filter(AppSetting.key == "bootstrap_owner_completed_at").first() is not None:
+        raise HTTPException(status_code=409, detail="This store was already set up. Restore owner access rather than creating another first-run account.")
 
     username = str(payload.username or "").strip()
     full_name = str(payload.full_name or "").strip()

@@ -143,8 +143,10 @@ function resolveBaseDataRoot() {
   if (process.platform === "win32" && process.env.LOCALAPPDATA) {
     return path.join(process.env.LOCALAPPDATA, "iStore");
   }
-  return path.join(app.getPath("userData"), "iStore");
+  return path.join(app.getPath("appData"), "iStore");
 }
+
+const desktopInstanceId = require("crypto").randomUUID();
 
 function resolveDataRoot() {
   return resolveTenantDataRoot(resolveBaseDataRoot(), loadCachedLicense());
@@ -308,6 +310,7 @@ function startBackend() {
     PYTHONPATH: app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "backend"),
     ISTORE_API_HOST: "127.0.0.1",
     ISTORE_API_PORT: "8000",
+    ISTORE_DESKTOP_INSTANCE_ID: desktopInstanceId,
     ISTORE_UPLOADS_DIR: uploadsDirectory,
     ISTORE_BACKEND_LOG_FILE: path.join(logsDirectory, "backend-api.log"),
     // Explicitly set the data root so the backend EXE always uses the correct
@@ -537,6 +540,11 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.removeHandler("app:setExitGuard");
+  ipcMain.removeHandler("app:getBackendIdentity");
+  ipcMain.handle("app:getBackendIdentity", (event) => {
+    if (event.sender !== mainWindow?.webContents) return null;
+    return { instanceId: desktopInstanceId, tenantCode: getLicensedTenantMetadata().tenantCode };
+  });
   ipcMain.handle("app:setExitGuard", (event, nextGuard = {}) => {
     if (event.sender !== mainWindow?.webContents) return false;
     exitGuard = {

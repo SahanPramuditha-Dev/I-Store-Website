@@ -1920,3 +1920,33 @@ html:not(.dark) .login-particle {
   background: rgba(99, 102, 241, 0.25);
 }
 
+
+/* Keep startup feedback readable and centered while the backend is starting. */
+.exact-login-system-pill {
+  font-size: 12px;
+  text-align: left;
+  text-decoration: none;
+}
+.exact-login-form-shell:has(.exact-login-loading-wrap) {
+  min-height: min(590px, calc(100dvh - 110px));
+}
+.exact-login-loading-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 240px;
+  margin-top: 12px;
+}
+.exact-login-loading-copy strong { font-size: 15px; }
+.exact-login-loading-copy span { font-size: 12px; color: rgba(203, 213, 225, 0.84); }
+.exact-login-loading-steps span { font-size: 11px; }
+.exact-login-loading-note { font-size: 12px; color: rgba(203, 213, 225, 0.76); }
+.exact-login-offline { align-items: flex-start; }
+.exact-login-offline span { flex: 1; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .exact-login-system-strip { gap: 5px; }
+  .exact-login-system-pill { font-size: 10px; padding: 8px 6px; }
+  .exact-login-loading-steps { grid-template-columns: 1fr; }
+  .exact-login-loading-steps span { justify-content: flex-start; }
+}

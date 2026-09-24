@@ -24,7 +24,7 @@ let _cachedLicense = null;
 function resolveLicenseStorePath() {
   const dataRoot = process.platform === "win32" && process.env.LOCALAPPDATA
     ? path.join(process.env.LOCALAPPDATA, "iStore")
-    : path.join(app.getPath("userData"), "iStore");
+    : path.join(app.getPath("appData"), "iStore");
   fs.mkdirSync(dataRoot, { recursive: true });
   return path.join(dataRoot, "license_cache.json");
 }

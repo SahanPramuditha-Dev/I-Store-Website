@@ -90,6 +90,9 @@ export default function Login() {
   const [loginMode, setLoginMode] = useState("password");
   const [pin, setPin] = useState("");
   const [setupLoading, setSetupLoading] = useState(true);
+  const [bootstrapProblem, setBootstrapProblem] = useState("");
+  const [activeTenantCode, setActiveTenantCode] = useState("");
+  const [loadingSlow, setLoadingSlow] = useState(false);
   const [serviceStatus, setServiceStatus] = useState("checking");
   const [setupForm, setSetupForm] = useState({
     full_name: "",
@@ -99,7 +102,7 @@ export default function Login() {
     phone_number: "",
     email: "",
   });
-  const [appVersion, setAppVersion] = useState("v1.1.125");
+  const [appVersion, setAppVersion] = useState("v1.1.126");
   const [pinSetupModal, setPinSetupModal] = useState(false);
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -189,10 +192,25 @@ export default function Login() {
 
   const checkBootstrapStatus = useCallback(async () => {
     setSetupLoading(true);
+    setBootstrapProblem("");
     setServiceStatus("checking");
     try {
-      const res = await api.get("/auth/bootstrap/status");
+      const [res, desktopIdentity] = await Promise.all([
+        api.get("/auth/bootstrap/status"),
+        window.istore?.desktop?.getBackendIdentity?.() ?? Promise.resolve(null),
+      ]);
+      const reported = res?.data || {};
+      if (desktopIdentity && (
+        reported.desktop_instance_id !== desktopIdentity.instanceId
+        || String(reported.tenant_code || "") !== String(desktopIdentity.tenantCode || "")
+      )) {
+        throw new Error("A different E Store service is using the local API. Close the other instance and retry. Your store data has not been reset.");
+      }
+      if (reported.recovery_required) {
+        throw new Error("This store already has account data, but its Owner account is unavailable. Restore access from a backup or contact support; first-run setup is disabled to protect the existing data.");
+      }
       const required = Boolean(res?.data?.setup_required);
+      setActiveTenantCode(String(reported.tenant_code || ""));
       setSetupRequired(required);
       setServiceStatus("online");
       if (!required) {
@@ -208,47 +226,23 @@ export default function Login() {
     } catch (err) {
       setSetupRequired(false);
       setServiceStatus("offline");
+      setBootstrapProblem(err?.message || "The local service could not be verified.");
       console.error("Failed bootstrap status check:", err);
     } finally {
       setSetupLoading(false);
+      setLoadingSlow(false);
     }
   }, []);
 
   useEffect(() => {
-    let active = true;
-    setSetupLoading(true);
-    setServiceStatus("checking");
-    api.get("/auth/bootstrap/status")
-      .then((res) => {
-        if (!active) return;
-        const required = Boolean(res?.data?.setup_required);
-        setSetupRequired(required);
-        setServiceStatus("online");
-        if (!required) {
-          api.get("/auth/active-staff?require_pin=true")
-            .then((staffRes) => {
-              if (active && Array.isArray(staffRes?.data)) {
-                setActiveStaff(staffRes.data.filter((s) => s.has_pin !== false));
-              }
-            })
-            .catch((staffErr) => {
-              console.error("Failed to load active staff on mount:", staffErr);
-            });
-        }
-      })
-      .catch((err) => {
-        if (!active) return;
-        setSetupRequired(false);
-        setServiceStatus("offline");
-        console.error("Failed bootstrap status check on mount:", err);
-      })
-      .finally(() => {
-        if (active) setSetupLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+    checkBootstrapStatus();
+  }, [checkBootstrapStatus]);
+
+  useEffect(() => {
+    if (!setupLoading) return undefined;
+    const timer = setTimeout(() => setLoadingSlow(true), 8000);
+    return () => clearTimeout(timer);
+  }, [setupLoading]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -605,7 +599,7 @@ export default function Login() {
                 </button>
               </div>
               <h1>{setupRequired ? "First-Run Setup" : getGreeting()}</h1>
-              <p>{setupRequired ? "Create the first Owner account to activate login." : "Sign in to continue store operations."}</p>
+              <p>{setupRequired ? `Create the first Owner account for ${activeTenantCode || "this store"}.` : "Sign in to continue store operations."}</p>
             </header>
 
             <div className="exact-login-system-strip" aria-label="Login system status">
@@ -631,7 +625,7 @@ export default function Login() {
             {serviceStatus === "offline" ? (
               <div className="exact-login-offline">
                 <AlertTriangle size={16} />
-                <span>Backend service is offline. Sign-in will resume when the local service is reachable.</span>
+                <span>{bootstrapProblem || "Backend service is offline. Sign-in will resume when the local service is reachable."}</span>
                 <button type="button" onClick={checkBootstrapStatus}>Retry</button>
               </div>
             ) : null}
@@ -662,9 +656,9 @@ export default function Login() {
                   <span><Database size={14} /> Store database</span>
                   <span><ShieldCheck size={14} /> Secure session</span>
                 </div>
-                <p className="exact-login-loading-note">This normally takes only a few seconds.</p>
+                <p className="exact-login-loading-note">{loadingSlow ? "Still checking the store database. Please wait; your data is safe." : "This normally takes only a few seconds."}</p>
               </div>
-            ) : !setupRequired && loginMode === "password" ? (
+            ) : serviceStatus === "offline" ? null : !setupRequired && loginMode === "password" ? (
             <form className={`exact-login-form animate-slide-up stagger-1 ${shakeError ? "error-shake" : ""}`} onSubmit={onSubmit}>
               <label className="exact-login-field animate-slide-up stagger-2">
                 <span className="exact-login-field-label">Username or staff ID</span>

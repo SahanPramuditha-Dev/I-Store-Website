@@ -112,11 +112,9 @@ jobs:
           cd whatsapp_service
           npm ci
 
-      - name: Build & Upload Draft Release
+      - name: Build Installer
         id: signing
         env:
-          EP_DRAFT: "true"
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.WINDOWS_CODE_SIGNING_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERTIFICATE_PASSWORD }}
         run: |
@@ -130,7 +128,7 @@ jobs:
           }
           "enabled=$($hasCertificate.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           cd electron
-          npm run release:ci
+          npm run package
 
       - name: Verify installer signatures
         if: steps.signing.outputs.enabled == 'true'
@@ -142,6 +140,23 @@ jobs:
             $signature = Get-AuthenticodeSignature $installer.FullName
             if ($signature.Status -ne "Valid") { throw "Installer signature is not valid: $($installer.Name) ($($signature.Status))" }
           }
+
+      - name: Upload Draft Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $installer = "dist-electron/E-Store-Setup-$version.exe"
+          $metadata = "dist-electron/latest.yml"
+          if (-not (Test-Path $installer) -or -not (Test-Path $metadata)) {
+            throw "Installer or updater metadata is missing."
+          }
+          $assets = @($installer, $metadata)
+          $blockmap = "$installer.blockmap"
+          if (Test-Path $blockmap) { $assets += $blockmap }
+          gh release create "${{ github.ref_name }}" @assets --draft --title "E Store $version" --notes "Desktop update with startup and account recovery fixes."
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload the draft release." }
 
       - name: Verify updater release assets
         shell: pwsh
