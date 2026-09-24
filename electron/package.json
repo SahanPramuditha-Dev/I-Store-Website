@@ -1,6 +1,6 @@
 {
   "name": "istore-electron",
-  "version": "1.1.126",
+  "version": "1.1.127",
   "description": "E Store – Electron Desktop Business Platform",
   "main": "main.js",
   "private": true,
@@ -43,6 +43,7 @@
       "update-version.js",
       "tenant-data-root.js",
       "license-manager.js",
+      "hardware-fingerprint.js",
       "whatsapp-service.js",
       "app-update.yml",
       "node_modules/**/*",

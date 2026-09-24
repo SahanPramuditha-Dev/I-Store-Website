@@ -49,6 +49,8 @@ jobs:
           node electron/test-install-lifecycle.js
           node electron/test-update-version.js
           node electron/test-tenant-data-root.js
+          node electron/test-hardware-fingerprint.js
+          node electron/test-license-activation.js
           pwsh -File electron/scripts/test-installer-safety.ps1
 
       - name: Install Backend Dependencies & PyInstaller

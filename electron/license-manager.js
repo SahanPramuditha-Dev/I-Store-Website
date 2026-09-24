@@ -12,9 +12,10 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { net, app } = require("electron");
+const { getHardwareFingerprint } = require("./hardware-fingerprint");
 
-const PRIMARY_LICENSE_SERVER = process.env.ESTORE_LICENSE_SERVER_URL || "https://e-store-control-center-backend.vercel.app/license";
-const LOCAL_BACKEND_ACTIVATION_URL = "http://127.0.0.1:8000/saas/license/activate-key";
+const configuredLicenseServer = (process.env.ESTORE_LICENSE_SERVER_URL || "https://e-store-control-center-backend.vercel.app").replace(/\/+$/, "");
+const PRIMARY_LICENSE_SERVER = configuredLicenseServer.endsWith("/license") ? configuredLicenseServer : `${configuredLicenseServer}/license`;
 // Root verification key published by the E Store control center. Key rotation
 // requires shipping a new trusted key (or a signed keyring) in an app update.
 const ESTORE_PUBLIC_KEY_B64 = process.env.ESTORE_PUBLIC_KEY_B64 || "psTliZ+/c7aE9zenGTHyvuxVuVJWDmTrUgA3ZfXXod4=";
@@ -32,28 +33,6 @@ function resolveLicenseStorePath() {
 /**
  * Computes a persistent cryptographic hardware fingerprint from machine properties.
  */
-function getHardwareFingerprint() {
-  const cpus = os.cpus() || [];
-  const cpuModel = cpus.length > 0 ? cpus[0].model : "unknown_cpu";
-  const hostname = os.hostname();
-  const platform = os.platform();
-  const arch = os.arch();
-  
-  // Collect MAC addresses of physical network interfaces
-  const nics = os.networkInterfaces();
-  const macs = [];
-  for (const name of Object.keys(nics)) {
-    for (const netInfo of nics[name] || []) {
-      if (!netInfo.internal && netInfo.mac && netInfo.mac !== "00:00:00:00:00:00") {
-        macs.push(netInfo.mac);
-      }
-    }
-  }
-  const macString = macs.sort().join("-");
-  const rawFingerprint = `${platform}|${arch}|${hostname}|${cpuModel}|${macString}`;
-  return crypto.createHash("sha256").update(rawFingerprint).digest("hex");
-}
-
 function loadCachedLicense() {
   if (_cachedLicense) return _cachedLicense;
   const storePath = resolveLicenseStorePath();
@@ -160,6 +139,15 @@ async function verifyOrHeartbeatLicense() {
   const cached = loadCachedLicense();
   const hardwareUuid = getHardwareFingerprint();
 
+  if (cached?.license_key && cached?.payload?.machine_fingerprint
+      && cached.payload.machine_fingerprint !== hardwareUuid
+      && verifySignedToken(cached, cached.payload.machine_fingerprint).valid) {
+    return {
+      status: "UNLICENSED",
+      message: "This license was bound to an older device ID. Reset its machine binding in the Control Center, then activate this terminal again. Store data remains saved.",
+      hardware_uuid: hardwareUuid,
+    };
+  }
   if (!cached || !cached.license_key || !verifySignedToken(cached, hardwareUuid).valid) {
     return {
       status: "UNLICENSED",
@@ -230,9 +218,12 @@ async function verifyOrHeartbeatLicense() {
 
 async function activatePOSDevice(licenseKey) {
   const hardwareUuid = getHardwareFingerprint();
-  const trimmedKey = licenseKey.trim();
+  const trimmedKey = String(licenseKey || "").trim().toUpperCase();
 
-  // 1. First attempt: Central License Server (Port 8080)
+  if (!trimmedKey) return { success: false, error: "Enter a license key." };
+
+  // Only the central server may authorize a new machine binding. A local
+  // backend cannot establish that the license is active or has a free seat.
   try {
     const response = await net.fetch(`${PRIMARY_LICENSE_SERVER}/activate`, {
       method: "POST",
@@ -245,64 +236,34 @@ async function activatePOSDevice(licenseKey) {
       }),
     });
 
-    const data = await response.json();
-    if (response.ok && data.success) {
-      const payload = data.token?.payload || {};
-      const verification = verifySignedToken(data.token, hardwareUuid);
-      if (!verification.valid) return { success: false, error: verification.error };
-      saveCachedLicense({
-        ...data.token,
-        license_key: trimmedKey,
-        tenant_code: payload.tenant_code,
-        organization_name: payload.tenant_code,
-        shop_code: payload.shop_code,
-        branch_name: payload.shop_code,
-        package_code: payload.package_code,
-        entitlements: payload.entitlements,
-        status: "ACTIVATED",
-      });
-
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) {
       return {
-        success: true,
-        message: data.message || "Terminal activated successfully!",
-        device: {
-          organization_name: payload.tenant_code,
-          branch_name: payload.shop_code,
-        },
+        success: false,
+        error: data.detail || data.message || data.error || `License server rejected activation (HTTP ${response.status}).`,
       };
     }
-  } catch (_e) {
-    // Try fallback
-  }
-
-  // 2. Second attempt: Local ERP Backend (Port 8000)
-  try {
-    const response = await net.fetch(LOCAL_BACKEND_ACTIVATION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        license_key: trimmedKey,
-        machine_fingerprint: hardwareUuid,
-      }),
+    const verification = verifySignedToken(data.token, hardwareUuid);
+    if (!verification.valid) return { success: false, error: verification.error };
+    const payload = verification.payload;
+    saveCachedLicense({
+      ...data.token,
+      license_key: trimmedKey,
+      tenant_code: payload.tenant_code,
+      organization_name: payload.tenant_code,
+      shop_code: payload.shop_code,
+      branch_name: payload.shop_code,
+      package_code: payload.package_code,
+      entitlements: payload.entitlements,
+      status: "ACTIVATED",
     });
-
-    const data = await response.json();
-    if (response.ok && data.success) {
-      const token = data.token || data.token_data;
-      const verification = verifySignedToken(token, hardwareUuid);
-      if (!verification.valid) return { success: false, error: verification.error };
-      const payload = verification.payload;
-      saveCachedLicense({ ...token, license_key: trimmedKey, last_verified_at: new Date().toISOString() });
-
-      return {
-        success: true,
-        message: "Terminal activated successfully!",
-        device: { organization_name: payload.organization_name || payload.tenant_code, branch_name: payload.branch_name || payload.shop_code },
-      };
-    }
-    return { success: false, error: data.detail || data.error || "Activation key not found" };
+    return {
+      success: true,
+      message: data.message || "Terminal activated successfully!",
+      device: { organization_name: payload.tenant_code, branch_name: payload.shop_code },
+    };
   } catch (err) {
-    return { success: false, error: `Could not reach license server: ${err.message}` };
+    return { success: false, error: `Could not reach the license server. Check the connection and retry. (${err.message})` };
   }
 }
 

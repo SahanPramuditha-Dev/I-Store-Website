@@ -156,7 +156,13 @@ export default function LicenseLockModal() {
           if (!res.restarting) setTimeout(() => checkLicense(), 800);
           return;
         } else {
-          setFeedback({ type: 'error', message: res.error || 'Activation failed' });
+          const detail = res.error || 'Activation failed';
+          setFeedback({
+            type: 'error',
+            message: /machine limit|machine is not authorized|different device/i.test(detail)
+              ? `${detail} Open Control Center → Licenses → Reset Machine for this license, then activate again.`
+              : detail,
+          });
           return;
         }
       }

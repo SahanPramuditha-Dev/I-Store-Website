@@ -102,7 +102,7 @@ export default function Login() {
     phone_number: "",
     email: "",
   });
-  const [appVersion, setAppVersion] = useState("v1.1.126");
+  const [appVersion, setAppVersion] = useState("v1.1.127");
   const [pinSetupModal, setPinSetupModal] = useState(false);
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
