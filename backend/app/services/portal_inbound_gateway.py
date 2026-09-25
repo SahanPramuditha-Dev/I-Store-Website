@@ -9,8 +9,10 @@ and customer feedback from Supabase Cloud into the local ERP database with stric
 import os
 import json
 import logging
+import hmac
 import urllib.request
 import ssl
+from urllib.parse import quote
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 
@@ -30,15 +32,14 @@ logger = logging.getLogger("istore.portal_inbound")
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL", "https://bibwrndmbugtlyuvpmzi.supabase.co")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-PORTAL_WEBHOOK_SECRET = os.getenv("PORTAL_WEBHOOK_SECRET", "")
 
 
-def _get_or_create_customer(db: Session, name: str, phone: str, organization_id: int = 1) -> Customer:
+def _get_or_create_customer(db: Session, name: str, phone: str, organization_id: int) -> Customer:
     """Finds existing customer by phone number or creates a new customer profile."""
     clean_phone = str(phone).strip().replace(" ", "").replace("-", "")
     customer = db.query(Customer).filter(
         Customer.phone == clean_phone,
-        (Customer.organization_id == organization_id) | (Customer.organization_id.is_(None))
+        Customer.organization_id == organization_id,
     ).first()
 
     if not customer:
@@ -52,7 +53,7 @@ def _get_or_create_customer(db: Session, name: str, phone: str, organization_id:
     return customer
 
 
-def ingest_portal_claim(db: Session, payload: Dict[str, Any], organization_id: int = 1) -> Optional[WarrantyClaim]:
+def ingest_portal_claim(db: Session, payload: Dict[str, Any], organization_id: int, branch_id: Optional[int] = None) -> Optional[WarrantyClaim]:
     """
     Ingests an online warranty claim submitted by a customer into the local ERP database.
     Guarantees idempotency based on claim id / external reference.
@@ -70,6 +71,7 @@ def ingest_portal_claim(db: Session, payload: Dict[str, Any], organization_id: i
 
     # Check for duplicate claim already ingested
     existing = db.query(WarrantyClaim).filter(
+        WarrantyClaim.organization_id == organization_id,
         (WarrantyClaim.claim_number == external_id) |
         (WarrantyClaim.claim_code == external_id)
     ).first()
@@ -83,9 +85,13 @@ def ingest_portal_claim(db: Session, payload: Dict[str, Any], organization_id: i
     # Attempt to link with existing warranty record
     warranty_record = None
     if serial_number:
-        warranty_record = db.query(WarrantyRecord).filter(
-            WarrantyRecord.serial_number == serial_number
-        ).first()
+        warranty_query = db.query(WarrantyRecord).filter(
+            WarrantyRecord.serial_number == serial_number,
+            WarrantyRecord.organization_id == organization_id,
+        )
+        if branch_id is not None:
+            warranty_query = warranty_query.filter(WarrantyRecord.branch_id == branch_id)
+        warranty_record = warranty_query.first()
 
     claim_num = external_id or next_number(db, "CLM")
     claim = WarrantyClaim(
@@ -93,6 +99,8 @@ def ingest_portal_claim(db: Session, payload: Dict[str, Any], organization_id: i
         claim_number=claim_num,
         warranty_id=warranty_record.id if warranty_record else None,
         customer_id=customer.id,
+        organization_id=organization_id,
+        branch_id=branch_id,
         issue_description=issue_description,
         customer_complaint=issue_description,
         claim_status="Pending Inspection",
@@ -106,7 +114,7 @@ def ingest_portal_claim(db: Session, payload: Dict[str, Any], organization_id: i
     return claim
 
 
-def ingest_portal_repair_booking(db: Session, payload: Dict[str, Any], organization_id: int = 1) -> Optional[RepairTicket]:
+def ingest_portal_repair_booking(db: Session, payload: Dict[str, Any], organization_id: int, branch_id: Optional[int] = None) -> Optional[RepairTicket]:
     """
     Ingests an online repair booking requested by a customer into the local ERP repair workflow.
     """
@@ -124,7 +132,10 @@ def ingest_portal_repair_booking(db: Session, payload: Dict[str, Any], organizat
 
     # Check for duplicate ticket
     if external_ticket:
-        existing = db.query(RepairTicket).filter(RepairTicket.ticket_no == external_ticket).first()
+        existing = db.query(RepairTicket).filter(
+            RepairTicket.ticket_no == external_ticket,
+            RepairTicket.organization_id == organization_id,
+        ).first()
         if existing:
             logger.debug(f"Repair booking {external_ticket} already ingested.")
             return existing
@@ -144,6 +155,7 @@ def ingest_portal_repair_booking(db: Session, payload: Dict[str, Any], organizat
         payment_status="unpaid",
         notes="Online booking registered from Customer Portal.",
         organization_id=organization_id,
+        branch_id=branch_id,
         created_at=utcnow()
     )
     db.add(ticket)
@@ -157,6 +169,11 @@ def pull_customer_portal_events(db_session: Optional[Session] = None, store_id: 
     """
     Polls the Cloud Supabase REST API for new customer submissions and ingests them into ERP.
     """
+    configured_store = os.getenv("PORTAL_WEBHOOK_STORE_REF", "")
+    configured_org = os.getenv("PORTAL_WEBHOOK_ORGANIZATION_ID", "")
+    configured_branch = os.getenv("PORTAL_WEBHOOK_BRANCH_ID", "")
+    if not configured_store or not configured_org.isdigit() or int(configured_org) <= 0 or not configured_branch.isdigit() or int(configured_branch) <= 0 or (store_id and store_id != configured_store):
+        return {"claims_ingested": 0, "repairs_ingested": 0, "status": "tenant_configuration_required"}
     if not SUPABASE_SERVICE_ROLE_KEY:
         logger.debug("SUPABASE_SERVICE_ROLE_KEY not configured. Skipping portal pull.")
         return {"claims_ingested": 0, "repairs_ingested": 0, "status": "skipped"}
@@ -185,13 +202,14 @@ def pull_customer_portal_events(db_session: Optional[Session] = None, store_id: 
         # 1. Pull recent warranty claims
         try:
             claims_url = f"{SUPABASE_URL}/rest/v1/warranty_claims?order=created_at.desc&limit=20"
-            if store_id and store_id != "default":
-                claims_url += f"&store_id=eq.{store_id}"
+            claims_url += f"&store_id=eq.{quote(configured_store, safe='')}"
             req = urllib.request.Request(claims_url, headers=headers, method="GET")
             with urllib.request.urlopen(req, context=ctx) as resp:
                 claims_data = json.loads(resp.read().decode("utf-8"))
                 for claim_item in claims_data:
-                    c = ingest_portal_claim(db_session, claim_item)
+                    if claim_item.get("store_id") != configured_store:
+                        continue
+                    c = ingest_portal_claim(db_session, claim_item, organization_id=int(configured_org), branch_id=int(configured_branch))
                     if c:
                         claims_count += 1
         except Exception as ce:
@@ -200,13 +218,14 @@ def pull_customer_portal_events(db_session: Optional[Session] = None, store_id: 
         # 2. Pull recent repair bookings
         try:
             repairs_url = f"{SUPABASE_URL}/rest/v1/repair_tickets?status=eq.Submitted&limit=20"
-            if store_id and store_id != "default":
-                repairs_url += f"&store_id=eq.{store_id}"
+            repairs_url += f"&store_id=eq.{quote(configured_store, safe='')}"
             req = urllib.request.Request(repairs_url, headers=headers, method="GET")
             with urllib.request.urlopen(req, context=ctx) as resp:
                 repairs_data = json.loads(resp.read().decode("utf-8"))
                 for repair_item in repairs_data:
-                    r = ingest_portal_repair_booking(db_session, repair_item)
+                    if repair_item.get("store_id") != configured_store:
+                        continue
+                    r = ingest_portal_repair_booking(db_session, repair_item, organization_id=int(configured_org), branch_id=int(configured_branch))
                     if r:
                         repairs_count += 1
         except Exception as re:
@@ -234,14 +253,25 @@ def process_inbound_webhook(
     """
     Direct webhook handler for realtime events emitted by Cloud Supabase.
     """
-    if PORTAL_WEBHOOK_SECRET and secret_token != PORTAL_WEBHOOK_SECRET:
+    configured_secret = os.getenv("PORTAL_WEBHOOK_SECRET", "")
+    if len(configured_secret) < 32 or not secret_token or not hmac.compare_digest(secret_token, configured_secret):
         return {"success": False, "error": "Invalid webhook secret"}
 
+    # This legacy Supabase gateway may write only to its explicitly mapped ERP
+    # organization. Never fall back to organization 1 or trust a payload tenant.
+    configured_org = os.getenv("PORTAL_WEBHOOK_ORGANIZATION_ID", "")
+    configured_branch = os.getenv("PORTAL_WEBHOOK_BRANCH_ID", "")
+    configured_store = os.getenv("PORTAL_WEBHOOK_STORE_REF", "")
+    if not configured_org.isdigit() or int(configured_org) <= 0 or not configured_branch.isdigit() or int(configured_branch) <= 0 or not configured_store:
+        return {"success": False, "error": "Portal tenant mapping is not configured"}
+    if payload.get("store_id") != configured_store:
+        return {"success": False, "error": "Portal store does not match configured tenant"}
+
     if event_type == "claim_submitted":
-        record = ingest_portal_claim(db, payload)
+        record = ingest_portal_claim(db, payload, organization_id=int(configured_org), branch_id=int(configured_branch))
         return {"success": True, "claim_id": record.id if record else None}
     elif event_type == "repair_submitted":
-        record = ingest_portal_repair_booking(db, payload)
+        record = ingest_portal_repair_booking(db, payload, organization_id=int(configured_org), branch_id=int(configured_branch))
         return {"success": True, "repair_id": record.id if record else None}
     else:
         return {"success": True, "message": f"Event {event_type} received."}

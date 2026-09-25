@@ -56,3 +56,24 @@ jobs:
         run: |
           cd frontend
           npm run build
+
+  desktop-and-whatsapp-tests:
+    name: Desktop and WhatsApp Tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: electron
+      - name: Run desktop regression tests
+        working-directory: electron
+        run: |
+          npm run test:rollback
+          npm run test:updater
+          npm run test:tenant-root
+      - name: Run WhatsApp regression tests
+        run: npm test
+        working-directory: whatsapp_service

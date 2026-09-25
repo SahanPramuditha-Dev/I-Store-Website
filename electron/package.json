@@ -59,7 +59,7 @@
         }
       ],
       "icon": "../assets/icon.ico",
-      "verifyUpdateCodeSignature": false,
+      "verifyUpdateCodeSignature": true,
       "signtoolOptions": {
         "signingHashAlgorithms": [
           "sha256"

@@ -59,6 +59,14 @@ jobs:
           pip install -r backend/requirements.txt
           pip install pyinstaller
 
+      - name: Run backend regression tests
+        shell: pwsh
+        run: |
+          python -m pip install pytest
+          Push-Location backend
+          try { python -m pytest tests -q --basetemp "$env:RUNNER_TEMP\estore-pytest" }
+          finally { Pop-Location }
+
       - name: Build Backend Executable (PyInstaller)
         run: |
           pyinstaller --noconfirm --clean --onedir --name IStoreBackend --distpath "electron/backend-dist" --workpath "electron/build-backend" --specpath "electron/build-backend" --paths "backend" --hidden-import app.main --hidden-import sync_schema --collect-all certifi --collect-all passlib --collect-submodules app --collect-data app "backend/desktop_server.py"
@@ -125,9 +133,7 @@ jobs:
           if ($hasCertificate -xor $hasPassword) {
             throw "Set both Windows code-signing secrets or neither."
           }
-          if (-not $hasCertificate) {
-            Write-Warning "Publishing an unsigned installer. Windows SmartScreen may warn or block customers from running it."
-          }
+          if (-not $hasCertificate) { throw "Windows code-signing secrets are required for customer releases." }
           "enabled=$($hasCertificate.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           cd electron
           npm run package

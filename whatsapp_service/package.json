@@ -4,6 +4,7 @@
   "description": "WhatsApp Web Automation Service — I Store ERP (whatsapp-web.js + Express)",
   "main": "server.js",
   "scripts": {
+    "test": "node --test sender-watchdog.test.js portal-bridge.test.js",
     "start": "node --max-old-space-size=256 --expose-gc server.js",
     "dev": "node --max-old-space-size=256 --expose-gc --watch server.js"
   },

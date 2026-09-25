@@ -482,61 +482,13 @@ def activate_by_license_key(payload: LicenseKeyActivationRequest):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="License key cannot be empty."
         )
+    if not payload.machine_fingerprint or len(payload.machine_fingerprint.strip()) < 8:
+        raise HTTPException(status_code=400, detail="A valid machine fingerprint is required.")
 
     token_data = None
     activation_error = None
 
-    # 1. Local Ecosystem direct generator (Fastest & direct in workspace)
-    try:
-        import subprocess
-        from pathlib import Path
-        candidate_paths = [
-            Path(r"c:\D\Projects\Websites\E Store Bussiness and License Platform\backend"),
-            Path(__file__).resolve().parents[4] / "E Store Bussiness and License Platform" / "backend" if len(Path(__file__).resolve().parents) > 4 else None,
-            Path(__file__).resolve().parents[3] / "E Store Bussiness and License Platform" / "backend" if len(Path(__file__).resolve().parents) > 3 else None,
-        ]
-        control_backend_path = None
-        for cp in candidate_paths:
-            if cp and cp.exists():
-                control_backend_path = str(cp.resolve())
-                break
-
-        if control_backend_path:
-            fp = payload.machine_fingerprint or "*"
-            db_file_posix = (Path(control_backend_path) / "license_platform.db").as_posix()
-            cb_posix = Path(control_backend_path).as_posix()
-            gen_code = (
-                "import sys, os, json\n"
-                "sys.path.insert(0, sys.argv[1])\n"
-                "from sqlalchemy import create_engine\n"
-                "from sqlalchemy.orm import sessionmaker\n"
-                "sqlite_engine = create_engine('sqlite:///' + sys.argv[2])\n"
-                "LocalSession = sessionmaker(bind=sqlite_engine)\n"
-                "from app.models import License\n"
-                "from app.licensing.service import LicenseService\n"
-                "db = LocalSession()\n"
-                "lic = db.query(License).filter(License.license_key == sys.argv[3]).first()\n"
-                "if lic:\n"
-                "    token = LicenseService.generate_signed_token_for_license(db, lic, machine_fingerprint=sys.argv[4])\n"
-                "    print('___TOKEN_START___')\n"
-                "    print(token.model_dump_json())\n"
-                "    print('___TOKEN_END___')\n"
-                "else:\n"
-                "    print('ERROR: License key not found in database', file=sys.stderr)\n"
-                "db.close()\n"
-            )
-            res = subprocess.run([sys.executable, "-c", gen_code, cb_posix, db_file_posix, clean_key, fp], cwd=control_backend_path, capture_output=True, text=True, timeout=5)
-            if "___TOKEN_START___" in res.stdout:
-                raw_json = res.stdout.split("___TOKEN_START___")[1].split("___TOKEN_END___")[0].strip()
-                token_data = json.loads(raw_json)
-            else:
-                activation_error = f"Subprocess output: {res.stdout} | Stderr: {res.stderr}"
-        else:
-            activation_error = f"Path not found: {control_backend_path}"
-    except Exception as local_err:
-        activation_error = f"Local exception: {local_err}"
-
-    # 2. Remote SaaS Control Center API (if local not present or failed)
+    # Only the control center may authorize a device and issue a signed token.
     if not token_data:
         control_server_url = os.getenv("CONTROL_CENTER_URL") or os.getenv("ESTORE_LICENSE_SERVER_URL") or "https://e-store-control-center-backend.vercel.app"
         try:
@@ -548,9 +500,9 @@ def activate_by_license_key(payload: LicenseKeyActivationRequest):
                             f"{control_server_url.rstrip('/')}{endpoint}",
                             json={
                                 "license_key": clean_key,
-                                "machine_fingerprint": payload.machine_fingerprint or "WEB-POS-TERMINAL",
+                                "machine_fingerprint": payload.machine_fingerprint.strip(),
                                 "machine_name": "POS Station",
-                                "app_version": "2.4.0"
+                                "app_version": os.getenv("ISTORE_APP_VERSION", "1.1.127")
                             }
                         )
                         if resp.status_code == 200:
@@ -558,18 +510,18 @@ def activate_by_license_key(payload: LicenseKeyActivationRequest):
                             if res_json.get("success") and res_json.get("token"):
                                 token_data = res_json["token"]
                                 break
-                        else:
-                            activation_error = resp.text
+                        elif resp.status_code != 404 or not activation_error:
+                            activation_error = "The licensing service rejected this activation."
                     except Exception as req_err:
-                        activation_error = str(req_err)
+                        activation_error = "The licensing service could not be reached."
         except Exception as http_err:
             if not activation_error:
-                activation_error = str(http_err)
+                activation_error = "The licensing service could not be reached."
 
     if not token_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"License activation failed for key '{clean_key}'. Reason: {activation_error or 'License key not found or invalid.'}"
+            detail=activation_error or "License activation was rejected."
         )
 
     # 3. Cryptographically verify the Ed25519 token locally before accepting
