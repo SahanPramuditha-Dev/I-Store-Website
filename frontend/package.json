@@ -22,7 +22,7 @@
     "react-qr-code": "^2.2.0",
     "react-router-dom": "^7.18.4",
     "react-to-print": "^3.3.0",
-    "react-zoom-pan-pinch": "^4.0.3",
+    "react-zoom-pan-pinch": "^4.2.0",
     "recharts": "^2.15.0",
     "write-excel-file": "^4.1.1"
   },
