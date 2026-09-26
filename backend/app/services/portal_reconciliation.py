@@ -65,7 +65,7 @@ def reconcile_customer_bills(db, batch_size=50):
     store = os.getenv("CLOUDFLARE_PORTAL_STORE_REF", "")
     org = os.getenv("CLOUDFLARE_PORTAL_ORGANIZATION_ID", "")
     branch = os.getenv("CLOUDFLARE_PORTAL_BRANCH_ID", "")
-    if not store or not org.isdigit() or int(org) <= 0 or (branch and not branch.isdigit()):
+    if not store or not org.isdigit() or int(org) <= 0 or not branch.isdigit() or int(branch) <= 0:
         return {"status": "tenant_configuration_required", "queued": 0}
     if not _lock.acquire(blocking=False):
         return {"status": "busy", "queued": 0}

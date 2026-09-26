@@ -154,7 +154,7 @@ def sync_checkout_invoice_to_cloud(
     if cloudflare_enabled():
         configured_org = os.getenv("CLOUDFLARE_PORTAL_ORGANIZATION_ID", "")
         configured_branch = os.getenv("CLOUDFLARE_PORTAL_BRANCH_ID", "")
-        if not configured_org.isdigit() or organization_id != int(configured_org) or (configured_branch and str(branch_id) != configured_branch):
+        if not configured_org.isdigit() or not configured_branch.isdigit() or organization_id != int(configured_org) or str(branch_id) != configured_branch:
             raise ValueError("Portal sync requires the configured POS tenant/branch")
         cloud_payload = build_payload(invoice_payload)
         if db is None:

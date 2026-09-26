@@ -67,7 +67,7 @@ def printable_portal_url(db, sale):
         return None
     org = os.getenv("CLOUDFLARE_PORTAL_ORGANIZATION_ID", "")
     branch = os.getenv("CLOUDFLARE_PORTAL_BRANCH_ID", "")
-    if not org.isdigit() or sale.organization_id != int(org) or (branch and str(sale.branch_id) != branch):
+    if not org.isdigit() or not branch.isdigit() or sale.organization_id != int(org) or str(sale.branch_id) != branch:
         return None
     customer = db.query(Customer).filter(Customer.id == sale.customer_id, Customer.organization_id == sale.organization_id).first()
     if not customer or customer.is_deleted:

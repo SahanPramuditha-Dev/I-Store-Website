@@ -477,6 +477,23 @@ def access_role_revoke_all(
     return {"ok": True, "revoked_sessions": terminated}
 
 
+def _revoke_downgraded_role_sessions(db, role, actor, previous, current_state):
+    if not any(allowed and not current_state.get(permission_id, False) for permission_id, allowed in previous.items()):
+        return 0
+    affected_users = db.query(User).filter(
+        User.role_id == role.id, User.is_deleted == False, User.is_active == True  # noqa: E712
+    ).all()
+    return sum(
+        revoke_all_user_sessions(
+            db,
+            user_id=int(user.id),
+            revoked_by_user_id=getattr(actor, "id", None),
+            reason=f"Permissions downgraded for role {role.display_name or role.name}",
+        )
+        for user in affected_users
+    )
+
+
 @router.post("/roles/{id}/reset-defaults", dependencies=[Depends(require_permission("access.manage_permissions"))])
 def access_role_reset_defaults(
     id: int,
@@ -492,7 +509,10 @@ def access_role_reset_defaults(
     if int(getattr(current, "role_id", 0) or 0) == int(role.id):
         raise HTTPException(status_code=400, detail="Ask another authorized administrator to reset your role")
     reason = _require_change_reason((payload or {}).get("reason"))
+    previous = role_permission_state(db, role.id)
     reset_role_permissions_to_default(db, role.id)
+    current_state = role_permission_state(db, role.id)
+    revoked_sessions = _revoke_downgraded_role_sessions(db, role, current, previous, current_state)
     log_access_control_audit(
         db,
         user_id=getattr(current, "id", None),
@@ -500,7 +520,7 @@ def access_role_reset_defaults(
         target_type="role",
         target_id=role.id,
         old_value=None,
-        new_value={"reset_defaults": True},
+        new_value={"reset_defaults": True, "revoked_sessions": revoked_sessions},
         session_id=_session_id(request),
         ip_address=get_request_ip(request),
         device_name=get_request_device_info(request),
@@ -517,7 +537,7 @@ def access_role_reset_defaults(
         session_id=_session_id(request),
     )
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "revoked_sessions": revoked_sessions}
 
 
 @router.post("/roles/{id}/copy-from/{source_role_id}", dependencies=[Depends(require_permission("access.manage_permissions"))])
@@ -536,7 +556,10 @@ def access_role_copy_from(
     if int(getattr(current, "role_id", 0) or 0) == int(role.id):
         raise HTTPException(status_code=400, detail="Ask another authorized administrator to replace your role permissions")
     reason = _require_change_reason((payload or {}).get("reason"))
+    previous = role_permission_state(db, role.id)
     changed = copy_role_permissions(db, role_id=id, source_role_id=source_role_id)
+    current_state = role_permission_state(db, role.id)
+    revoked_sessions = _revoke_downgraded_role_sessions(db, role, current, previous, current_state)
     log_access_control_audit(
         db,
         user_id=getattr(current, "id", None),
@@ -544,7 +567,7 @@ def access_role_copy_from(
         target_type="role",
         target_id=role.id,
         old_value=None,
-        new_value={"source_role_id": source_role_id, "changed": changed},
+        new_value={"source_role_id": source_role_id, "changed": changed, "revoked_sessions": revoked_sessions},
         session_id=_session_id(request),
         ip_address=get_request_ip(request),
         device_name=get_request_device_info(request),
@@ -561,7 +584,7 @@ def access_role_copy_from(
         session_id=_session_id(request),
     )
     db.commit()
-    return {"ok": True, "changed": changed}
+    return {"ok": True, "changed": changed, "revoked_sessions": revoked_sessions}
 
 
 @router.get("/users/{user_id}/effective-permissions", dependencies=[Depends(require_permission("access.view"))])

@@ -12,6 +12,7 @@ def db(monkeypatch):
     monkeypatch.setenv('CLOUDFLARE_PORTAL_ENABLED','true')
     monkeypatch.setenv('CLOUDFLARE_PORTAL_STORE_REF','shop')
     monkeypatch.setenv('CLOUDFLARE_PORTAL_ORGANIZATION_ID','1')
+    monkeypatch.setenv('CLOUDFLARE_PORTAL_BRANCH_ID','1')
     monkeypatch.setenv('CLOUDFLARE_RECEIPT_LINK_KEY','k'*43)
     engine=create_engine('sqlite:///:memory:')
     Base.metadata.create_all(engine)
@@ -19,8 +20,8 @@ def db(monkeypatch):
         customer=Customer(id=1,name='Synthetic customer',phone='0771234567',organization_id=1)
         other=Customer(id=2,name='Other tenant',phone='0771111111',organization_id=2)
         db.add_all([customer,other])
-        db.add_all([Sale(id=1,invoice_no='OLD-1',customer_id=1,organization_id=1,subtotal=100,total=100,amount_paid=50,balance_due=50,paid=False,created_at=datetime(2020,1,1)),
-                    Sale(id=2,invoice_no='OTHER-1',customer_id=2,organization_id=2,subtotal=100,total=100,created_at=datetime(2020,1,1))])
+        db.add_all([Sale(id=1,invoice_no='OLD-1',customer_id=1,organization_id=1,branch_id=1,subtotal=100,total=100,amount_paid=50,balance_due=50,paid=False,created_at=datetime(2020,1,1)),
+                    Sale(id=2,invoice_no='OTHER-1',customer_id=2,organization_id=2,branch_id=2,subtotal=100,total=100,created_at=datetime(2020,1,1))])
         db.add(SaleItem(sale_id=1,description='Item',price=100,quantity=1))
         db.commit()
         yield db

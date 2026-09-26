@@ -95,21 +95,100 @@ def test_ingest_portal_repair_booking():
     finally:
         db.close()
 
-def test_inbound_webhook_dispatch():
+def test_inbound_webhook_dispatch(monkeypatch):
+    monkeypatch.setenv("PORTAL_WEBHOOK_SECRET", "test-webhook-secret-at-least-32-chars")
+    monkeypatch.setenv("PORTAL_WEBHOOK_ORGANIZATION_ID", "1")
+    monkeypatch.setenv("PORTAL_WEBHOOK_BRANCH_ID", "2")
+    monkeypatch.setenv("PORTAL_WEBHOOK_STORE_REF", "test-store")
     db = TestingSessionLocal()
     try:
         payload = {
             "id": "CLM-WH-4004",
+            "store_id": "test-store",
             "contact_phone": "0712345678",
             "customer_name": "Webhook User",
             "issue_description": "Speaker not working"
         }
-        res = process_inbound_webhook(db, event_type="claim_submitted", payload=payload)
+        assert process_inbound_webhook(db, "claim_submitted", payload)["success"] is False
+        assert process_inbound_webhook(db, "claim_submitted", payload, "wrong")["success"] is False
+        assert process_inbound_webhook(db, "claim_submitted", {**payload, "store_id": "other"}, "test-webhook-secret-at-least-32-chars")["success"] is False
+        res = process_inbound_webhook(db, event_type="claim_submitted", payload=payload, secret_token="test-webhook-secret-at-least-32-chars")
         assert res["success"] is True
         assert res["claim_id"] is not None
 
         saved = db.query(WarrantyClaim).filter(WarrantyClaim.claim_number == "CLM-WH-4004").first()
         assert saved is not None
         assert saved.customer.name == "Webhook User"
+        assert saved.branch_id == 2
+    finally:
+        db.close()
+
+
+def test_inbound_webhook_rejects_unconfigured_secret(monkeypatch):
+    monkeypatch.delenv("PORTAL_WEBHOOK_SECRET", raising=False)
+    db = TestingSessionLocal()
+    try:
+        assert process_inbound_webhook(db, "claim_submitted", {"contact_phone": "0771234567"})["success"] is False
+        assert db.query(WarrantyClaim).count() == 0
+    finally:
+        db.close()
+
+
+def test_portal_pull_requires_explicit_tenant_even_with_service_key(monkeypatch):
+    monkeypatch.setenv("PORTAL_WEBHOOK_STORE_REF", "")
+    monkeypatch.setenv("PORTAL_WEBHOOK_ORGANIZATION_ID", "")
+    monkeypatch.setenv("PORTAL_WEBHOOK_BRANCH_ID", "")
+    assert pull_customer_portal_events()["status"] == "tenant_configuration_required"
+
+
+def test_inbound_claim_idempotency_is_organization_scoped():
+    db = TestingSessionLocal()
+    try:
+        payload = {"id": "CLM-SHARED", "contact_phone": "0771234567"}
+        first = ingest_portal_claim(db, payload, organization_id=1)
+        second = ingest_portal_claim(db, payload, organization_id=2)
+        assert first.id != second.id
+        assert first.organization_id == 1
+        assert second.organization_id == 2
+        assert first.customer_id != second.customer_id
+    finally:
+        db.close()
+
+
+def test_portal_pull_ignores_other_stores_and_sets_branch(monkeypatch):
+    monkeypatch.setenv("PORTAL_WEBHOOK_STORE_REF", "shop-a")
+    monkeypatch.setenv("PORTAL_WEBHOOK_ORGANIZATION_ID", "1")
+    monkeypatch.setenv("PORTAL_WEBHOOK_BRANCH_ID", "2")
+    monkeypatch.setattr("app.services.portal_inbound_gateway.SUPABASE_SERVICE_ROLE_KEY", "test-key")
+
+    class Response:
+        def __init__(self, rows):
+            self.rows = rows
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def read(self):
+            return json.dumps(self.rows).encode()
+
+    urls = []
+    def fake_urlopen(request, **_):
+        urls.append(request.full_url)
+        if "warranty_claims" in request.full_url:
+            return Response([
+                {"id": "CLAIM-A", "store_id": "shop-a", "contact_phone": "0771234567"},
+                {"id": "CLAIM-B", "store_id": "shop-b", "contact_phone": "0779999999"},
+            ])
+        return Response([])
+
+    monkeypatch.setattr("app.services.portal_inbound_gateway.urllib.request.urlopen", fake_urlopen)
+    db = TestingSessionLocal()
+    try:
+        result = pull_customer_portal_events(db_session=db)
+        assert result["claims_ingested"] == 1
+        assert all("store_id=eq.shop-a" in url for url in urls)
+        claim = db.query(WarrantyClaim).filter(WarrantyClaim.claim_number == "CLAIM-A").one()
+        assert (claim.organization_id, claim.branch_id) == (1, 2)
+        assert db.query(WarrantyClaim).filter(WarrantyClaim.claim_number == "CLAIM-B").count() == 0
     finally:
         db.close()

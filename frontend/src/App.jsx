@@ -115,6 +115,32 @@ function Guard({ children }) {
   const token = getAuthValue("token");
   const { hasCapability, hasEntitlement, isLoading } = useCapabilities();
   const [permissionsReady, setPermissionsReady] = useState(() => loadPermissions().length > 0);
+  const [backendVerified, setBackendVerified] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!token) return () => { active = false; };
+    (async () => {
+      try {
+        const identity = await window.istore?.desktop?.getBackendIdentity?.();
+        if (identity) {
+          const response = await api.get("/auth/bootstrap/status");
+          const reported = response?.data || {};
+          if (reported.desktop_instance_id !== identity.instanceId || String(reported.tenant_code || "") !== String(identity.tenantCode || "")) {
+            throw new Error("Local backend identity does not match this desktop session");
+          }
+        }
+        if (active) setBackendVerified(true);
+      } catch {
+        if (active) {
+          clearAuthState();
+          setBackendVerified(false);
+          window.location.replace("#/login");
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
 
   useEffect(() => {
     let active = true;
@@ -137,7 +163,7 @@ function Guard({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (isLoading || !permissionsReady) return <RouteFallback />;
+  if (isLoading || !permissionsReady || !backendVerified) return <RouteFallback />;
 
   const permissions = loadPermissions();
   const allowed = location.pathname === "/access-denied" ? true : canAccessPath(location.pathname, permissions);

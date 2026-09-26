@@ -348,8 +348,9 @@ export default function PermissionManagement() {
     const target = actionMap[action];
     if (!target) return;
     try {
-      await api.post(`/access/roles/${selectedRoleId}/${target}`, { reason: changeReason, confirm_sensitive: true });
-      toast("Bulk permission action applied", "success");
+      const { data } = await api.post(`/access/roles/${selectedRoleId}/${target}`, { reason: changeReason, confirm_sensitive: true });
+      const revoked = Number(data?.revoked_sessions || 0);
+      toast(revoked > 0 ? `Bulk permission action applied. ${revoked} sessions were revoked.` : "Bulk permission action applied", revoked > 0 ? "warning" : "success");
       setChangeReason("");
       setConfirmSensitive(false);
       await loadBase();
