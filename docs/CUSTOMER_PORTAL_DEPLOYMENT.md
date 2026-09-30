@@ -56,30 +56,29 @@ target commit; the mapping is unique and active; live ERP and licensing records
 match; Worker settings match; and the deployed customer flow and denial cases
 pass. This repository cannot establish those live conditions by itself.
 
-## Environment check, 26 September 2026
+## Environment check, 30 September 2026
 
-The Cloudflare dashboard shows the deployed Worker has D1 and its core receipt,
-OTP, bridge, and Turnstile settings. It reports `ENVIRONMENT=staging` and
-`PORTAL_ENABLED=false`. `POS_API_BASE_URL` and `POS_PORTAL_API_TOKEN` are not
-present in the live Worker settings, so customer actions requiring the ERP API
-cannot work there yet. Do not enable customer access until those settings point
-to the correct ERP deployment and the full flow has been tested.
+ERP and licensing Vercel production frontends and backend health endpoints
+return HTTP 200. The customer portal production Vercel site now forwards
+`/api/*` to the Cloudflare Worker; `/api/config` returns JSON. A verified
+licensing database backup was taken before applying the mapping migration on
+26 September. The production mapping table still has zero rows, including zero
+active rows. Licensing shop 9 is `I Point`.
 
-Vercel's licensing backend production deployment is ready at commit `06e7189`
-(24 September 2026). Its Production and Preview configuration includes the
-Supabase `POSTGRES_URL` connection. The connected production Supabase database
-is available. A verified database backup was taken and the mapping migration
-was applied on 26 September 2026; the new table contains zero rows. The mapping
-API still requires a successful licensing backend deployment. The Vercel
-customer portal site is ready at commit `cd3e44f` from 22 August 2026; it is
-separate from the Cloudflare Worker API. Deploy the tested licensing code before
-creating or activating branch mappings.
+The ERP backend's connected Neon database now has `organizations`, `branches`,
+and `sales` tables in `public`, but a read-only join found **zero organization
+rows**. There is no ERP organization or branch identity to map yet. Do not
+invent identifiers or activate a licensing mapping until the real ERP records
+exist and their ownership is confirmed.
 
-The ERP Vercel backend project's connected Neon database did not expose
-`organizations` or `branches` in its `public` schema during the read-only check.
-The production licensing shop is `I Point` (shop ID 9), but no matching ERP
-organization or branch ID has been verified. Also, the Worker expects private
-ERP `/portal/*` API routes authenticated with `POS_PORTAL_API_TOKEN`; those
-routes and token validation are not implemented in the ERP backend yet. Keep
-portal access disabled until the ERP API contract and identity mapping are
-implemented and tested end to end.
+The deployed Worker reports `ENVIRONMENT=staging` and `PORTAL_ENABLED=false`.
+The D1 bill path is self-contained after receipt and OTP verification. Worker
+code on the customer portal main branch permits this D1 path without ERP proxy
+configuration, but that code has not been deployed to Cloudflare as of this
+check. Extended `/api/portal/*` routes still expect private ERP `/portal/*`
+endpoints with ownership validation; those ERP endpoints are not implemented.
+They must stay unavailable until implemented and tested.
+
+Do not set `PORTAL_ENABLED=true` until the real ERP organization and branch,
+licensing mapping, POS sync outbox, WhatsApp delivery bridge, Worker origin, and
+receipt-to-OTP-to-private-bill denial tests have all been verified in staging.
