@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Input, SectionCard, Button, Badge } from "../../components/UI";
 import SettingsSectionShell from "./SettingsSectionShell";
+import PortalRequestInbox from './PortalRequestInbox';
 
 const DEFAULTS = {
   portal_config: {
@@ -346,6 +347,7 @@ export default function CustomerPortalSettingsPanel({
         </SectionCard>
 
       </div>
+      <PortalRequestInbox />
     </SettingsSectionShell>
   );
 }

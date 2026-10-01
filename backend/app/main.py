@@ -367,6 +367,10 @@ app.include_router(audit_trail_router, dependencies=[Depends(require_module_acce
 from app.routers.public_portal_router import router as public_portal_router
 
 app.include_router(public_portal_router)
+from app.routers.cloud_portal_router import router as cloud_portal_router
+from app.routers.portal_requests_router import router as portal_requests_router
+app.include_router(cloud_portal_router)
+app.include_router(portal_requests_router)
 app.include_router(catalog_router, dependencies=[Depends(require_module_access("inventory"))])
 app.include_router(advance_router)
 app.include_router(access_router)

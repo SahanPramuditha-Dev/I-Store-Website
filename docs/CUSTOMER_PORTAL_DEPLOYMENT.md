@@ -56,29 +56,66 @@ target commit; the mapping is unique and active; live ERP and licensing records
 match; Worker settings match; and the deployed customer flow and denial cases
 pass. This repository cannot establish those live conditions by itself.
 
-## Environment check, 30 September 2026
+## Environment check, 1 October 2026
 
-ERP and licensing Vercel production frontends and backend health endpoints
-return HTTP 200. The customer portal production Vercel site now forwards
-`/api/*` to the Cloudflare Worker; `/api/config` returns JSON. A verified
-licensing database backup was taken before applying the mapping migration on
-26 September. The production mapping table still has zero rows, including zero
-active rows. Licensing shop 9 is `I Point`.
+Vercel ERP and licensing health checks and the portal API forwarding return
+HTTP 200. The Cloudflare Worker is deployed with the correct Vercel origin,
+`ENVIRONMENT=staging`, and `PORTAL_ENABLED=false`. D1 migrations are current.
 
-The ERP backend's connected Neon database now has `organizations`, `branches`,
-and `sales` tables in `public`, but a read-only join found **zero organization
-rows**. There is no ERP organization or branch identity to map yet. Do not
-invent identifiers or activate a licensing mapping until the real ERP records
-exist and their ownership is confirmed.
+The real desktop ERP was found at
+`%LOCALAPPDATA%/iStore/tenants/IPOINT/database/istore.db`. Its organization 1
+is I Point Electronics (`ipoint`) and branch 1 is `IPOINT-KT`. The cached
+license names tenant `IPOINT` and shop `IPOINT-KT`. These match production
+licensing tenant 8 and shop 9. An **inactive** production mapping now connects
+shop 9 to organization 1, branch 1 and Worker store `i-store`. A mapping-table
+snapshot was saved before the change and the preparation was audit logged.
+This mapping refers to the desktop tenant database, not the empty Neon ERP.
+The desktop database has no sales; D1 has no receipt rows, and the bridge's
+last known state is offline. Customer access must remain disabled.
 
-The deployed Worker reports `ENVIRONMENT=staging` and `PORTAL_ENABLED=false`.
-The D1 bill path is self-contained after receipt and OTP verification. Worker
-code on the customer portal main branch permits this D1 path without ERP proxy
-configuration, but that code has not been deployed to Cloudflare as of this
-check. Extended `/api/portal/*` routes still expect private ERP `/portal/*`
-endpoints with ownership validation; those ERP endpoints are not implemented.
-They must stay unavailable until implemented and tested.
+## Extended private ERP API
 
-Do not set `PORTAL_ENABLED=true` until the real ERP organization and branch,
-licensing mapping, POS sync outbox, WhatsApp delivery bridge, Worker origin, and
-receipt-to-OTP-to-private-bill denial tests have all been verified in staging.
+The ERP implements private `/portal/*` endpoints for bill detail and JSON
+download, warranty and repair records, appointment requests/changes/cancellation,
+feedback, and repair/warranty/resend requests. Every call validates the Worker
+bearer token, mapped active organization and branch, receipt/customer HMACs,
+and the local reconciliation checkpoint. Deleted or reassigned receipts fail
+closed. Portal repair/warranty routes retain signed license entitlement and
+capability checks. Requests are persisted for staff review; they do not claim
+that a physical repair was received, a warranty claim approved, an appointment
+confirmed, or a WhatsApp message sent.
+
+Staff managers review requests in Settings → Customer Portal → Customer
+requests. `/portal-requests` uses staff authentication and an explicit branch.
+Customer appointment changes return to pending review. JSON invoice exports
+contain customer bill fields, not internal staff/audit records. The existing
+portal print function also provides browser Save PDF.
+
+Before enabling the optional live services:
+
+1. Back up the target ERP database and apply Alembic migration
+   `20261001_0023` (portal service request inbox).
+2. Configure `POS_PORTAL_API_TOKEN` on both the ERP and Worker, at least
+   32 random characters. Worker `POS_API_BASE_URL` must reach the **same ERP
+   tenant database** that generated the receipt, through HTTPS. Do not point
+   I Point's desktop receipts at the empty Neon backend.
+3. Configure ERP `CLOUDFLARE_RECEIPT_IDENTITY_KEY` with the exact Worker
+   `RECEIPT_TOKEN_SECRET`; it is distinct from the POS receipt-link signing
+   key. Customer HMAC input is `storeRef:947...` (digits, no plus sign), and
+   receipt HMAC input is `storeRef:invoiceRef`, both SHA-256 hex.
+4. Set the explicit ERP organization/branch/store environment values. Desktop
+   `.portal-sync.env` belongs inside the selected `ISTORE_DATA_ROOT`; a tenant
+   no longer falls back to a shared installation's portal credentials.
+5. Test the real receipt → WhatsApp OTP → private bill flow, cross-customer
+   and cross-branch denials, expiry, revocation, and offline sender behavior.
+   Then activate the licensing mapping and enable customer access.
+
+The optional service panel is shown only when the Worker has HTTPS ERP proxy
+configuration and a service token. D1 bills keep working without this proxy
+when the shop PC is offline. Neither a passing synthetic test nor a successful
+code deployment confirms real WhatsApp delivery.
+
+Use `CLOUDFLARE_PORTAL_URL=https://i-store-customer-portal-one.vercel.app`
+for printed customer links and `CLOUDFLARE_PORTAL_API_URL` for the HTTPS
+Worker host used by `/internal/bills`. Separating them avoids issuing a receipt
+link on a host whose browser origin the Worker rejects.

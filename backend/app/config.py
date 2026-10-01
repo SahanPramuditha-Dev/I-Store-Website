@@ -15,7 +15,8 @@ try:
     from dotenv import load_dotenv
     root_dir = Path(__file__).resolve().parents[2]
     load_dotenv(root_dir / ".env")
-    load_dotenv(root_dir / ".portal-sync.env")
+    from app.services.portal_config import load_portal_config
+    load_portal_config(root_dir)
 except ImportError:
     pass
 

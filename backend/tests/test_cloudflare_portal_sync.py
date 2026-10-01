@@ -1,7 +1,7 @@
 import os
 import unittest
 from unittest.mock import patch
-from app.services.cloudflare_portal_sync import build_payload, normalize_phone, portal_url, NoRedirect
+from app.services.cloudflare_portal_sync import build_payload, normalize_phone, portal_url, push_bill, NoRedirect
 
 class CloudflarePortalTests(unittest.TestCase):
     def setUp(self):
@@ -36,5 +36,17 @@ class CloudflarePortalTests(unittest.TestCase):
         self.assertIsNone(NoRedirect().redirect_request(None,None,None,None,None,None))
         with patch.dict(os.environ, {"CLOUDFLARE_PORTAL_URL": "http://portal.example"}):
             with self.assertRaises(ValueError): portal_url(build_payload(self.invoice))
+
+    def test_sync_uses_worker_host_but_receipt_links_use_browser_host(self):
+        from unittest.mock import MagicMock
+        payload = build_payload(self.invoice)
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"success":true}'
+        opener = MagicMock()
+        opener.open.return_value = response
+        with patch.dict(os.environ, {"CLOUDFLARE_PORTAL_ENABLED":"true", "CLOUDFLARE_POS_API_KEY":"k"*43, "CLOUDFLARE_PORTAL_API_URL":"https://worker.example"}), patch('urllib.request.build_opener', return_value=opener):
+            push_bill(payload)
+            self.assertEqual(opener.open.call_args.args[0].full_url, 'https://worker.example/internal/bills')
+            self.assertTrue(portal_url(payload).startswith('https://portal.example/r/'))
 
 if __name__ == "__main__": unittest.main()

@@ -19,6 +19,8 @@ from app.core.license_guard import (
 
 
 def test_industry_specific_paths_require_signed_capabilities():
+    assert _required_capabilities_for_path("/portal/repairs/1") == {"repairs_management"}
+    assert _required_capabilities_for_path("/portal/warranty-claims") == {"warranty_management"}
     assert _required_capabilities_for_path("/inventory/batches/summary") == {"batch_tracking", "expiry_tracking"}
     assert _required_capabilities_for_path("/inventory/serials/search") == {"serial_tracking", "imei_tracking"}
     assert _required_capabilities_for_path("/inventory/42/serials") == {"serial_tracking", "imei_tracking"}

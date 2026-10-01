@@ -52,11 +52,16 @@ def build_payload(invoice):
     }
 
 
-def portal_url(payload):
-    base = os.getenv("CLOUDFLARE_PORTAL_URL", "").rstrip("/")
+def _https_base(value):
+    base = value.rstrip("/")
     parsed = urlparse(base)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("HTTPS portal URL required")
+    return base
+
+
+def portal_url(payload):
+    base = _https_base(os.getenv("CLOUDFLARE_PORTAL_URL", ""))
     return f"{base}/r/{payload['receiptToken']}"
 
 
@@ -112,7 +117,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def push_bill(payload):
     if not enabled():
         raise ValueError("Cloudflare bill sync is disabled")
-    base = portal_url({"receiptToken": ""}).split("/r/", 1)[0]
+    base = _https_base(os.getenv("CLOUDFLARE_PORTAL_API_URL") or os.getenv("CLOUDFLARE_PORTAL_URL", ""))
     secret = os.getenv("CLOUDFLARE_POS_API_KEY", "")
     if len(secret) < 32:
         raise ValueError("Portal POS key is not configured")
