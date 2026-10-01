@@ -9,6 +9,24 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+class PortalServiceRequest(Base):
+    __tablename__ = "portal_service_requests"
+    id = Column(String(36), primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    receipt_sale_id = Column(Integer, ForeignKey("sales.id"), nullable=False)
+    kind = Column(String(32), nullable=False, index=True)
+    related_id = Column(Integer, nullable=True)
+    message = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    requested_at = Column(DateTime, nullable=True)
+    staff_response = Column(Text, nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class CustomerPortalOtp(Base):
     __tablename__ = "customer_portal_otps_local"
     id = Column(Integer, primary_key=True)

@@ -26,7 +26,7 @@ def test_clean_database_upgrades_to_single_head(tmp_path):
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
         assert connection.execute("SELECT version_num FROM alembic_version").fetchall() == [
-            ("20260923_0022",)
+            ("20261001_0023",)
         ]
 
 

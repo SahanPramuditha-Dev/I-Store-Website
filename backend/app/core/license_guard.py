@@ -66,7 +66,7 @@ EXEMPT_ROUTES = {
 ENTITLEMENT_ROUTE_PREFIXES = {
     "core_pos": ("/pos", "/invoices", "/payments", "/shifts"),
     "inventory": ("/inventory", "/catalog", "/purchase", "/labels"),
-    "repairs": ("/repairs", "/warranty"),
+    "repairs": ("/repairs", "/warranty", "/portal/repairs", "/portal/warranties", "/portal/warranty-claims"),
     "smart_sms": ("/api/whatsapp",),
     "ai_assistant": ("/api/ai",),
     "bi_analytics": ("/api/analytics",),
@@ -95,6 +95,10 @@ def resolve_effective_entitlements(payload: Dict[str, Any]) -> set[str]:
 
 def _required_capabilities_for_path(path: str) -> set[str]:
     """Return acceptable signed capabilities for industry-specific API paths."""
+    if path == "/portal/repairs" or path.startswith("/portal/repairs/"):
+        return {"repairs_management"}
+    if any(path == prefix or path.startswith(prefix + "/") for prefix in ("/portal/warranties", "/portal/warranty-claims")):
+        return {"warranty_management"}
     if path.startswith("/inventory/batches"):
         return {"batch_tracking", "expiry_tracking"}
     if path.startswith("/inventory/serials") or "/serials" in path:
