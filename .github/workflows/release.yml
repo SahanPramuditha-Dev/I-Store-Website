@@ -1,7 +1,10 @@
 name: Build and Release Desktop App
 
 on:
+  workflow_dispatch:
   push:
+    branches:
+      - 'release/estore-1.1.129'
     tags:
       - 'v*'
 
@@ -14,7 +17,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build & Publish Electron Executables
+    name: Build Windows installer
     runs-on: windows-latest
 
     steps:
@@ -24,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
           cache-dependency-path: |
             electron/package-lock.json
@@ -40,11 +43,13 @@ jobs:
       - name: Validate release version and updater tests
         shell: pwsh
         run: |
-          $tagVersion = "${{ github.ref_name }}".TrimStart("v")
           $electronVersion = (Get-Content electron/package.json | ConvertFrom-Json).version
           $frontendVersion = (Get-Content frontend/package.json | ConvertFrom-Json).version
-          if ($tagVersion -ne $electronVersion -or $tagVersion -ne $frontendVersion) {
-            throw "Release tag v$tagVersion must match Electron ($electronVersion) and frontend ($frontendVersion)."
+          if ($electronVersion -ne $frontendVersion) {
+            throw "Electron ($electronVersion) and frontend ($frontendVersion) versions must match."
+          }
+          if ($env:GITHUB_REF.StartsWith("refs/tags/") -and $env:GITHUB_REF_NAME -ne "v$electronVersion") {
+            throw "Release tag must match v$electronVersion."
           }
           node electron/test-install-lifecycle.js
           node electron/test-update-version.js
@@ -64,7 +69,7 @@ jobs:
         run: |
           python -m pip install pytest
           Push-Location backend
-          try { python -m pytest tests -q --basetemp "$env:RUNNER_TEMP\estore-pytest" }
+          try { python -m pytest tests -q -o faulthandler_timeout=60 --basetemp "$env:RUNNER_TEMP\estore-pytest" }
           finally { Pop-Location }
 
       - name: Build Backend Executable (PyInstaller)
@@ -133,7 +138,7 @@ jobs:
           if ($hasCertificate -xor $hasPassword) {
             throw "Set both Windows code-signing secrets or neither."
           }
-          if (-not $hasCertificate) { throw "Windows code-signing secrets are required for customer releases." }
+          if ($env:GITHUB_REF.StartsWith("refs/tags/") -and -not $hasCertificate) { throw "Windows code-signing secrets are required for customer releases." }
           "enabled=$($hasCertificate.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           cd electron
           npm run package
@@ -149,7 +154,34 @@ jobs:
             if ($signature.Status -ne "Valid") { throw "Installer signature is not valid: $($installer.Name) ($($signature.Status))" }
           }
 
+      - name: Record test installer checksum
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: pwsh
+        run: |
+          $version = (Get-Content electron/package.json | ConvertFrom-Json).version
+          $installer = Get-Item "dist-electron/E-Store-Setup-$version.exe" -ErrorAction Stop
+          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content "dist-electron/SHA256SUMS.txt" -Encoding ascii
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          @(
+            "Commit: $env:GITHUB_SHA"
+            "Signature: $($signature.Status)"
+            "Publisher: $($signature.SignerCertificate.Subject)"
+          ) | Set-Content "dist-electron/installer-build.txt"
+
+      - name: Upload test installer
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e-store-windows-test-installer
+          if-no-files-found: error
+          path: |
+            dist-electron/E-Store-Setup-*.exe
+            dist-electron/SHA256SUMS.txt
+            dist-electron/installer-build.txt
+
       - name: Upload Draft Release
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -167,6 +199,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Failed to upload the draft release." }
 
       - name: Verify updater release assets
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -178,6 +211,7 @@ jobs:
           }
 
       - name: Publish verified release
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${{ github.ref_name }}" --draft=false --latest

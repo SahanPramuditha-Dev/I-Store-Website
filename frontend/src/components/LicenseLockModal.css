@@ -1,0 +1,15 @@
+.activation-squares { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 5px; }
+.activation-square { display: grid; place-items: center; height: 38px; border: 1px solid #334155; border-radius: 7px; background: #1e293b; color: #64748b; font: 600 13px ui-monospace, monospace; }
+.activation-square:nth-child(4), .activation-square:nth-child(8) { margin-right: 3px; }
+.activation-square.filled { color: #e2e8f0; border-color: #64748b; }
+.activation-square.accepted { animation: license-accept 180ms ease-out var(--accept-delay) both; }
+.activation-success { animation: license-glow 800ms ease-out both; }
+.activation-confirmation { animation: license-reveal 240ms ease-out 850ms both; }
+@keyframes license-accept { to { border-color: #34d399; color: #6ee7b7; background: #064e3b; box-shadow: 0 0 0 1px #34d39933; } }
+@keyframes license-glow { from { transform: scale(.92); box-shadow: 0 0 0 0 #34d39933; } to { transform: scale(1); box-shadow: 0 0 0 14px #34d39900; } }
+@keyframes license-reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .activation-square.accepted { animation: none; border-color: #34d399; color: #6ee7b7; background: #064e3b; } .activation-success, .activation-confirmation { animation: none; } }
+
+.activation-success svg path:last-child { stroke-dasharray: 30; stroke-dashoffset: 30; animation: license-check 500ms ease-out 200ms forwards; }
+@keyframes license-check { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .activation-success svg path:last-child { animation: none; stroke-dashoffset: 0; } }
