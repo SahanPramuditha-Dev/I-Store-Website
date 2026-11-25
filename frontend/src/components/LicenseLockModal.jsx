@@ -1,8 +1,41 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { KeyRound, ShieldAlert, WifiOff, CheckCircle2, RefreshCw, Laptop, X } from 'lucide-react';
+import { KeyRound, ShieldAlert, WifiOff, CheckCircle2, RefreshCw, Laptop, X, Clipboard } from 'lucide-react';
 import api from '../lib/api';
 
 const OFFLINE_BANNER_DISMISSED_KEY = 'istore_offline_license_banner_dismissed';
+
+/** Strips spaces, uppercases, and auto-inserts hyphens as the user types. */
+function normalizeKey(raw) {
+  // Remove everything that isn't alphanumeric or hyphen/underscore
+  const clean = raw.replace(/[^A-Z0-9_-]/gi, '').toUpperCase();
+  return clean;
+}
+
+/**
+ * Accepts keys of the form:
+ *   ESTORE-XXXX-XXXX-XXXX
+ *   ISTORE-XXXX-XXXX-XXXX
+ *   ISTORE-FOREVER-XXXX-XXXX-XXXX
+ *   ISTORE-BUSINESS-XXXX-XXXX-XXXX
+ *   ISTORE-BUSINESS_AI-XXXX-XXXX-XXXX
+ * i.e. optional package segment (letters, digits, underscore) then 3 x 4-char hex segments.
+ */
+const KEY_RE = /^(?:ESTORE|ISTORE)(?:-[A-Z][A-Z0-9_]*)?(?:-[A-Z0-9]{4}){3}$/;
+const hasKeyFormat = (value) => KEY_RE.test(value.trim().toUpperCase());
+
+/**
+ * Returns the 12 character "data" portion of the key (last 3 four-char segments
+ * joined without dashes) so the preview squares only show the numeric/hex part.
+ */
+function keyCharacters(value) {
+  const upper = value.trim().toUpperCase();
+  const parts = upper.split('-');
+  // Last 3 parts are always the 4-char data segments
+  const dataParts = parts.slice(-3);
+  const chars = dataParts.join('');
+  // Pad / trim to exactly 12 for the preview grid
+  return chars.substring(0, 12).padEnd(12, '');
+}
 
 function wasOfflineBannerDismissed() {
   try {
@@ -74,7 +107,7 @@ export default function LicenseLockModal() {
       } else if (data && data.active === false) {
         setLicenseState({
           status: 'UNLICENSED',
-          message: data.message || 'POS terminal requires activation with an E-Store license key.',
+          message: data.message || 'POS terminal requires activation with an I-Store license key.',
           hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
         });
         return;
@@ -84,7 +117,7 @@ export default function LicenseLockModal() {
       if (apiErr.response?.status === 402) {
         setLicenseState({
           status: 'UNLICENSED',
-          message: apiErr.response?.data?.message || 'POS terminal requires activation with an E-Store license key.',
+          message: apiErr.response?.data?.message || 'POS terminal requires activation with an I-Store license key.',
           hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
         });
         return;
@@ -105,7 +138,7 @@ export default function LicenseLockModal() {
       } else {
         setLicenseState({
           status: 'UNLICENSED',
-          message: 'POS terminal requires activation with an E-Store license key.',
+          message: 'POS terminal requires activation with an I-Store license key.',
           hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
         });
       }
@@ -121,7 +154,7 @@ export default function LicenseLockModal() {
     const handleLockEvent = (e) => {
       setLicenseState({
         status: 'UNLICENSED',
-        message: e.detail?.message || 'POS terminal requires activation with an E-Store license key.',
+        message: e.detail?.message || 'POS terminal requires activation with an I-Store license key.',
         hardware_uuid: 'WEB-POS-TERMINAL-' + (window.navigator?.hardwareConcurrency || 4) + 'CPU'
       });
     };
@@ -132,6 +165,18 @@ export default function LicenseLockModal() {
       window.removeEventListener('istore_license_locked', handleLockEvent);
     };
   }, [checkLicense]);
+
+  const pasteLicenseKey = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setLicenseKeyInput(normalizeKey(text));
+        setFeedback(null);
+      }
+    } catch {
+      setFeedback({ type: 'error', message: 'Clipboard access unavailable. Paste manually with Ctrl+V.' });
+    }
+  };
 
   const handleActivate = async (e) => {
     e.preventDefault();
@@ -270,6 +315,10 @@ export default function LicenseLockModal() {
     );
   }
 
+  // Derived display values
+  const validFormat = hasKeyFormat(licenseKeyInput);
+  const previewChars = keyCharacters(licenseKeyInput);
+
   // Full Screen Lock Overlay if UNLICENSED, SUSPENDED, REVOKED, or EXPIRED
   return (
     <div className="fixed inset-0 z-[9999] bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
@@ -283,7 +332,7 @@ export default function LicenseLockModal() {
         </h2>
 
         <p className="text-sm text-slate-400 mb-6">
-          {licenseState.message || 'Please enter your E-Store license activation key to use this POS terminal.'}
+          {licenseState.message || 'Please enter your I-Store license activation key to use this POS terminal.'}
         </p>
 
         {feedback && (
@@ -298,14 +347,52 @@ export default function LicenseLockModal() {
             <div className="relative">
               <input
                 type="text"
-                placeholder="ESTORE-XXXX-XXXX-XXXX"
+                placeholder="ISTORE-XXXXXX-XXXX-XXXX-XXXX"
                 value={licenseKeyInput}
-                onChange={(e) => setLicenseKeyInput(e.target.value.toUpperCase())}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 pl-10 text-sm font-mono text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                onChange={(e) => setLicenseKeyInput(normalizeKey(e.target.value))}
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 pl-10 pr-24 text-sm font-mono text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 required
+                autoComplete="off"
+                spellCheck="false"
               />
               <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              {!isSubmitting && (
+                <button
+                  type="button"
+                  onClick={pasteLicenseKey}
+                  className="absolute right-2 top-1.5 inline-flex items-center gap-1 rounded-lg bg-slate-700/80 hover:bg-slate-600 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                  title="Paste license key from clipboard"
+                >
+                  <Clipboard className="w-3.5 h-3.5" aria-hidden="true" />
+                  Paste
+                </button>
+              )}
             </div>
+
+            {/* 12-character preview squares — only last 3 data segments */}
+            <div className="mt-2 flex gap-1 justify-center" aria-label="Key character preview">
+              {Array.from({ length: 12 }).map((_, i) => {
+                const ch = previewChars[i] || '';
+                const filled = ch !== '';
+                return (
+                  <div
+                    key={i}
+                    className={`w-7 h-7 rounded-md border text-xs font-mono font-semibold flex items-center justify-center transition-colors ${
+                      validFormat && filled
+                        ? 'border-blue-500/60 bg-blue-500/10 text-blue-300'
+                        : filled
+                        ? 'border-slate-600 bg-slate-800 text-slate-300'
+                        : 'border-slate-700/50 bg-slate-800/40 text-slate-600'
+                    }`}
+                  >
+                    {ch || '·'}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-500 text-center">
+              Paste your key; spacing and letter case are handled automatically.
+            </p>
           </div>
 
           <button
